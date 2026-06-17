@@ -138,7 +138,9 @@
     <div class="section-header">
       <h2>Grupos de empresa</h2>
       <button class="btn btn-primary" onclick="mostrarTela('tela-novo-grupo')">+ Novo grupo</button>
-
+      <button class="btn" onclick="exportarBaseDePara()">Exportar base</button>
+      <button class="btn" onclick="document.getElementById('base-input').click()">Importar base</button>
+      <button class="btn" onclick="carregarBaseCompartilhada(true)">Sincronizar base</button>
     </div>
     <div id="msg-global"></div>
     <div id="status-banco" class="alert alert-orange" style="display:none"></div>
@@ -179,7 +181,6 @@
   <!-- TELA NOVAS CHAVES -->
   <div class="tela" id="tela-novas-chaves">
     <div class="section-header">
-      <button class="btn btn-sm" onclick="voltarTela()">← Voltar</button>
       <h2>Novas combinações encontradas</h2>
       <span class="tag-novas" id="tag-qtd-novas"></span>
     </div>
@@ -204,7 +205,7 @@
     <div class="table-wrap table-scroll table-novas-wrap" style="margin-bottom:16px">
       <table class="table-novas">
         <thead>
-          <tr><th><input type="checkbox" id="check-todas-lote" onchange="alternarTodasVisiveis(this.checked)"></th><th>Fornecedor</th><th>Plano de Contas</th><th>Histórico</th><th>Número</th><th>Tipo de Documento</th><th>Código Domínio</th></tr>
+          <tr><th><input type="checkbox" id="check-todas-lote" onchange="alternarTodasVisiveis(this.checked)"></th><th>Empresa</th><th>Fornecedor</th><th>Plano de Contas</th><th>Histórico</th><th>Número</th><th>Tipo de Documento</th><th>Código Domínio</th></tr>
         </thead>
         <tbody id="tbody-novas-chaves"></tbody>
       </table>
@@ -218,7 +219,6 @@
   <!-- TELA RESULTADO -->
   <div class="tela" id="tela-resultado">
     <div class="section-header">
-      <button class="btn btn-sm" onclick="voltarTela()">← Voltar</button>
       <h2>Lançamentos gerados</h2>
     </div>
     <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:12px;margin-bottom:16px">
@@ -501,13 +501,49 @@ function criarGrupo() {
   showMsg(`Grupo "${nome}" criado com sucesso.`, 'ok');
 }
 
+const SENHA_ADMIN = '66832';
+
+function pedirSenha(callback) {
+  const modal = document.createElement('div');
+  modal.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.5);display:flex;align-items:center;justify-content:center;z-index:9999';
+  modal.innerHTML = `
+    <div style="background:var(--bg);border-radius:var(--radius);padding:28px 32px;min-width:320px;box-shadow:0 8px 32px rgba(0,0,0,0.2)">
+      <h3 style="margin-bottom:6px;font-size:15px">🔒 Ação protegida</h3>
+      <p style="font-size:13px;color:var(--text2);margin-bottom:16px">Digite a senha de administrador para continuar.</p>
+      <input type="password" id="senha-admin-input" placeholder="Senha" style="width:100%;margin-bottom:12px" autofocus>
+      <div id="senha-erro" style="color:var(--danger);font-size:12px;margin-bottom:10px;display:none">Senha incorreta.</div>
+      <div style="display:flex;gap:10px;justify-content:flex-end">
+        <button class="btn btn-sm" onclick="this.closest('div[style*=fixed]').remove()">Cancelar</button>
+        <button class="btn btn-sm btn-primary" onclick="confirmarSenha(this, arguments[0])">Confirmar</button>
+      </div>
+    </div>`;
+  modal._callback = callback;
+  document.body.appendChild(modal);
+  document.getElementById('senha-admin-input').addEventListener('keydown', e => {
+    if (e.key === 'Enter') modal.querySelector('.btn-primary').click();
+  });
+  modal.querySelector('.btn-primary').addEventListener('click', () => {
+    const val = document.getElementById('senha-admin-input').value;
+    if (val === SENHA_ADMIN) {
+      modal.remove();
+      callback();
+    } else {
+      document.getElementById('senha-erro').style.display = 'block';
+      document.getElementById('senha-admin-input').value = '';
+      document.getElementById('senha-admin-input').focus();
+    }
+  });
+}
+
 function excluirGrupo(g) {
-  if (!confirm(`Excluir o grupo "${g}" e todas as suas regras? Esta ação não pode ser desfeita.`)) return;
-  grupos = grupos.filter(x => x !== g);
-  delete depara[g];
-  if (grupoAtivo === g) grupoAtivo = null;
-  salvarStorage();
-  renderGrupos();
+  pedirSenha(() => {
+    if (!confirm(`Excluir o grupo "${g}" e todas as suas regras? Esta ação não pode ser desfeita.`)) return;
+    grupos = grupos.filter(x => x !== g);
+    delete depara[g];
+    if (grupoAtivo === g) grupoAtivo = null;
+    salvarStorage();
+    renderGrupos();
+  });
 }
 
 // ---------- ARQUIVO ----------
@@ -564,7 +600,8 @@ function processarArquivo(file) {
         const chave = montarChave(forn, plano, tipoDoc, historico);
         if (!regrasSalvas[chave] && !vistas.has(chave)) {
           vistas.add(chave);
-          novas.push({ chave, fornecedor: forn, plano, tipoDoc, historico, numero });
+          const empresa = limparTextoECD(r[COLS.EMPRESA]);
+          novas.push({ chave, fornecedor: forn, plano, tipoDoc, historico, numero, empresa });
         }
       });
 
@@ -589,7 +626,7 @@ function processarArquivo(file) {
 
 function renderNovasChaves() {
   document.getElementById('tag-qtd-novas').textContent = novasChavesTemp.length + ' nova' + (novasChavesTemp.length !== 1 ? 's' : '');
-  // Só coleta da tela se não estiver re-renderizando após lote
+  coletarCodigosNovasChaves();
   const tbody = document.getElementById('tbody-novas-chaves');
   const filtro = normalizarTexto(document.getElementById('filtro-lote')?.value || '');
   const somentePendentes = document.getElementById('somente-pendentes')?.checked ?? true;
@@ -609,6 +646,7 @@ function renderNovasChaves() {
     const numeroExibido = tipoUsaNumero(tipoDoc) ? infoDoc.numero : '';
     return `<tr>
       <td><input type="checkbox" data-chave="${escapeAttr(chave)}" ${selecionadasLote.has(chave) ? 'checked' : ''} onchange="alternarSelecionadaLote(this.dataset.chave, this.checked)"></td>
+      <td title="${escapeAttr(empresa||'')}" style="color:var(--text2)">${escapeHtml(empresa||'')}</td>
       <td title="${escapeAttr(fornecedor)}">${escapeHtml(fornecedor)}</td>
       <td title="${escapeAttr(plano)}" style="color:var(--text2)">${escapeHtml(plano)}</td>
       <td title="${escapeAttr(historicoExibido)}" style="color:var(--text2)">${escapeHtml(historicoExibido)}</td>
@@ -717,7 +755,6 @@ function atualizarStatusLote(visiveis = obterNovasChavesVisiveis()) {
 }
 
 function filtrarNovasChavesEmLote() {
-  coletarCodigosNovasChaves();
   renderNovasChaves();
 }
 
@@ -745,14 +782,8 @@ function aplicarCodigoEmLote() {
   const codigo = document.getElementById('codigo-lote').value.trim();
   if (!codigo) { alert('Informe a conta que será aplicada.'); return; }
   if (selecionadasLote.size === 0) { alert('Selecione pelo menos uma combinação.'); return; }
-  // Aplica no codigosTemp para todas selecionadas
   selecionadasLote.forEach(chave => { codigosTemp[chave] = codigo; });
-  // Salva imediatamente no depara do grupo ativo
-  const regrasSalvas = Object.assign({}, depara[grupoAtivo] || {});
-  selecionadasLote.forEach(chave => { regrasSalvas[chave] = codigo; });
-  depara[grupoAtivo] = regrasSalvas;
-  salvarStorage();
-  selecionadasLote.clear();
+  salvarCodigosPreenchidosNoGrupo(false);
   renderNovasChaves();
 }
 
@@ -869,11 +900,11 @@ function renderRegras() {
   const dados = editandoRegras ? editTemp : regrasSalvas;
   container.innerHTML = `<div class="table-wrap"><table>
     <thead><tr>
-      <th style="width:26%">Fornecedor</th>
-      <th style="width:22%">Plano de contas</th>
-      <th style="width:16%">Tipo de documento</th>
-      <th style="width:16%">Histórico</th>
-      <th style="width:130px">Código Domínio</th>
+      <th style="width:20%">Fornecedor</th>
+      <th style="width:18%">Plano de contas</th>
+      <th style="width:14%">Tipo de documento</th>
+      <th style="width:14%">Histórico</th>
+      <th style="width:120px">Código Domínio</th>
       ${editandoRegras ? '<th style="width:44px"></th>' : ''}
     </tr></thead>
     <tbody>${chaves.map((chave, i) => {
@@ -899,12 +930,14 @@ function renderRegras() {
 }
 
 function ativarEdicaoRegras() {
-  editandoRegras = true;
-  editTemp = Object.assign({}, depara[grupoAtivo] || {});
-  document.getElementById('btn-editar-regras').style.display = 'none';
-  document.getElementById('btn-salvar-regras').style.display = '';
-  document.getElementById('btn-cancelar-regras').style.display = '';
-  renderRegras();
+  pedirSenha(() => {
+    editandoRegras = true;
+    editTemp = Object.assign({}, depara[grupoAtivo] || {});
+    document.getElementById('btn-editar-regras').style.display = 'none';
+    document.getElementById('btn-salvar-regras').style.display = '';
+    document.getElementById('btn-cancelar-regras').style.display = '';
+    renderRegras();
+  });
 }
 
 function salvarEdicaoRegras() {
