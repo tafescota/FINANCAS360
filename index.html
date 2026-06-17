@@ -138,9 +138,7 @@
     <div class="section-header">
       <h2>Grupos de empresa</h2>
       <button class="btn btn-primary" onclick="mostrarTela('tela-novo-grupo')">+ Novo grupo</button>
-      <button class="btn" onclick="exportarBaseDePara()">Exportar base</button>
-      <button class="btn" onclick="document.getElementById('base-input').click()">Importar base</button>
-      <button class="btn" onclick="carregarBaseCompartilhada(true)">Sincronizar base</button>
+
     </div>
     <div id="msg-global"></div>
     <div id="status-banco" class="alert alert-orange" style="display:none"></div>
@@ -181,6 +179,7 @@
   <!-- TELA NOVAS CHAVES -->
   <div class="tela" id="tela-novas-chaves">
     <div class="section-header">
+      <button class="btn btn-sm" onclick="voltarTela()">← Voltar</button>
       <h2>Novas combinações encontradas</h2>
       <span class="tag-novas" id="tag-qtd-novas"></span>
     </div>
@@ -219,6 +218,7 @@
   <!-- TELA RESULTADO -->
   <div class="tela" id="tela-resultado">
     <div class="section-header">
+      <button class="btn btn-sm" onclick="voltarTela()">← Voltar</button>
       <h2>Lançamentos gerados</h2>
     </div>
     <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:12px;margin-bottom:16px">
@@ -589,7 +589,7 @@ function processarArquivo(file) {
 
 function renderNovasChaves() {
   document.getElementById('tag-qtd-novas').textContent = novasChavesTemp.length + ' nova' + (novasChavesTemp.length !== 1 ? 's' : '');
-  coletarCodigosNovasChaves();
+  // Só coleta da tela se não estiver re-renderizando após lote
   const tbody = document.getElementById('tbody-novas-chaves');
   const filtro = normalizarTexto(document.getElementById('filtro-lote')?.value || '');
   const somentePendentes = document.getElementById('somente-pendentes')?.checked ?? true;
@@ -717,6 +717,7 @@ function atualizarStatusLote(visiveis = obterNovasChavesVisiveis()) {
 }
 
 function filtrarNovasChavesEmLote() {
+  coletarCodigosNovasChaves();
   renderNovasChaves();
 }
 
@@ -744,8 +745,14 @@ function aplicarCodigoEmLote() {
   const codigo = document.getElementById('codigo-lote').value.trim();
   if (!codigo) { alert('Informe a conta que será aplicada.'); return; }
   if (selecionadasLote.size === 0) { alert('Selecione pelo menos uma combinação.'); return; }
+  // Aplica no codigosTemp para todas selecionadas
   selecionadasLote.forEach(chave => { codigosTemp[chave] = codigo; });
-  salvarCodigosPreenchidosNoGrupo(false);
+  // Salva imediatamente no depara do grupo ativo
+  const regrasSalvas = Object.assign({}, depara[grupoAtivo] || {});
+  selecionadasLote.forEach(chave => { regrasSalvas[chave] = codigo; });
+  depara[grupoAtivo] = regrasSalvas;
+  salvarStorage();
+  selecionadasLote.clear();
   renderNovasChaves();
 }
 
