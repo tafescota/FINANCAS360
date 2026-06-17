@@ -138,9 +138,7 @@
     <div class="section-header">
       <h2>Grupos de empresa</h2>
       <button class="btn btn-primary" onclick="mostrarTela('tela-novo-grupo')">+ Novo grupo</button>
-      <button class="btn" onclick="exportarBaseDePara()">Exportar base</button>
-      <button class="btn" onclick="document.getElementById('base-input').click()">Importar base</button>
-      <button class="btn" onclick="carregarBaseCompartilhada(true)">Sincronizar base</button>
+
     </div>
     <div id="msg-global"></div>
     <div id="status-banco" class="alert alert-orange" style="display:none"></div>
@@ -181,6 +179,7 @@
   <!-- TELA NOVAS CHAVES -->
   <div class="tela" id="tela-novas-chaves">
     <div class="section-header">
+      <button class="btn btn-sm" onclick="voltarTela()">← Voltar</button>
       <h2>Novas combinações encontradas</h2>
       <span class="tag-novas" id="tag-qtd-novas"></span>
     </div>
@@ -219,6 +218,7 @@
   <!-- TELA RESULTADO -->
   <div class="tela" id="tela-resultado">
     <div class="section-header">
+      <button class="btn btn-sm" onclick="voltarTela()">← Voltar</button>
       <h2>Lançamentos gerados</h2>
     </div>
     <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:12px;margin-bottom:16px">
@@ -514,25 +514,19 @@ function pedirSenha(callback) {
       <div id="senha-erro" style="color:var(--danger);font-size:12px;margin-bottom:10px;display:none">Senha incorreta.</div>
       <div style="display:flex;gap:10px;justify-content:flex-end">
         <button class="btn btn-sm" onclick="this.closest('div[style*=fixed]').remove()">Cancelar</button>
-        <button class="btn btn-sm btn-primary" onclick="confirmarSenha(this, arguments[0])">Confirmar</button>
+        <button class="btn btn-sm btn-primary" id="btn-confirmar-senha">Confirmar</button>
       </div>
     </div>`;
-  modal._callback = callback;
   document.body.appendChild(modal);
-  document.getElementById('senha-admin-input').addEventListener('keydown', e => {
-    if (e.key === 'Enter') modal.querySelector('.btn-primary').click();
-  });
-  modal.querySelector('.btn-primary').addEventListener('click', () => {
-    const val = document.getElementById('senha-admin-input').value;
-    if (val === SENHA_ADMIN) {
-      modal.remove();
-      callback();
-    } else {
-      document.getElementById('senha-erro').style.display = 'block';
-      document.getElementById('senha-admin-input').value = '';
-      document.getElementById('senha-admin-input').focus();
-    }
-  });
+  const input = document.getElementById('senha-admin-input');
+  const btnConfirmar = document.getElementById('btn-confirmar-senha');
+  const erro = document.getElementById('senha-erro');
+  function tentar() {
+    if (input.value === SENHA_ADMIN) { modal.remove(); callback(); }
+    else { erro.style.display = 'block'; input.value = ''; input.focus(); }
+  }
+  btnConfirmar.addEventListener('click', tentar);
+  input.addEventListener('keydown', e => { if (e.key === 'Enter') tentar(); });
 }
 
 function excluirGrupo(g) {
@@ -600,8 +594,7 @@ function processarArquivo(file) {
         const chave = montarChave(forn, plano, tipoDoc, historico);
         if (!regrasSalvas[chave] && !vistas.has(chave)) {
           vistas.add(chave);
-          const empresa = limparTextoECD(r[COLS.EMPRESA]);
-          novas.push({ chave, fornecedor: forn, plano, tipoDoc, historico, numero, empresa });
+          novas.push({ chave, fornecedor: forn, plano, tipoDoc, historico, numero, empresa: limparTextoECD(r[COLS.EMPRESA]) });
         }
       });
 
@@ -626,7 +619,7 @@ function processarArquivo(file) {
 
 function renderNovasChaves() {
   document.getElementById('tag-qtd-novas').textContent = novasChavesTemp.length + ' nova' + (novasChavesTemp.length !== 1 ? 's' : '');
-  coletarCodigosNovasChaves();
+  // Só coleta da tela se não estiver re-renderizando após lote
   const tbody = document.getElementById('tbody-novas-chaves');
   const filtro = normalizarTexto(document.getElementById('filtro-lote')?.value || '');
   const somentePendentes = document.getElementById('somente-pendentes')?.checked ?? true;
@@ -640,7 +633,7 @@ function renderNovasChaves() {
     atualizarStatusLote(visiveis);
     return;
   }
-  tbody.innerHTML = visiveis.map(({ chave, fornecedor, plano, tipoDoc, historico, numero }) => {
+  tbody.innerHTML = visiveis.map(({ chave, fornecedor, plano, tipoDoc, historico, numero, empresa }) => {
     const infoDoc = separarNumeroDoHistorico(tipoDoc, numero, historico);
     const historicoExibido = infoDoc.historico;
     const numeroExibido = tipoUsaNumero(tipoDoc) ? infoDoc.numero : '';
@@ -755,6 +748,7 @@ function atualizarStatusLote(visiveis = obterNovasChavesVisiveis()) {
 }
 
 function filtrarNovasChavesEmLote() {
+  coletarCodigosNovasChaves();
   renderNovasChaves();
 }
 
@@ -782,8 +776,14 @@ function aplicarCodigoEmLote() {
   const codigo = document.getElementById('codigo-lote').value.trim();
   if (!codigo) { alert('Informe a conta que será aplicada.'); return; }
   if (selecionadasLote.size === 0) { alert('Selecione pelo menos uma combinação.'); return; }
+  // Aplica no codigosTemp para todas selecionadas
   selecionadasLote.forEach(chave => { codigosTemp[chave] = codigo; });
-  salvarCodigosPreenchidosNoGrupo(false);
+  // Salva imediatamente no depara do grupo ativo
+  const regrasSalvas = Object.assign({}, depara[grupoAtivo] || {});
+  selecionadasLote.forEach(chave => { regrasSalvas[chave] = codigo; });
+  depara[grupoAtivo] = regrasSalvas;
+  salvarStorage();
+  selecionadasLote.clear();
   renderNovasChaves();
 }
 
@@ -900,11 +900,11 @@ function renderRegras() {
   const dados = editandoRegras ? editTemp : regrasSalvas;
   container.innerHTML = `<div class="table-wrap"><table>
     <thead><tr>
-      <th style="width:20%">Fornecedor</th>
-      <th style="width:18%">Plano de contas</th>
-      <th style="width:14%">Tipo de documento</th>
-      <th style="width:14%">Histórico</th>
-      <th style="width:120px">Código Domínio</th>
+      <th style="width:26%">Fornecedor</th>
+      <th style="width:22%">Plano de contas</th>
+      <th style="width:16%">Tipo de documento</th>
+      <th style="width:16%">Histórico</th>
+      <th style="width:130px">Código Domínio</th>
       ${editandoRegras ? '<th style="width:44px"></th>' : ''}
     </tr></thead>
     <tbody>${chaves.map((chave, i) => {
