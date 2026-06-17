@@ -1,0 +1,946 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>De-Para — Lançamentos Domínio</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<style>
+  :root {
+    --bg: #ffffff; --bg2: #f4f6f9; --bg3: #eef0f3;
+    --text: #1a1a2e; --text2: #6b7280; --text3: #9ca3af;
+    --border: #e5e7eb; --border2: #d1d5db;
+    --blue: #1B8EF2; --blue-bg: #e8f3fe; --blue-text: #0d5fa8;
+    --warn-bg: #fffbeb; --warn-border: #fcd34d; --warn-text: #92400e;
+    --ok-bg: #f0fdf4; --ok-border: #86efac; --ok-text: #166534;
+    --danger: #dc2626; --orange-bg: #fff7ed; --orange-border: #fdba74;
+    --navy: #0D1B3E; --cyan: #1B8EF2;
+    --radius: 10px; --radius-sm: 6px;
+    --shadow: 0 1px 3px rgba(0,0,0,0.08);
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background: var(--bg2); color: var(--text); font-size: 14px; line-height: 1.5; }
+
+  .topbar { background: var(--navy); padding: 14px 24px; display: flex; align-items: center; gap: 12px; }
+  .topbar-logo { color: var(--cyan); font-weight: 700; font-size: 18px; letter-spacing: -0.5px; }
+  .topbar-sub { color: rgba(255,255,255,0.5); font-size: 13px; }
+  .topbar-grupo { margin-left: auto; color: rgba(255,255,255,0.7); font-size: 12px; background: rgba(255,255,255,0.1); padding: 4px 12px; border-radius: 20px; }
+
+  .container { max-width: 1120px; margin: 0 auto; padding: 24px 24px; }
+
+  .card { background: var(--bg); border: 1px solid var(--border); border-radius: var(--radius); padding: 20px 24px; box-shadow: var(--shadow); }
+
+  h2 { font-size: 17px; font-weight: 600; margin-bottom: 4px; }
+  h3 { font-size: 15px; font-weight: 600; margin-bottom: 12px; }
+
+  .btn { display: inline-flex; align-items: center; gap: 6px; padding: 8px 16px; border-radius: var(--radius-sm); border: 1px solid var(--border2); background: var(--bg); color: var(--text); font-size: 13px; cursor: pointer; transition: background 0.15s; font-weight: 500; white-space: nowrap; }
+  .btn:hover { background: var(--bg2); }
+  .btn-primary { background: var(--navy); color: #fff; border-color: var(--navy); }
+  .btn-primary:hover { background: #162450; }
+  .btn-blue { background: var(--blue); color: #fff; border-color: var(--blue); }
+  .btn-blue:hover { background: #1680d8; }
+  .btn-danger { color: var(--danger); border-color: #fca5a5; }
+  .btn-danger:hover { background: #fef2f2; }
+  .btn-sm { padding: 5px 11px; font-size: 12px; }
+
+  input[type=text], input[type=search] { width: 100%; padding: 8px 12px; border: 1px solid var(--border2); border-radius: var(--radius-sm); font-size: 13px; background: var(--bg); color: var(--text); outline: none; }
+  input[type=text]:focus, input[type=search]:focus { border-color: var(--blue); box-shadow: 0 0 0 3px rgba(27,142,242,0.12); }
+
+  .alert { padding: 10px 14px; border-radius: var(--radius-sm); font-size: 13px; display: flex; align-items: flex-start; gap: 8px; margin-bottom: 16px; }
+  .alert-warn { background: var(--warn-bg); border: 1px solid var(--warn-border); color: var(--warn-text); }
+  .alert-ok { background: var(--ok-bg); border: 1px solid var(--ok-border); color: var(--ok-text); }
+  .alert-orange { background: var(--orange-bg); border: 1px solid var(--orange-border); color: #9a3412; }
+
+  table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  th { padding: 9px 14px; text-align: left; font-weight: 600; font-size: 12px; color: var(--text2); background: var(--bg2); border-bottom: 1px solid var(--border); white-space: nowrap; }
+  td { padding: 8px 14px; border-bottom: 1px solid var(--border); vertical-align: middle; }
+  tr:last-child td { border-bottom: none; }
+  tr.sem-codigo { background: var(--orange-bg); }
+  tr.alt { background: var(--bg2); }
+  .table-wrap { border: 1px solid var(--border); border-radius: var(--radius); overflow: hidden; background: var(--bg); }
+  .table-scroll { overflow-x: auto; }
+  .table-novas-wrap { max-height: calc(100vh - 330px); min-height: 360px; overflow-y: auto; overflow-x: hidden; }
+  .table-novas-wrap thead th { position: sticky; top: 0; z-index: 2; box-shadow: 0 1px 0 var(--border); }
+  .table-novas { table-layout: fixed; width: 100%; min-width: 0; font-size: 12.5px; }
+  .table-novas th, .table-novas td { padding: 12px 10px; }
+  .table-novas th { white-space: normal; line-height: 1.25; }
+  .table-novas th:nth-child(1) { width: 42px; }
+  .table-novas th:nth-child(2) { width: 17%; }
+  .table-novas th:nth-child(3) { width: 18%; }
+  .table-novas th:nth-child(4) { width: 28%; }
+  .table-novas th:nth-child(5) { width: 10%; }
+  .table-novas th:nth-child(6) { width: 13%; }
+  .table-novas th:nth-child(7) { width: 14%; }
+  .table-novas td { min-height: 56px; white-space: normal; overflow-wrap: anywhere; line-height: 1.35; }
+  .table-novas td:nth-child(2) { font-weight: 600; color: #111827; }
+  .table-novas td:first-child, .table-novas th:first-child { text-align: center; padding-left: 10px; padding-right: 10px; }
+  .table-novas input[type=text] { height: 34px; min-width: 0; font-size: 12px; padding-left: 8px; padding-right: 8px; }
+  .table-hint { color: var(--text2); font-size: 12px; margin: -6px 0 8px; }
+  .bulk-tool { background: var(--bg); border: 1px solid var(--border); border-radius: var(--radius); padding: 14px; margin-bottom: 16px; box-shadow: var(--shadow); }
+  .bulk-tool-top { display: grid; grid-template-columns: minmax(220px, 1fr) 170px auto auto; gap: 10px; align-items: center; }
+  .bulk-tool-options { display: flex; align-items: center; gap: 14px; margin-top: 10px; flex-wrap: wrap; }
+  .compact-check { display: inline-flex; align-items: center; gap: 6px; color: var(--text2); font-size: 12px; cursor: pointer; user-select: none; }
+  .bulk-tool-status { margin-top: 8px; color: var(--text2); font-size: 12px; }
+  .bulk-tool input[type=checkbox] { width: 16px; height: 16px; cursor: pointer; }
+  @media (max-width: 760px) {
+    .container { padding: 18px 12px; }
+    .bulk-tool-top { grid-template-columns: 1fr; }
+    .table-novas-wrap { max-height: calc(100vh - 360px); }
+  }
+
+  .grupo-card { background: var(--bg); border: 1px solid var(--border); border-radius: var(--radius); padding: 16px 20px; display: flex; align-items: center; gap: 12px; margin-bottom: 10px; transition: border-color 0.15s; }
+  .grupo-card.ativo { border-color: var(--blue); }
+  .grupo-nome { font-weight: 600; font-size: 15px; }
+  .grupo-info { font-size: 12px; color: var(--text2); margin-top: 2px; }
+  .badge { font-size: 11px; padding: 2px 8px; border-radius: 20px; display: inline-block; }
+  .badge-blue { background: var(--blue-bg); color: var(--blue-text); }
+
+  .metric { background: var(--bg2); border-radius: var(--radius-sm); padding: 12px 16px; }
+  .metric-label { font-size: 11px; color: var(--text2); margin-bottom: 4px; }
+  .metric-value { font-size: 22px; font-weight: 600; }
+  .metric-value.warn { color: #d97706; }
+  .metric-value.ok { color: #16a34a; }
+
+  .section-header { display: flex; align-items: center; gap: 10px; margin-bottom: 16px; flex-wrap: wrap; }
+
+  .empty { text-align: center; padding: 40px 20px; color: var(--text2); font-size: 13px; }
+  .empty-icon { font-size: 32px; margin-bottom: 8px; }
+
+  .mono { font-family: 'Courier New', monospace; font-size: 12px; }
+
+  .drop-area { border: 2px dashed var(--border2); border-radius: var(--radius); padding: 40px 20px; text-align: center; cursor: pointer; transition: border-color 0.15s, background 0.15s; }
+  .drop-area:hover, .drop-area.drag { border-color: var(--blue); background: var(--blue-bg); }
+  .drop-icon { font-size: 36px; margin-bottom: 8px; }
+  .drop-title { font-weight: 600; font-size: 15px; margin-bottom: 4px; }
+  .drop-sub { font-size: 12px; color: var(--text2); }
+
+  .tag-novas { background: #fff7ed; border: 1px solid #fed7aa; color: #9a3412; padding: 2px 10px; border-radius: 20px; font-size: 12px; font-weight: 600; }
+
+  .progress-bar { height: 4px; background: var(--bg3); border-radius: 2px; margin: 12px 0; overflow: hidden; }
+  .progress-fill { height: 100%; background: var(--blue); border-radius: 2px; transition: width 0.3s; }
+
+  .tela { display: none; }
+  .tela.ativa { display: block; }
+</style>
+</head>
+<body>
+
+<div class="topbar">
+  <span class="topbar-logo">zip</span>
+  <span class="topbar-sub">De-Para — Lançamentos Domínio</span>
+  <span class="topbar-grupo" id="topbar-grupo" style="display:none"></span>
+</div>
+
+<div class="container">
+
+  <!-- TELA HOME -->
+  <div class="tela ativa" id="tela-home">
+    <div class="section-header">
+      <h2>Grupos de empresa</h2>
+      <button class="btn btn-primary" onclick="mostrarTela('tela-novo-grupo')">+ Novo grupo</button>
+      <button class="btn" onclick="exportarBaseDePara()">Exportar base</button>
+      <button class="btn" onclick="document.getElementById('base-input').click()">Importar base</button>
+      <button class="btn" onclick="carregarBaseCompartilhada(true)">Sincronizar base</button>
+    </div>
+    <div id="msg-global"></div>
+    <div id="status-banco" class="alert alert-orange" style="display:none"></div>
+    <div id="lista-grupos"></div>
+    <input type="file" id="file-input" accept=".xlsx,.xlsm,.xls" style="display:none" onchange="onFileChange(event)">
+    <input type="file" id="base-input" accept=".json" style="display:none" onchange="importarBaseDePara(event)">
+  </div>
+
+  <!-- TELA NOVO GRUPO -->
+  <div class="tela" id="tela-novo-grupo">
+    <div class="section-header">
+      <button class="btn btn-sm" onclick="voltarTela()">← Voltar</button>
+      <h2>Novo grupo de empresa</h2>
+    </div>
+    <div class="card" style="max-width:420px">
+      <label style="font-size:13px;color:var(--text2);display:block;margin-bottom:6px">Nome do grupo</label>
+      <input type="text" id="input-nome-grupo" placeholder="Ex: CP Simone, VD 108, Grupo Pinheiro..." onkeydown="if(event.key==='Enter') criarGrupo()" style="margin-bottom:16px">
+      <div style="display:flex;gap:10px">
+        <button class="btn btn-primary" onclick="criarGrupo()">Criar grupo</button>
+        <button class="btn" onclick="mostrarTela('tela-home')">Cancelar</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- TELA IMPORTAR -->
+  <div class="tela" id="tela-importar">
+    <div class="section-header">
+      <button class="btn btn-sm" onclick="voltarTela()">← Voltar</button>
+      <h2 id="titulo-importar">Importar planilha</h2>
+    </div>
+    <div class="drop-area" id="drop-area" onclick="document.getElementById('file-input').click()" ondragover="dragOver(event)" ondragleave="dragLeave(event)" ondrop="onDrop(event)">
+      <div class="drop-icon">📄</div>
+      <div class="drop-title">Arraste a planilha aqui ou clique para selecionar</div>
+      <div class="drop-sub">Arquivo de Parcelas de Títulos exportado do financeiro (.xlsx ou .xlsm)</div>
+    </div>
+  </div>
+
+  <!-- TELA NOVAS CHAVES -->
+  <div class="tela" id="tela-novas-chaves">
+    <div class="section-header">
+      <h2>Novas combinações encontradas</h2>
+      <span class="tag-novas" id="tag-qtd-novas"></span>
+    </div>
+    <div class="alert alert-warn" style="margin-bottom:16px">
+      ⚠️ Preencha o código contábil do Domínio para cada combinação nova. Pode deixar em branco — o lançamento ficará marcado para revisão.
+    </div>
+    <div class="bulk-tool">
+      <div class="bulk-tool-top">
+        <input type="search" id="filtro-lote" placeholder="Pesquisar fornecedor, histórico, plano ou tipo..." oninput="filtrarNovasChavesEmLote()">
+        <input type="text" id="codigo-lote" placeholder="Conta para aplicar">
+        <button class="btn" onclick="selecionarFiltradasEmLote()">Selecionar filtradas</button>
+        <button class="btn btn-primary" onclick="aplicarCodigoEmLote()">Aplicar conta</button>
+      </div>
+      <div class="bulk-tool-options">
+        <label class="compact-check">
+          <input type="checkbox" id="somente-pendentes" checked onchange="renderNovasChaves()">
+          Mostrar somente pendentes
+        </label>
+      </div>
+      <div class="bulk-tool-status" id="status-lote">Use a busca para localizar itens e preencher vários de uma vez.</div>
+    </div>
+    <div class="table-wrap table-scroll table-novas-wrap" style="margin-bottom:16px">
+      <table class="table-novas">
+        <thead>
+          <tr><th><input type="checkbox" id="check-todas-lote" onchange="alternarTodasVisiveis(this.checked)"></th><th>Fornecedor</th><th>Plano de Contas</th><th>Histórico</th><th>Número</th><th>Tipo de Documento</th><th>Código Domínio</th></tr>
+        </thead>
+        <tbody id="tbody-novas-chaves"></tbody>
+      </table>
+    </div>
+    <div style="display:flex;gap:10px;flex-wrap:wrap">
+      <button class="btn btn-primary" onclick="salvarNovasChavesEGerar()">Salvar e gerar lançamentos</button>
+      <button class="btn" onclick="mostrarTela('tela-home')">Cancelar</button>
+    </div>
+  </div>
+
+  <!-- TELA RESULTADO -->
+  <div class="tela" id="tela-resultado">
+    <div class="section-header">
+      <h2>Lançamentos gerados</h2>
+    </div>
+    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:12px;margin-bottom:16px">
+      <div class="metric"><div class="metric-label">Total de lançamentos</div><div class="metric-value" id="met-total">0</div></div>
+      <div class="metric"><div class="metric-label">Sem código</div><div class="metric-value" id="met-sem" class="">0</div></div>
+      <div class="metric"><div class="metric-label">Valor total</div><div class="metric-value" style="font-size:16px" id="met-valor">R$ 0,00</div></div>
+    </div>
+    <div id="alert-pendentes"></div>
+    <div class="table-wrap table-scroll" style="margin-bottom:16px">
+      <table>
+        <thead>
+          <tr><th>Data</th><th>Cód. Débito</th><th>Cód. Crédito</th><th style="text-align:right">Valor</th><th>Empresa</th><th>Complemento</th></tr>
+        </thead>
+        <tbody id="tbody-resultado"></tbody>
+      </table>
+    </div>
+    <div style="display:flex;gap:10px;flex-wrap:wrap">
+      <button class="btn btn-blue" onclick="exportarXLSX()">⬇ Exportar para Domínio (.xlsx)</button>
+      <button class="btn" onclick="mostrarTela('tela-importar')">Nova importação</button>
+      <button class="btn" onclick="mostrarTela('tela-home')">Início</button>
+    </div>
+  </div>
+
+  <!-- TELA REGRAS -->
+  <div class="tela" id="tela-regras">
+    <div class="section-header">
+      <button class="btn btn-sm" onclick="voltarTela()">← Voltar</button>
+      <h2 id="titulo-regras">Regras de de-para</h2>
+      <button class="btn btn-sm" id="btn-editar-regras" onclick="ativarEdicaoRegras()">✏️ Editar</button>
+      <button class="btn btn-sm btn-primary" id="btn-salvar-regras" style="display:none" onclick="salvarEdicaoRegras()">Salvar alterações</button>
+      <button class="btn btn-sm" id="btn-cancelar-regras" style="display:none" onclick="cancelarEdicaoRegras()">Cancelar</button>
+      <button class="btn btn-sm btn-blue" onclick="mostrarTela('tela-importar')">Importar planilha</button>
+      <button class="btn btn-sm" onclick="mostrarTela('tela-home')">Grupos</button>
+    </div>
+    <input type="search" id="filtro-regras" placeholder="Filtrar fornecedor ou plano..." oninput="renderRegras()" style="margin-bottom:14px">
+    <div id="container-regras"></div>
+  </div>
+
+</div>
+
+<script>
+const STORAGE_GRUPOS = 'zip_depara_grupos';
+const STORAGE_DEPARA = 'zip_depara_regras';
+const API_BASE_DEPARA = '/.netlify/functions/depara-base';
+
+let grupos = JSON.parse(localStorage.getItem(STORAGE_GRUPOS) || '[]');
+let depara = JSON.parse(localStorage.getItem(STORAGE_DEPARA) || '{}');
+let grupoAtivo = null;
+let linhasImportadas = [];
+let novasChavesTemp = [];
+let codigosTemp = {};
+let selecionadasLote = new Set();
+let lancamentosGerados = [];
+let editandoRegras = false;
+let editTemp = {};
+let telaAtual = 'tela-home';
+let pilhaTelas = [];
+let confirmandoComEnter = false;
+let ultimaSyncLocal = 0;
+let salvandoBaseCompartilhada = false;
+
+const COLS = { TIPO:0, NUMERO:1, PARCELA:2, EMPRESA:3, FORNECEDOR:4, EMISSAO:5, VENCIMENTO:6, LIQUIDACAO:7, VALOR_BRUTO:8, COMPETENCIA:9, PLANO:10, CC:11, ACRESCIMO:12, VALOR_LIQ:13, CONTA:14, MEIO_PAG:15, TIPO_DOC:16, APROVADA:17, STATUS:18, HISTORICO:19 };
+
+const TIPOS_SEM_HISTORICO = ['nota de débito','nota de debito','nota fiscal de serviço','nota fiscal de servico','nota fiscal'];
+
+function limparTextoECD(v) {
+  return String(v || '').replace(/[*$&#@|]/g, '').replace(/\s+/g, ' ').trim();
+}
+
+function tipoUsaNumero(tipoDoc) {
+  return TIPOS_SEM_HISTORICO.includes(String(tipoDoc || '').toLowerCase().trim());
+}
+
+function separarNumeroDoHistorico(tipoDoc, numero, historico) {
+  const numeroLimpo = limparTextoECD(numero);
+  const historicoLimpo = limparTextoECD(historico);
+  if (!tipoUsaNumero(tipoDoc)) return { numero: '', historico: historicoLimpo };
+
+  const match = historicoLimpo.match(/^([A-Za-z0-9./-]+)\s*(?:[-–—]\s*)+(.+)$/);
+  if (!match) return { numero: numeroLimpo, historico: historicoLimpo };
+
+  const numeroExtraido = match[1].trim();
+  const historicoSemNumero = match[2].trim();
+  return {
+    numero: numeroLimpo || numeroExtraido,
+    historico: historicoSemNumero
+  };
+}
+
+function montarChave(forn, plano, tipoDoc, historico) {
+  const usaHistorico = !tipoUsaNumero(tipoDoc);
+  return usaHistorico
+    ? forn + ' | ' + plano + ' | ' + tipoDoc + ' | ' + historico
+    : forn + ' | ' + plano + ' | ' + tipoDoc;
+}
+
+function salvarStorage() {
+  localStorage.setItem(STORAGE_GRUPOS, JSON.stringify(grupos));
+  localStorage.setItem(STORAGE_DEPARA, JSON.stringify(depara));
+  salvarBaseCompartilhada();
+}
+
+function atualizarStatusBanco(texto, tipo = 'orange') {
+  const el = document.getElementById('status-banco');
+  if (!el) return;
+  el.className = `alert alert-${tipo}`;
+  el.style.display = '';
+  el.textContent = texto;
+}
+
+async function carregarBaseCompartilhada(mostrarMensagem = false) {
+  if (salvandoBaseCompartilhada) return;
+  try {
+    const resp = await fetch(API_BASE_DEPARA, { cache: 'no-store' });
+    if (!resp.ok) throw new Error('base compartilhada indisponível');
+    const data = await resp.json();
+    const remoteUpdatedAt = data.updatedAt ? new Date(data.updatedAt).getTime() : 0;
+    if (remoteUpdatedAt && remoteUpdatedAt < ultimaSyncLocal) return;
+    grupos = Array.isArray(data.grupos) ? data.grupos : [];
+    depara = data.depara && typeof data.depara === 'object' ? data.depara : {};
+    ultimaSyncLocal = remoteUpdatedAt || Date.now();
+    localStorage.setItem(STORAGE_GRUPOS, JSON.stringify(grupos));
+    localStorage.setItem(STORAGE_DEPARA, JSON.stringify(depara));
+    if (grupoAtivo && !grupos.includes(grupoAtivo)) grupoAtivo = null;
+    renderGrupos();
+    atualizarStatusBanco('Base compartilhada do site conectada. Todos usam os mesmos grupos e regras.', 'ok');
+    if (mostrarMensagem) showMsg('Base sincronizada com o site.', 'ok');
+  } catch (err) {
+    const local = location.hostname === '127.0.0.1' || location.hostname === 'localhost';
+    atualizarStatusBanco(
+      local
+        ? 'Prévia local: a base compartilhada fica ativa no site publicado no Netlify. Aqui é só uma cópia deste navegador.'
+        : 'Base compartilhada indisponível. Verifique se a pasta completa foi publicada no Netlify.',
+      'orange'
+    );
+  }
+}
+
+async function salvarBaseCompartilhada(forcar = false) {
+  try {
+    salvandoBaseCompartilhada = true;
+    ultimaSyncLocal = Date.now();
+    const payload = { grupos, depara };
+    const resp = await fetch(API_BASE_DEPARA, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload)
+    });
+    if (!resp.ok) throw new Error('não foi possível salvar');
+    atualizarStatusBanco('Base compartilhada salva no site.', 'ok');
+    if (forcar) renderGrupos();
+  } catch (err) {
+    atualizarStatusBanco('Não consegui salvar na base compartilhada agora. Mantive uma cópia local neste navegador.', 'warn');
+  } finally {
+    salvandoBaseCompartilhada = false;
+  }
+}
+
+function exportarBaseDePara() {
+  const payload = {
+    versao: 1,
+    exportadoEm: new Date().toISOString(),
+    grupos,
+    depara
+  };
+  const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json;charset=utf-8' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  const data = new Date().toLocaleDateString('pt-BR').replace(/\//g, '-');
+  a.href = url;
+  a.download = `base_depara_${data}.json`;
+  a.click();
+  URL.revokeObjectURL(url);
+}
+
+function importarBaseDePara(event) {
+  const file = event.target.files[0];
+  event.target.value = '';
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = () => {
+    try {
+      const payload = JSON.parse(reader.result);
+      if (!Array.isArray(payload.grupos) || !payload.depara || typeof payload.depara !== 'object') {
+        throw new Error('Arquivo de base inválido.');
+      }
+      const substituir = confirm('Importar esta base substituindo os grupos e regras deste navegador?');
+      if (!substituir) return;
+      grupos = payload.grupos;
+      depara = payload.depara;
+      grupoAtivo = grupos.includes(grupoAtivo) ? grupoAtivo : null;
+      salvarStorage();
+      renderGrupos();
+      showMsg('Base importada com sucesso.', 'ok');
+    } catch (err) {
+      alert('Erro ao importar base: ' + err.message);
+    }
+  };
+  reader.readAsText(file);
+}
+
+function salvarCodigosPreenchidosNoGrupo(coletarDaTela = true) {
+  if (!grupoAtivo) return;
+  if (coletarDaTela) coletarCodigosNovasChaves();
+  const regrasSalvas = Object.assign({}, depara[grupoAtivo] || {});
+  novasChavesTemp.forEach(({ chave }) => {
+    const codigo = (codigosTemp[chave] || '').trim();
+    if (codigo) regrasSalvas[chave] = codigo;
+  });
+  depara[grupoAtivo] = regrasSalvas;
+  salvarStorage();
+}
+
+function mostrarTela(id, registrarHistorico = true) {
+  if (registrarHistorico && telaAtual && telaAtual !== id) pilhaTelas.push(telaAtual);
+  document.querySelectorAll('.tela').forEach(t => t.classList.remove('ativa'));
+  document.getElementById(id).classList.add('ativa');
+  telaAtual = id;
+  if (id === 'tela-home') renderGrupos();
+  if (id === 'tela-regras') renderRegras();
+  if (id === 'tela-importar' && grupoAtivo) {
+    document.getElementById('titulo-importar').textContent = 'Importar planilha — ' + grupoAtivo;
+  }
+}
+
+function voltarTela() {
+  const anterior = pilhaTelas.pop() || 'tela-home';
+  mostrarTela(anterior, false);
+}
+
+function showMsg(texto, tipo = 'ok') {
+  const el = document.getElementById('msg-global');
+  el.innerHTML = `<div class="alert alert-${tipo}" style="margin-bottom:16px">${texto} <button onclick="this.parentElement.remove()" style="background:none;border:none;cursor:pointer;float:right;font-size:16px">×</button></div>`;
+  setTimeout(() => el.innerHTML = '', 4000);
+}
+
+function renderGrupos() {
+  const el = document.getElementById('lista-grupos');
+  if (grupos.length === 0) {
+    el.innerHTML = `<div class="card"><div class="empty"><div class="empty-icon">🏢</div>Nenhum grupo cadastrado. Crie o primeiro para começar.</div></div>`;
+    return;
+  }
+  el.innerHTML = grupos.map(g => {
+    const qtd = Object.keys(depara[g] || {}).length;
+    const isAtivo = g === grupoAtivo;
+    return `<div class="grupo-card ${isAtivo ? 'ativo' : ''}">
+      <div style="flex:1">
+        <div class="grupo-nome">${g} ${isAtivo ? '<span class="badge badge-blue">ativo</span>' : ''}</div>
+        <div class="grupo-info">${qtd} regra${qtd !== 1 ? 's' : ''} de de-para</div>
+      </div>
+      <div style="display:flex;gap:8px;flex-wrap:wrap">
+        ${!isAtivo ? `<button class="btn btn-sm" onclick="selecionarGrupo('${g}')">Selecionar</button>` : ''}
+        ${isAtivo ? `
+          <button class="btn btn-sm" onclick="mostrarTela('tela-regras')">📋 Regras</button>
+          <button class="btn btn-sm btn-blue" onclick="mostrarTela('tela-importar')">⬆ Importar planilha</button>
+        ` : ''}
+        <button class="btn btn-sm btn-danger" onclick="excluirGrupo('${g}')">🗑</button>
+      </div>
+    </div>`;
+  }).join('');
+  const tg = document.getElementById('topbar-grupo');
+  if (grupoAtivo) { tg.textContent = grupoAtivo; tg.style.display = ''; }
+  else tg.style.display = 'none';
+}
+
+function selecionarGrupo(g) {
+  grupoAtivo = g;
+  renderGrupos();
+  showMsg(`Grupo "${g}" selecionado.`, 'ok');
+}
+
+function criarGrupo() {
+  const nome = document.getElementById('input-nome-grupo').value.trim();
+  if (!nome) return;
+  if (grupos.includes(nome)) { showMsg('Já existe um grupo com esse nome.', 'warn'); return; }
+  grupos.push(nome);
+  salvarStorage();
+  document.getElementById('input-nome-grupo').value = '';
+  mostrarTela('tela-home', false);
+  showMsg(`Grupo "${nome}" criado com sucesso.`, 'ok');
+}
+
+function excluirGrupo(g) {
+  if (!confirm(`Excluir o grupo "${g}" e todas as suas regras? Esta ação não pode ser desfeita.`)) return;
+  grupos = grupos.filter(x => x !== g);
+  delete depara[g];
+  if (grupoAtivo === g) grupoAtivo = null;
+  salvarStorage();
+  renderGrupos();
+}
+
+// ---------- ARQUIVO ----------
+function onFileChange(e) {
+  if (e.target.files[0]) processarArquivo(e.target.files[0]);
+  e.target.value = '';
+}
+function dragOver(e) { e.preventDefault(); document.getElementById('drop-area').classList.add('drag'); }
+function dragLeave() { document.getElementById('drop-area').classList.remove('drag'); }
+function onDrop(e) {
+  e.preventDefault();
+  document.getElementById('drop-area').classList.remove('drag');
+  if (e.dataTransfer.files[0]) processarArquivo(e.dataTransfer.files[0]);
+}
+
+function processarArquivo(file) {
+  if (!grupoAtivo) { alert('Selecione um grupo antes de importar.'); return; }
+  const reader = new FileReader();
+  reader.onload = function(e) {
+    try {
+      const data = new Uint8Array(e.target.result);
+      const wb = XLSX.read(data, { type: 'array', cellDates: true });
+      const nomes = wb.SheetNames;
+      const nomePlanilha = nomes.find(n => /parcela|t[íi]tulo/i.test(n)) || nomes[0];
+      const ws = wb.Sheets[nomePlanilha];
+      const raw = XLSX.utils.sheet_to_json(ws, { header: 1, defval: null });
+
+      // Achar início dos dados
+      let inicio = 0;
+      for (let i = 0; i < Math.min(raw.length, 25); i++) {
+        const r = raw[i];
+        if (r && String(r[0]||'').toLowerCase().includes('tipo') && String(r[4]||'').toLowerCase().includes('fornec')) {
+          inicio = i + 1; break;
+        }
+        if (r && String(r[0]||'').toLowerCase() === 'conta a pagar') { inicio = i; break; }
+      }
+
+      const dados = raw.slice(inicio).filter(r => r && r[0] && String(r[0]).trim() !== '');
+      if (dados.length === 0) { alert('Nenhum dado encontrado. Verifique se é a planilha de Parcelas de Títulos.'); return; }
+
+      linhasImportadas = dados;
+
+      const regrasSalvas = depara[grupoAtivo] || {};
+      const novas = [];
+      const vistas = new Set();
+      dados.forEach(r => {
+        const forn = limparTextoECD(r[COLS.FORNECEDOR]);
+        const plano = limparTextoECD(r[COLS.PLANO]);
+        const tipoDoc = limparTextoECD(r[COLS.TIPO_DOC]);
+        const infoDoc = separarNumeroDoHistorico(tipoDoc, r[COLS.NUMERO], r[COLS.HISTORICO]);
+        const historico = infoDoc.historico;
+        const numero = infoDoc.numero;
+        if (!forn && !plano) return;
+        const chave = montarChave(forn, plano, tipoDoc, historico);
+        if (!regrasSalvas[chave] && !vistas.has(chave)) {
+          vistas.add(chave);
+          novas.push({ chave, fornecedor: forn, plano, tipoDoc, historico, numero });
+        }
+      });
+
+      if (novas.length > 0) {
+        novasChavesTemp = novas;
+        codigosTemp = {};
+        selecionadasLote = new Set();
+        novas.forEach(n => codigosTemp[n.chave] = '');
+        document.getElementById('filtro-lote').value = '';
+        document.getElementById('codigo-lote').value = '';
+        renderNovasChaves();
+        mostrarTela('tela-novas-chaves');
+      } else {
+        gerarLancamentos(dados, regrasSalvas);
+      }
+    } catch(err) {
+      alert('Erro ao ler o arquivo: ' + err.message);
+    }
+  };
+  reader.readAsArrayBuffer(file);
+}
+
+function renderNovasChaves() {
+  document.getElementById('tag-qtd-novas').textContent = novasChavesTemp.length + ' nova' + (novasChavesTemp.length !== 1 ? 's' : '');
+  coletarCodigosNovasChaves();
+  const tbody = document.getElementById('tbody-novas-chaves');
+  const filtro = normalizarTexto(document.getElementById('filtro-lote')?.value || '');
+  const somentePendentes = document.getElementById('somente-pendentes')?.checked ?? true;
+  const visiveis = novasChavesTemp.filter(item => {
+    if (somentePendentes && codigosTemp[item.chave]) return false;
+    if (!filtro) return true;
+    return normalizarTexto([item.fornecedor, item.plano, item.tipoDoc, item.historico, item.numero].join(' ')).includes(filtro);
+  });
+  if (visiveis.length === 0) {
+    tbody.innerHTML = `<tr><td colspan="7" style="text-align:center;color:var(--text2);padding:32px">Nenhuma pendência visível com os filtros atuais.</td></tr>`;
+    atualizarStatusLote(visiveis);
+    return;
+  }
+  tbody.innerHTML = visiveis.map(({ chave, fornecedor, plano, tipoDoc, historico, numero }) => {
+    const infoDoc = separarNumeroDoHistorico(tipoDoc, numero, historico);
+    const historicoExibido = infoDoc.historico;
+    const numeroExibido = tipoUsaNumero(tipoDoc) ? infoDoc.numero : '';
+    return `<tr>
+      <td><input type="checkbox" data-chave="${escapeAttr(chave)}" ${selecionadasLote.has(chave) ? 'checked' : ''} onchange="alternarSelecionadaLote(this.dataset.chave, this.checked)"></td>
+      <td title="${escapeAttr(fornecedor)}">${escapeHtml(fornecedor)}</td>
+      <td title="${escapeAttr(plano)}" style="color:var(--text2)">${escapeHtml(plano)}</td>
+      <td title="${escapeAttr(historicoExibido)}" style="color:var(--text2)">${escapeHtml(historicoExibido)}</td>
+      <td title="${escapeAttr(numeroExibido)}" style="color:var(--text2)">${escapeHtml(numeroExibido)}</td>
+      <td title="${escapeAttr(tipoDoc)}" style="color:var(--text2)">${escapeHtml(tipoDoc)}</td>
+      <td><input type="text" placeholder="Ex: 1.1.01.0001" value="${escapeAttr(codigosTemp[chave] || '')}" data-chave="${escapeAttr(chave)}" oninput="atualizarCodigoNovaChave(this)" onkeydown="confirmarCodigoComEnter(event, this)" onblur="ocultarPendenciaPreenchida(this)"></td>
+    </tr>`;
+  }).join('');
+  atualizarStatusLote(visiveis);
+}
+
+function escapeHtml(v) {
+  return String(v ?? '').replace(/[&<>"']/g, c => ({ '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;', "'":'&#39;' }[c]));
+}
+
+function escapeAttr(v) {
+  return escapeHtml(v);
+}
+
+function normalizarTexto(v) {
+  return String(v || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').trim();
+}
+
+function coletarCodigosNovasChaves() {
+  document.querySelectorAll('#tbody-novas-chaves input[type=text][data-chave]').forEach(inp => {
+    codigosTemp[inp.dataset.chave] = inp.value.trim();
+  });
+}
+
+function atualizarCodigoNovaChave(inp) {
+  codigosTemp[inp.dataset.chave] = inp.value.trim();
+  atualizarStatusLote();
+}
+
+function confirmarCodigoComEnter(event, inp) {
+  if (event.key !== 'Enter') return;
+  event.preventDefault();
+  confirmandoComEnter = true;
+  ocultarPendenciaPreenchida(inp, true);
+  setTimeout(() => { confirmandoComEnter = false; }, 0);
+}
+
+function ocultarPendenciaPreenchida(inp, focarProximo = false) {
+  if (!focarProximo && confirmandoComEnter) return;
+  salvarCodigosPreenchidosNoGrupo();
+  if (!document.getElementById('somente-pendentes')?.checked) {
+    if (focarProximo) focarProximoCampoCodigo(inp);
+    atualizarStatusLote();
+    return;
+  }
+  if (!inp?.value.trim()) {
+    if (focarProximo) focarProximoCampoCodigo(inp);
+    atualizarStatusLote();
+    return;
+  }
+  const proximo = encontrarProximoCampoCodigo(inp);
+  inp.closest('tr')?.remove();
+  const visiveis = obterNovasChavesVisiveis();
+  if (visiveis.length === 0) {
+    document.getElementById('tbody-novas-chaves').innerHTML = `<tr><td colspan="7" style="text-align:center;color:var(--text2);padding:32px">Nenhuma pendência visível com os filtros atuais.</td></tr>`;
+  }
+  atualizarStatusLote(visiveis);
+  if (focarProximo && proximo) focarCampoCodigo(proximo);
+}
+
+function encontrarProximoCampoCodigo(inp) {
+  const campos = Array.from(document.querySelectorAll('#tbody-novas-chaves input[type=text][data-chave]'));
+  const idx = campos.indexOf(inp);
+  return campos[idx + 1] || campos[idx - 1] || null;
+}
+
+function focarProximoCampoCodigo(inp) {
+  const proximo = encontrarProximoCampoCodigo(inp);
+  if (proximo) focarCampoCodigo(proximo);
+}
+
+function focarCampoCodigo(campo) {
+  setTimeout(() => {
+    campo.focus();
+    campo.select();
+  }, 0);
+}
+
+function obterNovasChavesVisiveis() {
+  const filtro = normalizarTexto(document.getElementById('filtro-lote')?.value || '');
+  const somentePendentes = document.getElementById('somente-pendentes')?.checked ?? true;
+  return novasChavesTemp.filter(item => {
+    if (somentePendentes && codigosTemp[item.chave]) return false;
+    if (!filtro) return true;
+    return normalizarTexto([item.fornecedor, item.plano, item.tipoDoc, item.historico, item.numero].join(' ')).includes(filtro);
+  });
+}
+
+function atualizarStatusLote(visiveis = obterNovasChavesVisiveis()) {
+  const status = document.getElementById('status-lote');
+  if (!status) return;
+  const selecionadasVisiveis = visiveis.filter(item => selecionadasLote.has(item.chave)).length;
+  const pendentes = novasChavesTemp.filter(item => !codigosTemp[item.chave]).length;
+  const textoVisiveis = visiveis.length === 1 ? '1 visível' : `${visiveis.length} visíveis`;
+  status.textContent = `${pendentes} pendente${pendentes !== 1 ? 's' : ''}. ${textoVisiveis} na busca. ${selecionadasVisiveis} selecionada${selecionadasVisiveis !== 1 ? 's' : ''}.`;
+  const checkTodas = document.getElementById('check-todas-lote');
+  if (checkTodas) {
+    checkTodas.checked = visiveis.length > 0 && selecionadasVisiveis === visiveis.length;
+    checkTodas.indeterminate = selecionadasVisiveis > 0 && selecionadasVisiveis < visiveis.length;
+  }
+}
+
+function filtrarNovasChavesEmLote() {
+  renderNovasChaves();
+}
+
+function alternarSelecionadaLote(chave, checked) {
+  if (checked) selecionadasLote.add(chave);
+  else selecionadasLote.delete(chave);
+  atualizarStatusLote();
+}
+
+function alternarTodasVisiveis(checked) {
+  obterNovasChavesVisiveis().forEach(item => {
+    if (checked) selecionadasLote.add(item.chave);
+    else selecionadasLote.delete(item.chave);
+  });
+  renderNovasChaves();
+}
+
+function selecionarFiltradasEmLote() {
+  obterNovasChavesVisiveis().forEach(item => selecionadasLote.add(item.chave));
+  renderNovasChaves();
+}
+
+function aplicarCodigoEmLote() {
+  coletarCodigosNovasChaves();
+  const codigo = document.getElementById('codigo-lote').value.trim();
+  if (!codigo) { alert('Informe a conta que será aplicada.'); return; }
+  if (selecionadasLote.size === 0) { alert('Selecione pelo menos uma combinação.'); return; }
+  selecionadasLote.forEach(chave => { codigosTemp[chave] = codigo; });
+  salvarCodigosPreenchidosNoGrupo(false);
+  renderNovasChaves();
+}
+
+function salvarNovasChavesEGerar() {
+  // Coletar valores dos inputs
+  document.querySelectorAll('#tbody-novas-chaves input[type=text][data-chave]').forEach(inp => {
+    codigosTemp[inp.dataset.chave] = inp.value.trim();
+  });
+  salvarCodigosPreenchidosNoGrupo();
+  const regrasSalvas = Object.assign({}, depara[grupoAtivo] || {});
+  gerarLancamentos(linhasImportadas, regrasSalvas);
+}
+
+function fmtDate(v) {
+  if (!v) return '';
+  if (v instanceof Date) return v.toLocaleDateString('pt-BR');
+  if (typeof v === 'number') {
+    const d = new Date(Math.round((v - 25569) * 86400 * 1000));
+    return d.toLocaleDateString('pt-BR');
+  }
+  return String(v);
+}
+
+function fmtValor(v) {
+  return Number(v || 0).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+}
+
+function gerarLancamentos(dados, regras) {
+  lancamentosGerados = [];
+  let totalValor = 0;
+  const pendentes = new Set();
+
+  dados.forEach((r, idx) => {
+    const forn = limparTextoECD(r[COLS.FORNECEDOR]);
+    const plano = limparTextoECD(r[COLS.PLANO]);
+    const tipoDoc = limparTextoECD(r[COLS.TIPO_DOC]);
+    const infoDoc = separarNumeroDoHistorico(tipoDoc, r[COLS.NUMERO], r[COLS.HISTORICO]);
+    const historico = infoDoc.historico;
+    const chave = montarChave(forn, plano, tipoDoc, historico);
+    const codDebito = regras[chave] || '';
+    const banco = limparTextoECD(r[COLS.CONTA]);
+    const valorLiq = Number(r[COLS.VALOR_LIQ]) || 0;
+    const dataLiq = fmtDate(r[COLS.LIQUIDACAO]);
+    const num = infoDoc.numero;
+    const empresa = limparTextoECD(r[COLS.EMPRESA]);
+    const complemento = [forn, tipoDoc, num, plano, historico].filter(Boolean).join(' - ');
+
+    totalValor += valorLiq;
+    if (!codDebito) pendentes.add(chave);
+
+    lancamentosGerados.push({ idx, data: dataLiq, codDebito, codCredito: banco, valorLiq, valorFmt: fmtValor(valorLiq), complemento, empresa, plano, semCodigo: !codDebito });
+  });
+
+  // Métricas
+  document.getElementById('met-total').textContent = lancamentosGerados.length;
+  const semCod = lancamentosGerados.filter(l => l.semCodigo).length;
+  const metSem = document.getElementById('met-sem');
+  metSem.textContent = semCod;
+  metSem.className = 'metric-value ' + (semCod > 0 ? 'warn' : 'ok');
+  document.getElementById('met-valor').textContent = 'R$ ' + fmtValor(totalValor);
+
+  // Alerta pendentes
+  const ap = document.getElementById('alert-pendentes');
+  if (pendentes.size > 0) {
+    ap.innerHTML = `<div class="alert alert-warn" style="margin-bottom:12px">⚠️ <strong>${pendentes.size} combinação${pendentes.size > 1 ? 'ões' : ''} sem código:</strong> ${[...pendentes].join(' · ')}</div>`;
+  } else {
+    ap.innerHTML = `<div class="alert alert-ok" style="margin-bottom:12px">✅ Todos os lançamentos com código preenchido.</div>`;
+  }
+
+  // Tabela
+  const tbody = document.getElementById('tbody-resultado');
+  tbody.innerHTML = lancamentosGerados.map((l, i) => `
+    <tr class="${l.semCodigo ? 'sem-codigo' : (i % 2 === 1 ? 'alt' : '')}">
+      <td style="white-space:nowrap">${l.data}</td>
+      <td class="mono" style="${l.semCodigo ? 'color:#c2410c;font-style:italic' : ''}">${l.codDebito || 'sem código'}</td>
+      <td style="color:var(--text2)">${l.codCredito}</td>
+      <td style="text-align:right;white-space:nowrap">${l.valorFmt}</td>
+      <td style="color:var(--text2);white-space:nowrap">${l.empresa}</td>
+      <td style="color:var(--text2);max-width:220px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${l.complemento}</td>
+    </tr>
+  `).join('');
+
+  mostrarTela('tela-resultado');
+}
+
+function exportarXLSX() {
+  const cabecalho = ['Data','Cód. Conta Débito','Cód. Conta Crédito','Valor','Cód. Histórico','Complemento Histórico','Inicia Lote','Código Matriz/Filial','Plano de Contas Financeiro','Centro de Custo Débito','Centro de Custo Crédito'];
+  const linhas = lancamentosGerados.map((l, i) => [
+    l.data, l.codDebito, limparTextoECD(l.codCredito), l.valorLiq, '', limparTextoECD(l.complemento),
+    i === 0 ? 1 : '', limparTextoECD(l.empresa), limparTextoECD(l.plano), '', ''
+  ]);
+  const ws = XLSX.utils.aoa_to_sheet([cabecalho, ...linhas]);
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, 'Lançamentos Domínio');
+  const data = new Date().toLocaleDateString('pt-BR').replace(/\//g,'-');
+  XLSX.writeFile(wb, `Lancamentos_${grupoAtivo}_${data}.xlsx`);
+}
+
+// ---------- REGRAS ----------
+function renderRegras() {
+  if (!grupoAtivo) return;
+  document.getElementById('titulo-regras').textContent = 'Regras de de-para — ' + grupoAtivo;
+  const regrasSalvas = depara[grupoAtivo] || {};
+  const filtro = (document.getElementById('filtro-regras').value || '').toLowerCase();
+  let chaves = Object.keys(regrasSalvas);
+  if (filtro) chaves = chaves.filter(c => c.toLowerCase().includes(filtro));
+
+  const container = document.getElementById('container-regras');
+  if (chaves.length === 0) {
+    container.innerHTML = `<div class="card"><div class="empty"><div class="empty-icon">📭</div>${filtro ? 'Nenhuma regra encontrada para "' + filtro + '".' : 'Nenhuma regra cadastrada ainda. Importe uma planilha para começar.'}</div></div>`;
+    return;
+  }
+
+  const dados = editandoRegras ? editTemp : regrasSalvas;
+  container.innerHTML = `<div class="table-wrap"><table>
+    <thead><tr>
+      <th style="width:26%">Fornecedor</th>
+      <th style="width:22%">Plano de contas</th>
+      <th style="width:16%">Tipo de documento</th>
+      <th style="width:16%">Histórico</th>
+      <th style="width:130px">Código Domínio</th>
+      ${editandoRegras ? '<th style="width:44px"></th>' : ''}
+    </tr></thead>
+    <tbody>${chaves.map((chave, i) => {
+      const partes = chave.split(' | ');
+      const forn = partes[0] || '';
+      const plano = partes[1] || '';
+      const tipoDoc = partes[2] || '';
+      const hist = partes[3] || '';
+      const cod = dados[chave] || '';
+      return `<tr>
+        <td style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:180px">${forn}</td>
+        <td style="color:var(--text2);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:160px">${plano}</td>
+        <td style="color:var(--text2);white-space:nowrap">${tipoDoc}</td>
+        <td style="color:var(--text2);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:120px">${hist || '<span style="color:var(--text3)">—</span>'}</td>
+        <td>${editandoRegras
+          ? `<input type="text" value="${cod}" data-chave="${chave.replace(/"/g,'&quot;')}" oninput="editTemp[this.dataset.chave]=this.value" style="width:100%;font-size:12px">`
+          : `<span class="mono" style="${!cod ? 'color:var(--text3);font-style:italic' : ''}">${cod || '—'}</span>`
+        }</td>
+        ${editandoRegras ? `<td style="text-align:center"><button class="btn btn-sm btn-danger" onclick="excluirRegra('${chave.replace(/'/g,"\\'")}')">🗑</button></td>` : ''}
+      </tr>`;
+    }).join('')}</tbody>
+  </table></div>`;
+}
+
+function ativarEdicaoRegras() {
+  editandoRegras = true;
+  editTemp = Object.assign({}, depara[grupoAtivo] || {});
+  document.getElementById('btn-editar-regras').style.display = 'none';
+  document.getElementById('btn-salvar-regras').style.display = '';
+  document.getElementById('btn-cancelar-regras').style.display = '';
+  renderRegras();
+}
+
+function salvarEdicaoRegras() {
+  // Coletar inputs
+  document.querySelectorAll('#container-regras input[data-chave]').forEach(inp => {
+    editTemp[inp.dataset.chave] = inp.value.trim();
+  });
+  depara[grupoAtivo] = Object.assign({}, editTemp);
+  salvarStorage();
+  editandoRegras = false;
+  document.getElementById('btn-editar-regras').style.display = '';
+  document.getElementById('btn-salvar-regras').style.display = 'none';
+  document.getElementById('btn-cancelar-regras').style.display = 'none';
+  renderRegras();
+  document.getElementById('container-regras').insertAdjacentHTML('afterbegin', '<div class="alert alert-ok">Alterações salvas na base deste grupo.</div>');
+}
+
+function cancelarEdicaoRegras() {
+  editandoRegras = false;
+  editTemp = {};
+  document.getElementById('btn-editar-regras').style.display = '';
+  document.getElementById('btn-salvar-regras').style.display = 'none';
+  document.getElementById('btn-cancelar-regras').style.display = 'none';
+  renderRegras();
+}
+
+function excluirRegra(chave) {
+  delete editTemp[chave];
+  renderRegras();
+}
+
+function iniciarSincronizacaoAutomatica() {
+  carregarBaseCompartilhada();
+  setInterval(() => carregarBaseCompartilhada(), 30000);
+  document.addEventListener('visibilitychange', () => {
+    if (!document.hidden) carregarBaseCompartilhada();
+  });
+  window.addEventListener('focus', () => carregarBaseCompartilhada());
+}
+
+// Iniciar
+renderGrupos();
+iniciarSincronizacaoAutomatica();
+</script>
+</body>
+</html>
