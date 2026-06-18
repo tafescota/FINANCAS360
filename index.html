@@ -701,6 +701,11 @@ function criarAutocompleteConta(input) {
       input.value = item.dataset.codigo;
       input.dispatchEvent(new Event('input', { bubbles: true }));
       fecharAutocomplete();
+      if (input.dataset.chave) {
+        confirmandoComEnter = true;
+        ocultarPendenciaPreenchida(input, true);
+        setTimeout(() => { confirmandoComEnter = false; }, 0);
+      }
     });
     item.addEventListener('mouseenter', () => { item.style.background = 'var(--bg2)'; });
     item.addEventListener('mouseleave', () => { item.style.background = ''; });
@@ -810,7 +815,7 @@ function renderNovasChaves() {
       <td title="${escapeAttr(historicoExibido)}" style="color:var(--text2)">${escapeHtml(historicoExibido)}</td>
       <td title="${escapeAttr(numeroExibido)}" style="color:var(--text2)">${escapeHtml(numeroExibido)}</td>
       <td title="${escapeAttr(tipoDoc)}" style="color:var(--text2)">${escapeHtml(tipoDoc)}</td>
-      <td><input type="text" class="conta-autocomplete" placeholder="Digite o código ou nome da conta" value="${escapeAttr(codigosTemp[chave] || '')}" data-chave="${escapeAttr(chave)}" oninput="atualizarCodigoNovaChave(this); criarAutocompleteConta(this)" onkeydown="confirmarCodigoComEnter(event, this)" onblur="ocultarPendenciaPreenchida(this)"></td>
+      <td><input type="text" class="conta-autocomplete" placeholder="Digite o código ou nome da conta" value="${escapeAttr(codigosTemp[chave] || '')}" data-chave="${escapeAttr(chave)}" oninput="atualizarCodigoNovaChave(this); criarAutocompleteConta(this)" onkeydown="confirmarCodigoComEnter(event, this)"></td>
     </tr>`;
   }).join('');
   atualizarStatusLote(visiveis);
@@ -840,15 +845,15 @@ function atualizarCodigoNovaChave(inp) {
 }
 
 function confirmarCodigoComEnter(event, inp) {
-  if (event.key !== 'Enter') return;
-  event.preventDefault();
+  if (event.key !== 'Enter' && event.key !== 'Tab') return;
+  if (event.key === 'Enter') event.preventDefault();
   confirmandoComEnter = true;
   ocultarPendenciaPreenchida(inp, true);
   setTimeout(() => { confirmandoComEnter = false; }, 0);
 }
 
 function ocultarPendenciaPreenchida(inp, focarProximo = false) {
-  if (!focarProximo && confirmandoComEnter) return;
+  if (!focarProximo) return; // só confirma com Enter, Tab ou seleção no autocomplete — nunca por clicar fora
   salvarCodigosPreenchidosNoGrupo();
   if (!document.getElementById('somente-pendentes')?.checked) {
     if (focarProximo) focarProximoCampoCodigo(inp);
