@@ -610,18 +610,20 @@ function processarPlanoContas(file) {
       const contas = [];
       raw.forEach(row => {
         if (!row) return;
-        const classificacao = row[7]; // coluna "Classificação" (H, índice 7)
+        const classificacao = row[7]; // coluna "Classificação" (H, índice 7) — código hierárquico, só para referência/busca
         if (!classificacao || typeof classificacao !== 'string') return;
         if (classificacao.trim().toLowerCase() === 'classificação') return; // ignora linha de cabeçalho
         const tipo = row[3]; // coluna "T" — 'S' = sintética (grupo), vazio = analítica
         if (String(tipo || '').trim().toUpperCase() === 'S') return; // ignora sintéticas
+        const codigoReal = row[0]; // coluna "Código" (A, índice 0) — é esse código que vai para o Domínio
+        if (codigoReal === null || codigoReal === undefined || String(codigoReal).trim() === '') return;
         // Nome real: primeira coluna não vazia entre os índices 10 e 17 (colunas de indentação do nome)
         let nome = null;
         for (let idx = 10; idx <= 17; idx++) {
           if (row[idx]) { nome = row[idx]; break; }
         }
         if (!nome) return;
-        contas.push({ codigo: String(classificacao).trim(), nome: String(nome).trim() });
+        contas.push({ codigo: String(codigoReal).trim(), classificacao: String(classificacao).trim(), nome: String(nome).trim() });
       });
 
       if (contas.length === 0) {
@@ -657,12 +659,13 @@ function renderResumoPlanoContas() {
   el.innerHTML = `
     <div class="card">
       <h3>${contas.length} contas analíticas carregadas</h3>
-      <input type="search" placeholder="Buscar conta..." oninput="filtrarResumoPlanoContas(this.value)" style="margin-bottom:12px">
+      <p style="font-size:12px;color:var(--text2);margin-bottom:12px">O <strong>Código</strong> é o valor enviado para o Domínio. A <strong>Classificação</strong> é só para referência e busca.</p>
+      <input type="search" placeholder="Buscar por código, classificação ou nome..." oninput="filtrarResumoPlanoContas(this.value)" style="margin-bottom:12px">
       <div class="table-wrap" style="max-height:400px;overflow-y:auto">
         <table id="tabela-resumo-plano">
-          <thead><tr><th style="width:160px">Código</th><th>Nome</th></tr></thead>
+          <thead><tr><th style="width:90px">Código</th><th style="width:160px">Classificação</th><th>Nome</th></tr></thead>
           <tbody id="tbody-resumo-plano">
-            ${contas.map(c => `<tr><td class="mono">${escapeHtml(c.codigo)}</td><td>${escapeHtml(c.nome)}</td></tr>`).join('')}
+            ${contas.map(c => `<tr><td class="mono">${escapeHtml(c.codigo)}</td><td class="mono" style="color:var(--text2)">${escapeHtml(c.classificacao || '')}</td><td>${escapeHtml(c.nome)}</td></tr>`).join('')}
           </tbody>
         </table>
       </div>
@@ -672,8 +675,8 @@ function renderResumoPlanoContas() {
 function filtrarResumoPlanoContas(termo) {
   const contas = planoContas[grupoAtivo] || [];
   const filtro = normalizarTexto(termo || '');
-  const filtradas = filtro ? contas.filter(c => normalizarTexto(c.codigo + ' ' + c.nome).includes(filtro)) : contas;
-  document.getElementById('tbody-resumo-plano').innerHTML = filtradas.map(c => `<tr><td class="mono">${escapeHtml(c.codigo)}</td><td>${escapeHtml(c.nome)}</td></tr>`).join('');
+  const filtradas = filtro ? contas.filter(c => normalizarTexto(c.codigo + ' ' + c.nome + ' ' + (c.classificacao || '')).includes(filtro)) : contas;
+  document.getElementById('tbody-resumo-plano').innerHTML = filtradas.map(c => `<tr><td class="mono">${escapeHtml(c.codigo)}</td><td class="mono" style="color:var(--text2)">${escapeHtml(c.classificacao || '')}</td><td>${escapeHtml(c.nome)}</td></tr>`).join('');
 }
 
 // ---------- AUTOCOMPLETE DE CONTAS ----------
@@ -685,17 +688,17 @@ function criarAutocompleteConta(input) {
   const termo = normalizarTexto(input.value || '');
   if (!termo) return;
   const contas = planoContas[grupoAtivo];
-  const resultados = contas.filter(c => normalizarTexto(c.codigo + ' ' + c.nome).includes(termo)).slice(0, 8);
+  const resultados = contas.filter(c => normalizarTexto(c.codigo + ' ' + c.nome + ' ' + (c.classificacao || '')).includes(termo)).slice(0, 8);
   if (resultados.length === 0) return;
 
   const rect = input.getBoundingClientRect();
   const lista = document.createElement('div');
   lista.className = 'autocomplete-lista';
-  lista.style.cssText = `position:fixed;top:${rect.bottom + 2}px;left:${rect.left}px;width:${Math.max(rect.width, 260)}px;z-index:10000;background:var(--bg);border:1px solid var(--border2);border-radius:6px;box-shadow:0 4px 16px rgba(0,0,0,0.15);max-height:220px;overflow-y:auto`;
+  lista.style.cssText = `position:fixed;top:${rect.bottom + 2}px;left:${rect.left}px;width:${Math.max(rect.width, 280)}px;z-index:10000;background:var(--bg);border:1px solid var(--border2);border-radius:6px;box-shadow:0 4px 16px rgba(0,0,0,0.15);max-height:220px;overflow-y:auto`;
   lista.innerHTML = resultados.map(c => `
     <div class="autocomplete-item" data-codigo="${escapeAttr(c.codigo)}" style="padding:8px 12px;cursor:pointer;font-size:12.5px;border-bottom:1px solid var(--border)">
       <div style="font-weight:600">${escapeHtml(c.nome)}</div>
-      <div class="mono" style="color:var(--text2);font-size:11px">${escapeHtml(c.codigo)}</div>
+      <div class="mono" style="color:var(--text2);font-size:11px">Código: ${escapeHtml(c.codigo)}${c.classificacao ? ' · ' + escapeHtml(c.classificacao) : ''}</div>
     </div>`).join('');
   document.body.appendChild(lista);
   lista.querySelectorAll('.autocomplete-item').forEach(item => {
