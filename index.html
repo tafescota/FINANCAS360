@@ -85,7 +85,12 @@
   .table-novas td:first-child, .table-novas th:first-child { text-align: center; padding-left: 10px; padding-right: 10px; }
   .table-novas input[type=text] { height: 34px; min-width: 0; font-size: 12px; padding-left: 8px; padding-right: 8px; }
   .table-novas td .btn { height: 34px; padding: 0 10px; flex-shrink: 0; }
-  .historico-regra-input { margin-top: 6px; height: 30px !important; font-size: 11.5px !important; }
+  .historico-texto { color: var(--text2); margin-bottom: 5px; }
+  .historico-opcoes { display: flex; flex-wrap: wrap; gap: 4px; margin: 5px 0 6px; }
+  .historico-chip { border: 1px solid var(--border2); background: var(--bg); color: var(--text); border-radius: 999px; padding: 3px 8px; font-size: 10.5px; line-height: 1.2; cursor: pointer; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .historico-chip:hover { border-color: var(--blue); background: var(--blue-bg); color: var(--blue-text); }
+  .historico-chip.ativo { border-color: var(--blue); background: var(--blue-bg); color: var(--blue-text); font-weight: 600; }
+  .historico-regra-input { margin-top: 4px; height: 30px !important; font-size: 11.5px !important; }
   .historico-regra-label { margin-top: 5px; color: var(--text3); font-size: 10.5px; }
   .table-hint { color: var(--text2); font-size: 12px; margin: -6px 0 8px; }
   .bulk-tool { background: var(--bg); border: 1px solid var(--border); border-radius: var(--radius); padding: 14px; margin-bottom: 16px; box-shadow: var(--shadow); }
@@ -873,14 +878,15 @@ function renderNovasChaves() {
     const infoDoc = separarNumeroDoHistorico(tipoDoc, numero, historico);
     const historicoExibido = infoDoc.historico;
     const numeroExibido = tipoUsaNumero(tipoDoc) ? infoDoc.numero : '';
+    const opcoesHistorico = renderOpcoesTrechoHistorico(chave, historicoExibido, trechoHistorico || historicoExibido);
     return `<tr>
       <td><input type="checkbox" data-chave="${escapeAttr(chave)}" ${selecionadasLote.has(chave) ? 'checked' : ''} onchange="alternarSelecionadaLote(this.dataset.chave, this.checked)"></td>
       <td title="${escapeAttr(empresa||'')}" style="color:var(--text2)">${escapeHtml(empresa||'')}</td>
       <td title="${escapeAttr(fornecedor)}">${escapeHtml(fornecedor)}</td>
       <td title="${escapeAttr(plano)}" style="color:var(--text2)">${escapeHtml(plano)}</td>
       <td title="${escapeAttr(historicoExibido)}" style="color:var(--text2)">
-        <div>${escapeHtml(historicoExibido)}</div>
-        ${historicoExibido ? `<div class="historico-regra-label">Regra se contiver:</div><input type="text" class="historico-regra-input" value="${escapeAttr(trechoHistorico || historicoExibido)}" data-chave="${escapeAttr(chave)}" oninput="atualizarTrechoHistoricoRegra(this)" placeholder="Trecho do histÃ³rico">` : ''}
+        <div class="historico-texto">${escapeHtml(historicoExibido)}</div>
+        ${historicoExibido ? `<div class="historico-regra-label">Clique no trecho da regra:</div>${opcoesHistorico}<input type="text" class="historico-regra-input" value="${escapeAttr(trechoHistorico || historicoExibido)}" data-chave="${escapeAttr(chave)}" oninput="atualizarTrechoHistoricoRegra(this)" placeholder="Trecho do histórico">` : ''}
       </td>
       <td title="${escapeAttr(numeroExibido)}" style="color:var(--text2)">${escapeHtml(numeroExibido)}</td>
       <td title="${escapeAttr(tipoDoc)}" style="color:var(--text2)">${escapeHtml(tipoDoc)}</td>
@@ -925,9 +931,46 @@ function textoBuscaNovaChave(item) {
   ].join(' '));
 }
 
+function obterSugestoesTrechoHistorico(historico) {
+  const texto = limparTextoECD(historico);
+  if (!texto) return [];
+  const sugestoes = [texto];
+  texto.split(/\s+(?:[-–—]|\/)\s+|[()]/).forEach(parte => {
+    const trecho = limparTextoECD(parte);
+    if (trecho.length >= 3) sugestoes.push(trecho);
+  });
+  const palavras = texto.split(/\s+/).filter(Boolean);
+  if (palavras.length > 4) sugestoes.push(palavras.slice(0, 4).join(' '));
+  if (palavras.length > 3) sugestoes.push(palavras.slice(0, 3).join(' '));
+  return [...new Set(sugestoes)].slice(0, 5);
+}
+
+function renderOpcoesTrechoHistorico(chave, historico, selecionado) {
+  const opcoes = obterSugestoesTrechoHistorico(historico);
+  if (opcoes.length === 0) return '';
+  return `<div class="historico-opcoes">${opcoes.map(opcao => {
+    const ativo = normalizarTexto(opcao) === normalizarTexto(selecionado);
+    return `<button type="button" class="historico-chip ${ativo ? 'ativo' : ''}" data-chave="${escapeAttr(chave)}" data-trecho="${escapeAttr(opcao)}" onclick="selecionarTrechoHistoricoRegra(this)" title="${escapeAttr(opcao)}">${escapeHtml(opcao)}</button>`;
+  }).join('')}</div>`;
+}
+
+function selecionarTrechoHistoricoRegra(btn) {
+  const chave = btn.dataset.chave;
+  const trecho = btn.dataset.trecho || '';
+  const input = Array.from(document.querySelectorAll('.historico-regra-input')).find(inp => inp.dataset.chave === chave);
+  if (input) input.value = trecho;
+  const item = novasChavesTemp.find(n => n.chave === chave);
+  if (item) item.trechoHistorico = limparTextoECD(trecho);
+  btn.closest('.historico-opcoes')?.querySelectorAll('.historico-chip').forEach(chip => chip.classList.remove('ativo'));
+  btn.classList.add('ativo');
+}
+
 function atualizarTrechoHistoricoRegra(inp) {
   const item = novasChavesTemp.find(n => n.chave === inp.dataset.chave);
   if (item) item.trechoHistorico = limparTextoECD(inp.value);
+  inp.closest('td')?.querySelectorAll('.historico-chip').forEach(chip => {
+    chip.classList.toggle('ativo', normalizarTexto(chip.dataset.trecho) === normalizarTexto(inp.value));
+  });
 }
 
 function coletarCodigosNovasChaves() {
