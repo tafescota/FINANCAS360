@@ -360,19 +360,22 @@ function montarChave(forn, plano, tipoDoc, historico) {
     : forn + ' | ' + plano + ' | ' + tipoDoc;
 }
 
-function montarChaveHistoricoContem(forn, plano, trecho) {
-  return forn + ' | ' + plano + ' | HISTORICO_CONTEM | ' + limparTextoECD(trecho);
+function montarChaveHistoricoContem(forn, plano, tipoDoc, trecho) {
+  return forn + ' | ' + plano + ' | ' + tipoDoc + ' | HISTORICO_CONTEM | ' + limparTextoECD(trecho);
 }
 
 function encontrarCodigoRegra(regras, forn, plano, tipoDoc, historico) {
   const chaveExata = montarChave(forn, plano, tipoDoc, historico);
   if (regras[chaveExata]) return regras[chaveExata];
 
-  const prefixo = forn + ' | ' + plano + ' | HISTORICO_CONTEM | ';
+  const prefixo = forn + ' | ' + plano + ' | ' + tipoDoc + ' | HISTORICO_CONTEM | ';
+  const prefixoLegado = forn + ' | ' + plano + ' | HISTORICO_CONTEM | ';
   const historicoNormalizado = normalizarTexto(historico);
   const achada = Object.keys(regras).find(chave => {
-    if (!chave.startsWith(prefixo)) return false;
-    const trecho = chave.slice(prefixo.length);
+    const usaPrefixoNovo = chave.startsWith(prefixo);
+    const usaPrefixoLegado = chave.startsWith(prefixoLegado);
+    if (!usaPrefixoNovo && !usaPrefixoLegado) return false;
+    const trecho = chave.slice(usaPrefixoNovo ? prefixo.length : prefixoLegado.length);
     const termos = normalizarTexto(trecho).split(/\s+/).filter(Boolean);
     return termos.length > 0 && termos.every(termo => historicoNormalizado.includes(termo));
   });
@@ -382,7 +385,7 @@ function encontrarCodigoRegra(regras, forn, plano, tipoDoc, historico) {
 function obterChaveRegraNova(item) {
   const trecho = limparTextoECD(item.trechoHistorico || '');
   if (item.historico && trecho && normalizarTexto(trecho) !== normalizarTexto(item.historico)) {
-    return montarChaveHistoricoContem(item.fornecedor, item.plano, trecho);
+    return montarChaveHistoricoContem(item.fornecedor, item.plano, item.tipoDoc, trecho);
   }
   return item.chave;
 }
@@ -840,6 +843,15 @@ function processarArquivo(file) {
           vistas.add(chave);
           novas.push({ chave, fornecedor: forn, plano, tipoDoc, historico, trechoHistorico: '', trechoHistoricoIndices: [], numero, empresa: limparTextoECD(r[COLS.EMPRESA]) });
         }
+        const acrescimoDesconto = arredondarMoeda(r[COLS.ACRESCIMO]);
+        if (acrescimoDesconto !== 0) {
+          const tipoAjuste = acrescimoDesconto < 0 ? 'DESCONTO' : 'ACRÉSCIMO';
+          const chaveAjuste = montarChave(forn, plano, tipoAjuste, historico);
+          if (!encontrarCodigoRegra(regrasSalvas, forn, plano, tipoAjuste, historico) && !vistas.has(chaveAjuste)) {
+            vistas.add(chaveAjuste);
+            novas.push({ chave: chaveAjuste, fornecedor: forn, plano, tipoDoc: tipoAjuste, historico, trechoHistorico: '', trechoHistoricoIndices: [], numero, empresa: limparTextoECD(r[COLS.EMPRESA]) });
+          }
+        }
       });
 
       if (novas.length > 0) {
@@ -1184,10 +1196,13 @@ function gerarLancamentos(dados, regras) {
       const tipoAjuste = acrescimoDesconto < 0 ? 'DESCONTO' : 'ACRÉSCIMO';
       const valorAjuste = Math.abs(acrescimoDesconto);
       const complementoAjuste = `${tipoAjuste} - ${complemento}`;
+      const chaveAjuste = montarChave(forn, plano, tipoAjuste, historico);
+      const codDebitoAjuste = obterCodigoContaParaDominio(encontrarCodigoRegra(regras, forn, plano, tipoAjuste, historico));
+      if (!codDebitoAjuste) pendentes.add(chaveAjuste);
       lancamentosGerados.push({
         idx,
         data: dataLiq,
-        codDebito,
+        codDebito: codDebitoAjuste,
         codCredito: banco,
         valorLiq: valorAjuste,
         valorFmt: fmtValor(valorAjuste),
@@ -1196,7 +1211,7 @@ function gerarLancamentos(dados, regras) {
         plano,
         acrescimoDesconto,
         tipoAjuste,
-        semCodigo: !codDebito
+        semCodigo: !codDebitoAjuste
       });
     }
   });
