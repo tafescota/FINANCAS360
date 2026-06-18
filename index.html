@@ -456,7 +456,7 @@ function salvarCodigosPreenchidosNoGrupo(coletarDaTela = true) {
   if (coletarDaTela) coletarCodigosNovasChaves();
   const regrasSalvas = Object.assign({}, depara[grupoAtivo] || {});
   novasChavesTemp.forEach(({ chave }) => {
-    const codigo = (codigosTemp[chave] || '').trim();
+    const codigo = obterCodigoContaParaDominio(codigosTemp[chave] || '');
     if (codigo) regrasSalvas[chave] = codigo;
   });
   depara[grupoAtivo] = regrasSalvas;
@@ -682,13 +682,34 @@ function filtrarResumoPlanoContas(termo) {
 // ---------- AUTOCOMPLETE DE CONTAS ----------
 let autocompleteAtivo = null;
 
+function textoBuscaConta(conta) {
+  return normalizarTexto([conta.codigo, conta.classificacao, conta.nome].filter(Boolean).join(' '));
+}
+
+function encontrarContaPorValor(valor) {
+  const termo = normalizarTexto(valor || '');
+  if (!termo || !grupoAtivo) return null;
+  const contas = planoContas[grupoAtivo] || [];
+  return contas.find(c => normalizarTexto(c.codigo) === termo)
+    || contas.find(c => normalizarTexto(c.classificacao || '') === termo)
+    || contas.find(c => normalizarTexto(c.nome || '') === termo)
+    || null;
+}
+
+function obterCodigoContaParaDominio(valor) {
+  const texto = String(valor || '').trim();
+  if (!texto) return '';
+  const conta = encontrarContaPorValor(texto);
+  return conta ? String(conta.codigo || '').trim() : texto;
+}
+
 function criarAutocompleteConta(input) {
   if (!grupoAtivo || !planoContas[grupoAtivo] || planoContas[grupoAtivo].length === 0) return;
   fecharAutocomplete();
   const termo = normalizarTexto(input.value || '');
   if (!termo) return;
   const contas = planoContas[grupoAtivo];
-  const resultados = contas.filter(c => normalizarTexto(c.codigo + ' ' + c.nome + ' ' + (c.classificacao || '')).includes(termo)).slice(0, 8);
+  const resultados = contas.filter(c => textoBuscaConta(c).includes(termo)).slice(0, 8);
   if (resultados.length === 0) return;
 
   const rect = input.getBoundingClientRect();
@@ -797,7 +818,7 @@ function renderNovasChaves() {
   const visiveis = novasChavesTemp.filter(item => {
     if (somentePendentes && codigosTemp[item.chave]) return false;
     if (!filtro) return true;
-    return normalizarTexto([item.empresa, item.fornecedor, item.plano, item.tipoDoc, item.historico, item.numero].join(' ')).includes(filtro);
+    return textoBuscaNovaChave(item).includes(filtro);
   });
   if (visiveis.length === 0) {
     tbody.innerHTML = `<tr><td colspan="7" style="text-align:center;color:var(--text2);padding:32px">Nenhuma pendência visível com os filtros atuais.</td></tr>`;
@@ -836,9 +857,23 @@ function normalizarTexto(v) {
   return String(v || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').trim();
 }
 
+function textoBuscaNovaChave(item) {
+  return normalizarTexto([
+    item.chave,
+    item.empresa,
+    item.fornecedor,
+    item.plano,
+    item.tipoDoc,
+    item.historico,
+    item.numero,
+    codigosTemp[item.chave]
+  ].join(' '));
+}
+
 function coletarCodigosNovasChaves() {
   document.querySelectorAll('#tbody-novas-chaves input[type=text][data-chave]').forEach(inp => {
-    codigosTemp[inp.dataset.chave] = inp.value.trim();
+    codigosTemp[inp.dataset.chave] = obterCodigoContaParaDominio(inp.value);
+    inp.value = codigosTemp[inp.dataset.chave];
   });
 }
 
@@ -851,7 +886,8 @@ function salvarTudoPreenchido() {
   const campos = Array.from(document.querySelectorAll('#tbody-novas-chaves input[type=text][data-chave]'));
   let qtd = 0;
   campos.forEach(inp => {
-    const valor = inp.value.trim();
+    const valor = obterCodigoContaParaDominio(inp.value);
+    inp.value = valor;
     codigosTemp[inp.dataset.chave] = valor;
     if (valor) qtd++;
   });
@@ -911,7 +947,7 @@ function obterNovasChavesVisiveis() {
   return novasChavesTemp.filter(item => {
     if (somentePendentes && codigosTemp[item.chave]) return false;
     if (!filtro) return true;
-    return normalizarTexto([item.empresa, item.fornecedor, item.plano, item.tipoDoc, item.historico, item.numero].join(' ')).includes(filtro);
+    return textoBuscaNovaChave(item).includes(filtro);
   });
 }
 
@@ -955,9 +991,11 @@ function selecionarFiltradasEmLote() {
 
 function aplicarCodigoEmLote() {
   coletarCodigosNovasChaves();
-  const codigo = document.getElementById('codigo-lote').value.trim();
+  const inputLote = document.getElementById('codigo-lote');
+  const codigo = obterCodigoContaParaDominio(inputLote.value);
   if (!codigo) { alert('Informe a conta que será aplicada.'); return; }
   if (selecionadasLote.size === 0) { alert('Selecione pelo menos uma combinação.'); return; }
+  inputLote.value = codigo;
   // Aplica no codigosTemp para todas selecionadas
   selecionadasLote.forEach(chave => { codigosTemp[chave] = codigo; });
   // Salva imediatamente no depara do grupo ativo
@@ -972,7 +1010,8 @@ function aplicarCodigoEmLote() {
 function salvarNovasChavesEGerar() {
   // Coletar valores dos inputs
   document.querySelectorAll('#tbody-novas-chaves input[type=text][data-chave]').forEach(inp => {
-    codigosTemp[inp.dataset.chave] = inp.value.trim();
+    codigosTemp[inp.dataset.chave] = obterCodigoContaParaDominio(inp.value);
+    inp.value = codigosTemp[inp.dataset.chave];
   });
   salvarCodigosPreenchidosNoGrupo();
   const regrasSalvas = Object.assign({}, depara[grupoAtivo] || {});
@@ -1005,7 +1044,7 @@ function gerarLancamentos(dados, regras) {
     const infoDoc = separarNumeroDoHistorico(tipoDoc, r[COLS.NUMERO], r[COLS.HISTORICO]);
     const historico = infoDoc.historico;
     const chave = montarChave(forn, plano, tipoDoc, historico);
-    const codDebito = regras[chave] || '';
+    const codDebito = obterCodigoContaParaDominio(regras[chave] || '');
     const banco = limparTextoECD(r[COLS.CONTA]);
     const valorLiq = Number(r[COLS.VALOR_LIQ]) || 0;
     const dataLiq = fmtDate(r[COLS.LIQUIDACAO]);
@@ -1134,7 +1173,8 @@ function ativarEdicaoRegras() {
 function salvarEdicaoRegras() {
   // Coletar inputs
   document.querySelectorAll('#container-regras input[data-chave]').forEach(inp => {
-    editTemp[inp.dataset.chave] = inp.value.trim();
+    editTemp[inp.dataset.chave] = obterCodigoContaParaDominio(inp.value);
+    inp.value = editTemp[inp.dataset.chave];
   });
   depara[grupoAtivo] = Object.assign({}, editTemp);
   salvarStorage();
