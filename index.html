@@ -265,7 +265,7 @@
     <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:12px;margin-bottom:16px">
       <div class="metric"><div class="metric-label">Total de lançamentos</div><div class="metric-value" id="met-total">0</div><div class="metric-sub"><div id="met-linhas-originais">0 linhas originais</div><div id="met-linhas-extras">0 linhas extras</div></div></div>
       <div class="metric"><div class="metric-label">Sem código</div><div class="metric-value" id="met-sem" class="">0</div></div>
-      <div class="metric"><div class="metric-label">Valor total</div><div class="metric-value" style="font-size:16px" id="met-valor">R$ 0,00</div></div>
+      <div class="metric"><div class="metric-label">Totais para validação</div><div class="metric-value" style="font-size:16px" id="met-valor">R$ 0,00</div><div class="metric-sub"><div id="met-total-bruto">Bruto: R$ 0,00</div><div id="met-total-liquido">Líquido: R$ 0,00</div><div id="met-total-desconto">Descontos: R$ 0,00</div><div id="met-total-acrescimo">Acréscimos: R$ 0,00</div></div></div>
     </div>
     <div id="alert-pendentes"></div>
     <div id="alert-ajustes"></div>
@@ -332,6 +332,16 @@ const TIPOS_SEM_HISTORICO = ['nota de débito','nota de debito','nota fiscal de 
 
 function limparTextoECD(v) {
   return String(v || '').replace(/[*$&#@|;]/g, '').replace(/\s+/g, ' ').trim();
+}
+
+function limparTextoExportacaoDominio(v) {
+  return String(v || '')
+    .replace(/[;|·•]/g, ' - ')
+    .replace(/[–—]/g, '-')
+    .replace(/[*$&#@]/g, ' - ')
+    .replace(/\s*-\s*/g, ' - ')
+    .replace(/\s+/g, ' ')
+    .trim();
 }
 
 function tipoUsaNumero(tipoDoc) {
@@ -1169,7 +1179,10 @@ function arredondarMoeda(v) {
 
 function gerarLancamentos(dados, regras) {
   lancamentosGerados = [];
-  let totalValor = 0;
+  let totalLiquido = 0;
+  let totalBruto = 0;
+  let totalDesconto = 0;
+  let totalAcrescimo = 0;
   const pendentes = new Set();
   const ajustes = [];
 
@@ -1182,6 +1195,7 @@ function gerarLancamentos(dados, regras) {
     const chave = montarChave(forn, plano, tipoDoc, historico);
     const codDebito = obterCodigoContaParaDominio(encontrarCodigoRegra(regras, forn, plano, tipoDoc, historico));
     const banco = limparTextoECD(r[COLS.CONTA]);
+    const valorBruto = arredondarMoeda(r[COLS.VALOR_BRUTO]);
     const valorLiq = arredondarMoeda(r[COLS.VALOR_LIQ]);
     const acrescimoDesconto = arredondarMoeda(r[COLS.ACRESCIMO]);
     const dataLiq = fmtDate(r[COLS.LIQUIDACAO]);
@@ -1189,7 +1203,10 @@ function gerarLancamentos(dados, regras) {
     const empresa = limparTextoECD(r[COLS.EMPRESA]);
     const complemento = [forn, tipoDoc, num, plano, historico].filter(Boolean).join(' - ');
 
-    totalValor += valorLiq;
+    totalLiquido += valorLiq;
+    totalBruto += valorBruto;
+    if (acrescimoDesconto < 0) totalDesconto += Math.abs(acrescimoDesconto);
+    if (acrescimoDesconto > 0) totalAcrescimo += acrescimoDesconto;
     if (!codDebito) pendentes.add(chave);
     if (acrescimoDesconto !== 0) {
       ajustes.push({ empresa, fornecedor: forn, plano, historico, acrescimoDesconto, valorLiq });
@@ -1228,7 +1245,11 @@ function gerarLancamentos(dados, regras) {
   const metSem = document.getElementById('met-sem');
   metSem.textContent = semCod;
   metSem.className = 'metric-value ' + (semCod > 0 ? 'warn' : 'ok');
-  document.getElementById('met-valor').textContent = 'R$ ' + fmtValor(totalValor);
+  document.getElementById('met-valor').textContent = 'R$ ' + fmtValor(totalLiquido);
+  document.getElementById('met-total-bruto').textContent = 'Bruto: R$ ' + fmtValor(totalBruto);
+  document.getElementById('met-total-liquido').textContent = 'Líquido: R$ ' + fmtValor(totalLiquido);
+  document.getElementById('met-total-desconto').textContent = 'Descontos: R$ ' + fmtValor(totalDesconto);
+  document.getElementById('met-total-acrescimo').textContent = 'Acréscimos: R$ ' + fmtValor(totalAcrescimo);
 
   // Alerta pendentes
   const ap = document.getElementById('alert-pendentes');
@@ -1239,7 +1260,7 @@ function gerarLancamentos(dados, regras) {
         <div class="alert-pendentes-main">
           <span class="alert-pendentes-icon">⚠️</span>
           <div>
-            <span class="alert-pendentes-title">${pendentes.size} combinação${pendentes.size > 1 ? 'ões' : ''} sem código</span>
+            <span class="alert-pendentes-title">${pendentes.size} ${pendentes.size === 1 ? 'combinação' : 'combinações'} sem código</span>
             <span class="alert-pendentes-sub">lançamentos marcados para revisão.</span>
           </div>
         </div>
@@ -1255,7 +1276,7 @@ function gerarLancamentos(dados, regras) {
   if (ajustes.length > 0) {
     const listaAjustes = ajustes.map(a => {
       const tipo = a.acrescimoDesconto < 0 ? 'DESCONTO' : 'ACRÉSCIMO';
-      return `<div><strong>${tipo}</strong> · ${escapeHtml(a.empresa)} · ${escapeHtml(a.fornecedor)} · ${escapeHtml(a.plano)} · ajuste: R$ ${fmtValor(Math.abs(a.acrescimoDesconto))} · líquido: R$ ${fmtValor(a.valorLiq)}</div>`;
+      return `<div><strong>${tipo}</strong> · ${escapeHtml(a.empresa)} · ${escapeHtml(a.fornecedor)} · ${escapeHtml(a.plano)} · R$ ${fmtValor(Math.abs(a.acrescimoDesconto))} · líquido: R$ ${fmtValor(a.valorLiq)}</div>`;
     }).join('');
     aa.innerHTML = `<div class="alert alert-orange alert-pendentes" style="margin-bottom:12px">
       <div class="alert-pendentes-top">
@@ -1293,8 +1314,8 @@ function gerarLancamentos(dados, regras) {
 function exportarXLSX() {
   const cabecalho = ['Data','Cód. Conta Débito','Cód. Conta Crédito','Valor','Cód. Histórico','Complemento Histórico','Inicia Lote','Código Matriz/Filial','Plano de Contas Financeiro','Centro de Custo Débito','Centro de Custo Crédito'];
   const linhas = lancamentosGerados.map((l, i) => [
-    l.data, l.codDebito, limparTextoECD(l.codCredito), l.valorLiq, '', limparTextoECD(l.complemento),
-    i === 0 ? 1 : '', limparTextoECD(l.empresa), limparTextoECD(l.plano), '', ''
+    l.data, l.codDebito, limparTextoExportacaoDominio(l.codCredito), l.valorLiq, '', limparTextoExportacaoDominio(l.complemento),
+    i === 0 ? 1 : '', limparTextoExportacaoDominio(l.empresa), limparTextoExportacaoDominio(l.plano), '', ''
   ]);
   const ws = XLSX.utils.aoa_to_sheet([cabecalho, ...linhas]);
   const wb = XLSX.utils.book_new();
