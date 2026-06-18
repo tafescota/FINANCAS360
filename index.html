@@ -50,6 +50,10 @@
   .alert-warn { background: var(--warn-bg); border: 1px solid var(--warn-border); color: var(--warn-text); }
   .alert-ok { background: var(--ok-bg); border: 1px solid var(--ok-border); color: var(--ok-text); }
   .alert-orange { background: var(--orange-bg); border: 1px solid var(--orange-border); color: #9a3412; }
+  .alert-pendentes { display: block; }
+  .alert-pendentes-top { display: flex; align-items: center; gap: 10px; justify-content: space-between; }
+  .alert-pendentes-lista { display: none; max-height: 220px; overflow-y: auto; margin-top: 10px; padding-top: 10px; border-top: 1px solid var(--warn-border); line-height: 1.6; }
+  .alert-pendentes-lista.aberta { display: block; }
 
   table { width: 100%; border-collapse: collapse; font-size: 13px; }
   th { padding: 9px 14px; text-align: left; font-weight: 600; font-size: 12px; color: var(--text2); background: var(--bg2); border-bottom: 1px solid var(--border); white-space: nowrap; }
@@ -865,6 +869,13 @@ function normalizarTexto(v) {
   return String(v || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').trim();
 }
 
+function alternarListaPendentes(btn) {
+  const lista = btn.closest('.alert-pendentes')?.querySelector('.alert-pendentes-lista');
+  if (!lista) return;
+  const aberta = lista.classList.toggle('aberta');
+  btn.textContent = aberta ? 'Recolher' : 'Expandir';
+}
+
 function textoBuscaNovaChave(item) {
   return normalizarTexto([
     item.chave,
@@ -1077,7 +1088,14 @@ function gerarLancamentos(dados, regras) {
   // Alerta pendentes
   const ap = document.getElementById('alert-pendentes');
   if (pendentes.size > 0) {
-    ap.innerHTML = `<div class="alert alert-warn" style="margin-bottom:12px">⚠️ <strong>${pendentes.size} combinação${pendentes.size > 1 ? 'ões' : ''} sem código:</strong> ${[...pendentes].join(' · ')}</div>`;
+    const listaPendentes = [...pendentes].map(chave => `<div>${escapeHtml(chave)}</div>`).join('');
+    ap.innerHTML = `<div class="alert alert-warn alert-pendentes" style="margin-bottom:12px">
+      <div class="alert-pendentes-top">
+        <div>⚠️ <strong>${pendentes.size} combinaÃ§Ã£o${pendentes.size > 1 ? 'Ãµes' : ''} sem cÃ³digo.</strong> Os lanÃ§amentos ficarÃ£o marcados para revisÃ£o.</div>
+        <button class="btn btn-sm" onclick="alternarListaPendentes(this)">Expandir</button>
+      </div>
+      <div class="alert-pendentes-lista">${listaPendentes}</div>
+    </div>`;
   } else {
     ap.innerHTML = `<div class="alert alert-ok" style="margin-bottom:12px">✅ Todos os lançamentos com código preenchido.</div>`;
   }
