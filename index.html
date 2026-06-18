@@ -71,7 +71,7 @@
   .table-novas th:nth-child(5) { width: 18%; }
   .table-novas th:nth-child(6) { width: 8%; }
   .table-novas th:nth-child(7) { width: 11%; }
-  .table-novas th:nth-child(8) { width: 150px; }
+  .table-novas th:nth-child(8) { width: 110px; }
   .table-novas td { min-height: 56px; white-space: normal; overflow-wrap: anywhere; line-height: 1.35; }
   .table-novas td:nth-child(2) { font-weight: 600; color: #111827; }
   .table-novas td:first-child, .table-novas th:first-child { text-align: center; padding-left: 10px; padding-right: 10px; }
@@ -216,7 +216,7 @@
         <input type="text" id="codigo-lote" class="conta-autocomplete" placeholder="Conta para aplicar" oninput="criarAutocompleteConta(this)">
         <button class="btn" onclick="selecionarFiltradasEmLote()">Selecionar filtradas</button>
         <button class="btn btn-primary" onclick="aplicarCodigoEmLote()">Aplicar conta</button>
-        <button class="btn btn-blue" onclick="salvarTudoPreenchido()">💾 Salvar</button>
+        <button class="btn btn-blue" onclick="salvarTudoPreenchido()">💾 Salvar contas preenchidas</button>
       </div>
       <div class="bulk-tool-options">
         <label class="compact-check">
@@ -813,9 +813,8 @@ function renderNovasChaves() {
       <td title="${escapeAttr(historicoExibido)}" style="color:var(--text2)">${escapeHtml(historicoExibido)}</td>
       <td title="${escapeAttr(numeroExibido)}" style="color:var(--text2)">${escapeHtml(numeroExibido)}</td>
       <td title="${escapeAttr(tipoDoc)}" style="color:var(--text2)">${escapeHtml(tipoDoc)}</td>
-      <td style="display:flex;gap:6px;align-items:center">
-        <input type="text" class="conta-autocomplete" placeholder="Digite o código ou nome da conta" value="${escapeAttr(codigosTemp[chave] || '')}" data-chave="${escapeAttr(chave)}" oninput="atualizarCodigoNovaChave(this); criarAutocompleteConta(this)" style="flex:1">
-        <button type="button" class="btn btn-sm btn-primary" title="Confirmar esta conta" onclick="confirmarLinhaCodigo(this)">✓</button>
+      <td>
+        <input type="text" class="conta-autocomplete" placeholder="Digite o código ou nome da conta" value="${escapeAttr(codigosTemp[chave] || '')}" data-chave="${escapeAttr(chave)}" oninput="atualizarCodigoNovaChave(this); criarAutocompleteConta(this)" style="width:100%">
       </td>
     </tr>`;
   }).join('');
@@ -862,17 +861,8 @@ function salvarTudoPreenchido() {
   renderNovasChaves();
 }
 
-function confirmarLinhaCodigo(btn) {
-  const inp = btn.closest('td').querySelector('input[data-chave]');
-  if (!inp) return;
-  codigosTemp[inp.dataset.chave] = inp.value.trim();
-  confirmandoComEnter = true;
-  ocultarPendenciaPreenchida(inp, true);
-  setTimeout(() => { confirmandoComEnter = false; }, 0);
-}
-
 function ocultarPendenciaPreenchida(inp, focarProximo = false) {
-  if (!focarProximo) return; // só confirma quando o botão "✓" da linha é clicado, nunca por Tab, Enter ou clicar fora
+  if (!focarProximo) return; // só confirma via botão "Salvar contas preenchidas", nunca por Tab, Enter ou clicar fora
   salvarCodigosPreenchidosNoGrupo();
   if (!document.getElementById('somente-pendentes')?.checked) {
     if (focarProximo) focarProximoCampoCodigo(inp);
