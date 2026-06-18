@@ -90,6 +90,7 @@
   .historico-palavra { display: inline; border: 0; border-radius: 4px; background: transparent; color: inherit; padding: 1px 2px; margin: 0 1px; font: inherit; cursor: pointer; }
   .historico-palavra:hover { background: var(--blue-bg); color: var(--blue-text); }
   .historico-palavra.ativo { background: var(--blue-bg); color: var(--blue-text); box-shadow: inset 0 0 0 1px var(--blue); }
+  .tipo-ajuste-badge { display: inline-block; background: #fef3c7; color: #92400e; border: 1px solid #fcd34d; border-radius: 999px; padding: 3px 9px; font-weight: 700; font-size: 11px; }
   .table-hint { color: var(--text2); font-size: 12px; margin: -6px 0 8px; }
   .bulk-tool { background: var(--bg); border: 1px solid var(--border); border-radius: var(--radius); padding: 14px; margin-bottom: 16px; box-shadow: var(--shadow); }
   .bulk-tool-top { display: grid; grid-template-columns: minmax(260px, 1fr) minmax(160px, 220px) auto auto auto; gap: 10px; align-items: center; }
@@ -892,6 +893,8 @@ function renderNovasChaves() {
   tbody.innerHTML = visiveis.map(({ chave, fornecedor, plano, tipoDoc, historico, trechoHistorico, numero, empresa }) => {
     const infoDoc = separarNumeroDoHistorico(tipoDoc, numero, historico);
     const historicoExibido = infoDoc.historico;
+    const isAjuste = tipoDoc === 'DESCONTO' || tipoDoc === 'ACRÉSCIMO';
+    const historicoVisual = isAjuste ? `${tipoDoc} - ${historicoExibido}` : historicoExibido;
     const numeroExibido = tipoUsaNumero(tipoDoc) ? infoDoc.numero : '';
     const palavrasHistorico = renderPalavrasHistorico(chave, historicoExibido, trechoHistorico);
     return `<tr>
@@ -899,11 +902,12 @@ function renderNovasChaves() {
       <td title="${escapeAttr(empresa||'')}" style="color:var(--text2)">${escapeHtml(empresa||'')}</td>
       <td title="${escapeAttr(fornecedor)}">${escapeHtml(fornecedor)}</td>
       <td title="${escapeAttr(plano)}" style="color:var(--text2)">${escapeHtml(plano)}</td>
-      <td title="${escapeAttr(historicoExibido)}" style="color:var(--text2)">
+      <td title="${escapeAttr(historicoVisual)}" style="color:var(--text2)">
+        ${isAjuste ? `<div style="font-weight:700;color:#92400e;margin-bottom:4px">${escapeHtml(tipoDoc)} -</div>` : ''}
         ${historicoExibido ? `<div class="historico-regra-label">Clique nas palavras da regra:</div>${palavrasHistorico}` : ''}
       </td>
       <td title="${escapeAttr(numeroExibido)}" style="color:var(--text2)">${escapeHtml(numeroExibido)}</td>
-      <td title="${escapeAttr(tipoDoc)}" style="color:var(--text2)">${escapeHtml(tipoDoc)}</td>
+      <td title="${escapeAttr(tipoDoc)}" style="color:var(--text2)">${isAjuste ? `<span class="tipo-ajuste-badge">${escapeHtml(tipoDoc)}</span>` : escapeHtml(tipoDoc)}</td>
       <td>
         <input type="text" class="conta-autocomplete" placeholder="Digite o código ou nome da conta" value="${escapeAttr(codigosTemp[chave] || '')}" data-chave="${escapeAttr(chave)}" oninput="atualizarCodigoNovaChave(this); criarAutocompleteConta(this)" style="width:100%">
       </td>
