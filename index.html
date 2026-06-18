@@ -211,7 +211,7 @@
     <div class="bulk-tool">
       <div class="bulk-tool-top">
         <input type="search" id="filtro-lote" placeholder="Pesquisar fornecedor, histórico, plano ou tipo..." oninput="filtrarNovasChavesEmLote()">
-        <input type="text" id="codigo-lote" class="conta-autocomplete" placeholder="Conta para aplicar" oninput="criarAutocompleteConta(this)" onfocus="criarAutocompleteConta(this)">
+        <input type="text" id="codigo-lote" class="conta-autocomplete" placeholder="Conta para aplicar" oninput="criarAutocompleteConta(this)">
         <button class="btn" onclick="selecionarFiltradasEmLote()">Selecionar filtradas</button>
         <button class="btn btn-primary" onclick="aplicarCodigoEmLote()">Aplicar conta</button>
       </div>
@@ -810,7 +810,7 @@ function renderNovasChaves() {
       <td title="${escapeAttr(historicoExibido)}" style="color:var(--text2)">${escapeHtml(historicoExibido)}</td>
       <td title="${escapeAttr(numeroExibido)}" style="color:var(--text2)">${escapeHtml(numeroExibido)}</td>
       <td title="${escapeAttr(tipoDoc)}" style="color:var(--text2)">${escapeHtml(tipoDoc)}</td>
-      <td><input type="text" class="conta-autocomplete" placeholder="Digite o código ou nome da conta" value="${escapeAttr(codigosTemp[chave] || '')}" data-chave="${escapeAttr(chave)}" oninput="atualizarCodigoNovaChave(this); criarAutocompleteConta(this)" onkeydown="confirmarCodigoComEnter(event, this)" onblur="ocultarPendenciaPreenchida(this)" onfocus="criarAutocompleteConta(this)"></td>
+      <td><input type="text" class="conta-autocomplete" placeholder="Digite o código ou nome da conta" value="${escapeAttr(codigosTemp[chave] || '')}" data-chave="${escapeAttr(chave)}" oninput="atualizarCodigoNovaChave(this); criarAutocompleteConta(this)" onkeydown="confirmarCodigoComEnter(event, this)" onblur="ocultarPendenciaPreenchida(this)"></td>
     </tr>`;
   }).join('');
   atualizarStatusLote(visiveis);
@@ -1085,7 +1085,7 @@ function renderRegras() {
         <td style="color:var(--text2);white-space:nowrap">${tipoDoc}</td>
         <td style="color:var(--text2);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:120px">${hist || '<span style="color:var(--text3)">—</span>'}</td>
         <td>${editandoRegras
-          ? `<input type="text" class="conta-autocomplete" value="${cod}" data-chave="${chave.replace(/"/g,'&quot;')}" oninput="editTemp[this.dataset.chave]=this.value; criarAutocompleteConta(this)" onfocus="criarAutocompleteConta(this)" style="width:100%;font-size:12px">`
+          ? `<input type="text" class="conta-autocomplete" value="${cod}" data-chave="${chave.replace(/"/g,'&quot;')}" oninput="editTemp[this.dataset.chave]=this.value; criarAutocompleteConta(this)" style="width:100%;font-size:12px">`
           : `<span class="mono" style="${!cod ? 'color:var(--text3);font-style:italic' : ''}">${cod || '—'}</span>`
         }</td>
         ${editandoRegras ? `<td style="text-align:center"><button class="btn btn-sm btn-danger" onclick="excluirRegra('${chave.replace(/'/g,"\\'")}')">🗑</button></td>` : ''}
