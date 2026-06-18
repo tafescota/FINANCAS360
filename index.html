@@ -50,9 +50,13 @@
   .alert-warn { background: var(--warn-bg); border: 1px solid var(--warn-border); color: var(--warn-text); }
   .alert-ok { background: var(--ok-bg); border: 1px solid var(--ok-border); color: var(--ok-text); }
   .alert-orange { background: var(--orange-bg); border: 1px solid var(--orange-border); color: #9a3412; }
-  .alert-pendentes { display: block; }
-  .alert-pendentes-top { display: flex; align-items: center; gap: 10px; justify-content: space-between; }
-  .alert-pendentes-lista { display: none; max-height: 220px; overflow-y: auto; margin-top: 10px; padding-top: 10px; border-top: 1px solid var(--warn-border); line-height: 1.6; }
+  .alert-pendentes { display: block; padding: 12px 14px; }
+  .alert-pendentes-top { display: flex; align-items: center; gap: 12px; justify-content: space-between; }
+  .alert-pendentes-main { display: flex; align-items: center; gap: 10px; min-width: 0; }
+  .alert-pendentes-icon { flex: 0 0 auto; color: #d97706; font-size: 15px; }
+  .alert-pendentes-title { font-weight: 700; color: #9a3412; }
+  .alert-pendentes-sub { color: #9a3412; margin-left: 4px; }
+  .alert-pendentes-lista { display: none; max-height: 220px; overflow-y: auto; margin-top: 12px; padding: 10px; border: 1px solid #fde68a; border-radius: var(--radius-sm); background: rgba(255,255,255,0.6); line-height: 1.55; }
   .alert-pendentes-lista.aberta { display: block; }
 
   table { width: 100%; border-collapse: collapse; font-size: 13px; }
@@ -81,6 +85,8 @@
   .table-novas td:first-child, .table-novas th:first-child { text-align: center; padding-left: 10px; padding-right: 10px; }
   .table-novas input[type=text] { height: 34px; min-width: 0; font-size: 12px; padding-left: 8px; padding-right: 8px; }
   .table-novas td .btn { height: 34px; padding: 0 10px; flex-shrink: 0; }
+  .historico-regra-input { margin-top: 6px; height: 30px !important; font-size: 11.5px !important; }
+  .historico-regra-label { margin-top: 5px; color: var(--text3); font-size: 10.5px; }
   .table-hint { color: var(--text2); font-size: 12px; margin: -6px 0 8px; }
   .bulk-tool { background: var(--bg); border: 1px solid var(--border); border-radius: var(--radius); padding: 14px; margin-bottom: 16px; box-shadow: var(--shadow); }
   .bulk-tool-top { display: grid; grid-template-columns: minmax(220px, 1fr) 170px auto auto; gap: 10px; align-items: center; }
@@ -347,6 +353,32 @@ function montarChave(forn, plano, tipoDoc, historico) {
     : forn + ' | ' + plano + ' | ' + tipoDoc;
 }
 
+function montarChaveHistoricoContem(forn, plano, trecho) {
+  return forn + ' | ' + plano + ' | HISTORICO_CONTEM | ' + limparTextoECD(trecho);
+}
+
+function encontrarCodigoRegra(regras, forn, plano, tipoDoc, historico) {
+  const chaveExata = montarChave(forn, plano, tipoDoc, historico);
+  if (regras[chaveExata]) return regras[chaveExata];
+
+  const prefixo = forn + ' | ' + plano + ' | HISTORICO_CONTEM | ';
+  const historicoNormalizado = normalizarTexto(historico);
+  const achada = Object.keys(regras).find(chave => {
+    if (!chave.startsWith(prefixo)) return false;
+    const trecho = chave.slice(prefixo.length);
+    return trecho && historicoNormalizado.includes(normalizarTexto(trecho));
+  });
+  return achada ? regras[achada] : '';
+}
+
+function obterChaveRegraNova(item) {
+  const trecho = limparTextoECD(item.trechoHistorico || '');
+  if (item.historico && trecho && normalizarTexto(trecho) !== normalizarTexto(item.historico)) {
+    return montarChaveHistoricoContem(item.fornecedor, item.plano, trecho);
+  }
+  return item.chave;
+}
+
 function salvarStorage() {
   localStorage.setItem(STORAGE_GRUPOS, JSON.stringify(grupos));
   localStorage.setItem(STORAGE_DEPARA, JSON.stringify(depara));
@@ -459,9 +491,9 @@ function salvarCodigosPreenchidosNoGrupo(coletarDaTela = true) {
   if (!grupoAtivo) return;
   if (coletarDaTela) coletarCodigosNovasChaves();
   const regrasSalvas = Object.assign({}, depara[grupoAtivo] || {});
-  novasChavesTemp.forEach(({ chave }) => {
-    const codigo = obterCodigoContaParaDominio(codigosTemp[chave] || '');
-    if (codigo) regrasSalvas[chave] = codigo;
+  novasChavesTemp.forEach(item => {
+    const codigo = obterCodigoContaParaDominio(codigosTemp[item.chave] || '');
+    if (codigo) regrasSalvas[obterChaveRegraNova(item)] = codigo;
   });
   depara[grupoAtivo] = regrasSalvas;
   salvarStorage();
@@ -796,9 +828,9 @@ function processarArquivo(file) {
         const numero = infoDoc.numero;
         if (!forn && !plano) return;
         const chave = montarChave(forn, plano, tipoDoc, historico);
-        if (!regrasSalvas[chave] && !vistas.has(chave)) {
+        if (!encontrarCodigoRegra(regrasSalvas, forn, plano, tipoDoc, historico) && !vistas.has(chave)) {
           vistas.add(chave);
-          novas.push({ chave, fornecedor: forn, plano, tipoDoc, historico, numero, empresa: limparTextoECD(r[COLS.EMPRESA]) });
+          novas.push({ chave, fornecedor: forn, plano, tipoDoc, historico, trechoHistorico: historico, numero, empresa: limparTextoECD(r[COLS.EMPRESA]) });
         }
       });
 
@@ -833,11 +865,11 @@ function renderNovasChaves() {
     return textoBuscaNovaChave(item).includes(filtro);
   });
   if (visiveis.length === 0) {
-    tbody.innerHTML = `<tr><td colspan="7" style="text-align:center;color:var(--text2);padding:32px">Nenhuma pendência visível com os filtros atuais.</td></tr>`;
+    tbody.innerHTML = `<tr><td colspan="8" style="text-align:center;color:var(--text2);padding:32px">Nenhuma pendência visível com os filtros atuais.</td></tr>`;
     atualizarStatusLote(visiveis);
     return;
   }
-  tbody.innerHTML = visiveis.map(({ chave, fornecedor, plano, tipoDoc, historico, numero, empresa }) => {
+  tbody.innerHTML = visiveis.map(({ chave, fornecedor, plano, tipoDoc, historico, trechoHistorico, numero, empresa }) => {
     const infoDoc = separarNumeroDoHistorico(tipoDoc, numero, historico);
     const historicoExibido = infoDoc.historico;
     const numeroExibido = tipoUsaNumero(tipoDoc) ? infoDoc.numero : '';
@@ -846,7 +878,10 @@ function renderNovasChaves() {
       <td title="${escapeAttr(empresa||'')}" style="color:var(--text2)">${escapeHtml(empresa||'')}</td>
       <td title="${escapeAttr(fornecedor)}">${escapeHtml(fornecedor)}</td>
       <td title="${escapeAttr(plano)}" style="color:var(--text2)">${escapeHtml(plano)}</td>
-      <td title="${escapeAttr(historicoExibido)}" style="color:var(--text2)">${escapeHtml(historicoExibido)}</td>
+      <td title="${escapeAttr(historicoExibido)}" style="color:var(--text2)">
+        <div>${escapeHtml(historicoExibido)}</div>
+        ${historicoExibido ? `<div class="historico-regra-label">Regra se contiver:</div><input type="text" class="historico-regra-input" value="${escapeAttr(trechoHistorico || historicoExibido)}" data-chave="${escapeAttr(chave)}" oninput="atualizarTrechoHistoricoRegra(this)" placeholder="Trecho do histÃ³rico">` : ''}
+      </td>
       <td title="${escapeAttr(numeroExibido)}" style="color:var(--text2)">${escapeHtml(numeroExibido)}</td>
       <td title="${escapeAttr(tipoDoc)}" style="color:var(--text2)">${escapeHtml(tipoDoc)}</td>
       <td>
@@ -884,9 +919,15 @@ function textoBuscaNovaChave(item) {
     item.plano,
     item.tipoDoc,
     item.historico,
+    item.trechoHistorico,
     item.numero,
     codigosTemp[item.chave]
   ].join(' '));
+}
+
+function atualizarTrechoHistoricoRegra(inp) {
+  const item = novasChavesTemp.find(n => n.chave === inp.dataset.chave);
+  if (item) item.trechoHistorico = limparTextoECD(inp.value);
 }
 
 function coletarCodigosNovasChaves() {
@@ -936,7 +977,7 @@ function ocultarPendenciaPreenchida(inp, focarProximo = false) {
   inp.closest('tr')?.remove();
   const visiveis = obterNovasChavesVisiveis();
   if (visiveis.length === 0) {
-    document.getElementById('tbody-novas-chaves').innerHTML = `<tr><td colspan="7" style="text-align:center;color:var(--text2);padding:32px">Nenhuma pendência visível com os filtros atuais.</td></tr>`;
+    document.getElementById('tbody-novas-chaves').innerHTML = `<tr><td colspan="8" style="text-align:center;color:var(--text2);padding:32px">Nenhuma pendência visível com os filtros atuais.</td></tr>`;
   }
   atualizarStatusLote(visiveis);
   if (focarProximo && proximo) focarCampoCodigo(proximo);
@@ -1019,7 +1060,10 @@ function aplicarCodigoEmLote() {
   selecionadasLote.forEach(chave => { codigosTemp[chave] = codigo; });
   // Salva imediatamente no depara do grupo ativo
   const regrasSalvas = Object.assign({}, depara[grupoAtivo] || {});
-  selecionadasLote.forEach(chave => { regrasSalvas[chave] = codigo; });
+  selecionadasLote.forEach(chave => {
+    const item = novasChavesTemp.find(n => n.chave === chave);
+    regrasSalvas[item ? obterChaveRegraNova(item) : chave] = codigo;
+  });
   depara[grupoAtivo] = regrasSalvas;
   salvarStorage();
   selecionadasLote.clear();
@@ -1063,7 +1107,7 @@ function gerarLancamentos(dados, regras) {
     const infoDoc = separarNumeroDoHistorico(tipoDoc, r[COLS.NUMERO], r[COLS.HISTORICO]);
     const historico = infoDoc.historico;
     const chave = montarChave(forn, plano, tipoDoc, historico);
-    const codDebito = obterCodigoContaParaDominio(regras[chave] || '');
+    const codDebito = obterCodigoContaParaDominio(encontrarCodigoRegra(regras, forn, plano, tipoDoc, historico));
     const banco = limparTextoECD(r[COLS.CONTA]);
     const valorLiq = Number(r[COLS.VALOR_LIQ]) || 0;
     const dataLiq = fmtDate(r[COLS.LIQUIDACAO]);
@@ -1091,7 +1135,13 @@ function gerarLancamentos(dados, regras) {
     const listaPendentes = [...pendentes].map(chave => `<div>${escapeHtml(chave)}</div>`).join('');
     ap.innerHTML = `<div class="alert alert-warn alert-pendentes" style="margin-bottom:12px">
       <div class="alert-pendentes-top">
-        <div>⚠️ <strong>${pendentes.size} combinaÃ§Ã£o${pendentes.size > 1 ? 'Ãµes' : ''} sem cÃ³digo.</strong> Os lanÃ§amentos ficarÃ£o marcados para revisÃ£o.</div>
+        <div class="alert-pendentes-main">
+          <span class="alert-pendentes-icon">⚠️</span>
+          <div>
+            <span class="alert-pendentes-title">${pendentes.size} combinação${pendentes.size > 1 ? 'ões' : ''} sem código</span>
+            <span class="alert-pendentes-sub">lançamentos marcados para revisão.</span>
+          </div>
+        </div>
         <button class="btn btn-sm" onclick="alternarListaPendentes(this)">Expandir</button>
       </div>
       <div class="alert-pendentes-lista">${listaPendentes}</div>
@@ -1158,7 +1208,8 @@ function renderRegras() {
       const partes = chave.split(' | ');
       const forn = partes[0] || '';
       const plano = partes[1] || '';
-      const tipoDoc = partes[2] || '';
+      const regraParcial = partes[2] === 'HISTORICO_CONTEM';
+      const tipoDoc = regraParcial ? 'Histórico contém' : (partes[2] || '');
       const hist = partes[3] || '';
       const cod = dados[chave] || '';
       return `<tr>
