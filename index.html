@@ -610,20 +610,28 @@ function processarPlanoContas(file) {
       const contas = [];
       raw.forEach(row => {
         if (!row) return;
-        const classificacao = row[7]; // coluna "Classificação" (H, índice 7) — código hierárquico, só para referência/busca
-        if (!classificacao || typeof classificacao !== 'string') return;
-        if (classificacao.trim().toLowerCase() === 'classificação') return; // ignora linha de cabeçalho
-        const tipo = row[3]; // coluna "T" — 'S' = sintética (grupo), vazio = analítica
-        if (String(tipo || '').trim().toUpperCase() === 'S') return; // ignora sintéticas
-        const codigoReal = row[0]; // coluna "Código" (A, índice 0) — é esse código que vai para o Domínio
-        if (codigoReal === null || codigoReal === undefined || String(codigoReal).trim() === '') return;
-        // Nome real: primeira coluna não vazia entre os índices 10 e 17 (colunas de indentação do nome)
+        const idxClassificacao = row.findIndex(v => /^\d+(?:\.\d+)+$/.test(String(v || '').trim()));
+        if (idxClassificacao < 0) return;
+
+        const temTipoSintetico = row
+          .slice(0, idxClassificacao)
+          .some(v => String(v || '').trim().toUpperCase() === 'S');
+        if (temTipoSintetico) return;
+
+        let codigoReal = null;
+        for (let idx = 0; idx < idxClassificacao; idx++) {
+          const valor = String(row[idx] ?? '').trim();
+          if (/^\d+$/.test(valor)) { codigoReal = valor; break; }
+        }
+        if (!codigoReal) return;
+
+        const classificacao = String(row[idxClassificacao]).trim();
         let nome = null;
-        for (let idx = 10; idx <= 17; idx++) {
+        for (let idx = idxClassificacao + 1; idx < row.length; idx++) {
           if (row[idx]) { nome = row[idx]; break; }
         }
         if (!nome) return;
-        contas.push({ codigo: String(codigoReal).trim(), classificacao: String(classificacao).trim(), nome: String(nome).trim() });
+        contas.push({ codigo: String(codigoReal).trim(), classificacao, nome: String(nome).trim() });
       });
 
       if (contas.length === 0) {
