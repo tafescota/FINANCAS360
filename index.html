@@ -265,6 +265,7 @@
       <div class="metric"><div class="metric-label">Valor total</div><div class="metric-value" style="font-size:16px" id="met-valor">R$ 0,00</div></div>
     </div>
     <div id="alert-pendentes"></div>
+    <div id="alert-ajustes"></div>
     <div class="table-wrap table-scroll" style="margin-bottom:16px">
       <table>
         <thead>
@@ -327,7 +328,7 @@ const COLS = { TIPO:0, NUMERO:1, PARCELA:2, EMPRESA:3, FORNECEDOR:4, EMISSAO:5, 
 const TIPOS_SEM_HISTORICO = ['nota de débito','nota de debito','nota fiscal de serviço','nota fiscal de servico','nota fiscal'];
 
 function limparTextoECD(v) {
-  return String(v || '').replace(/[*$&#@|]/g, '').replace(/\s+/g, ' ').trim();
+  return String(v || '').replace(/[*$&#@|;]/g, '').replace(/\s+/g, ' ').trim();
 }
 
 function tipoUsaNumero(tipoDoc) {
@@ -1133,10 +1134,26 @@ function fmtValor(v) {
   return Number(v || 0).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 }
 
+function numeroMoeda(v) {
+  if (v === null || v === undefined || v === '') return 0;
+  if (typeof v === 'number') return v;
+  const texto = String(v).trim();
+  if (!texto) return 0;
+  const normalizado = texto.includes(',')
+    ? texto.replace(/\./g, '').replace(',', '.')
+    : texto;
+  return Number(normalizado) || 0;
+}
+
+function arredondarMoeda(v) {
+  return Math.round((numeroMoeda(v) + Number.EPSILON) * 100) / 100;
+}
+
 function gerarLancamentos(dados, regras) {
   lancamentosGerados = [];
   let totalValor = 0;
   const pendentes = new Set();
+  const ajustes = [];
 
   dados.forEach((r, idx) => {
     const forn = limparTextoECD(r[COLS.FORNECEDOR]);
@@ -1147,7 +1164,8 @@ function gerarLancamentos(dados, regras) {
     const chave = montarChave(forn, plano, tipoDoc, historico);
     const codDebito = obterCodigoContaParaDominio(encontrarCodigoRegra(regras, forn, plano, tipoDoc, historico));
     const banco = limparTextoECD(r[COLS.CONTA]);
-    const valorLiq = Number(r[COLS.VALOR_LIQ]) || 0;
+    const valorLiq = arredondarMoeda(r[COLS.VALOR_LIQ]);
+    const acrescimoDesconto = arredondarMoeda(r[COLS.ACRESCIMO]);
     const dataLiq = fmtDate(r[COLS.LIQUIDACAO]);
     const num = infoDoc.numero;
     const empresa = limparTextoECD(r[COLS.EMPRESA]);
@@ -1155,8 +1173,11 @@ function gerarLancamentos(dados, regras) {
 
     totalValor += valorLiq;
     if (!codDebito) pendentes.add(chave);
+    if (acrescimoDesconto !== 0) {
+      ajustes.push({ empresa, fornecedor: forn, plano, historico, acrescimoDesconto, valorLiq });
+    }
 
-    lancamentosGerados.push({ idx, data: dataLiq, codDebito, codCredito: banco, valorLiq, valorFmt: fmtValor(valorLiq), complemento, empresa, plano, semCodigo: !codDebito });
+    lancamentosGerados.push({ idx, data: dataLiq, codDebito, codCredito: banco, valorLiq, valorFmt: fmtValor(valorLiq), complemento, empresa, plano, acrescimoDesconto, semCodigo: !codDebito });
   });
 
   // Métricas
@@ -1186,6 +1207,26 @@ function gerarLancamentos(dados, regras) {
     </div>`;
   } else {
     ap.innerHTML = `<div class="alert alert-ok" style="margin-bottom:12px">✅ Todos os lançamentos com código preenchido.</div>`;
+  }
+
+  const aa = document.getElementById('alert-ajustes');
+  if (ajustes.length > 0) {
+    const listaAjustes = ajustes.map(a => `<div><strong>${escapeHtml(a.empresa)}</strong> · ${escapeHtml(a.fornecedor)} · ${escapeHtml(a.plano)} · ajuste: R$ ${fmtValor(a.acrescimoDesconto)} · líquido: R$ ${fmtValor(a.valorLiq)}</div>`).join('');
+    aa.innerHTML = `<div class="alert alert-orange alert-pendentes" style="margin-bottom:12px">
+      <div class="alert-pendentes-top">
+        <div class="alert-pendentes-main">
+          <span class="alert-pendentes-icon">⚠️</span>
+          <div>
+            <span class="alert-pendentes-title">${ajustes.length} linha${ajustes.length > 1 ? 's' : ''} com acréscimo/desconto</span>
+            <span class="alert-pendentes-sub">valor líquido arredondado para 2 casas.</span>
+          </div>
+        </div>
+        <button class="btn btn-sm" onclick="alternarListaPendentes(this)">Expandir</button>
+      </div>
+      <div class="alert-pendentes-lista">${listaAjustes}</div>
+    </div>`;
+  } else {
+    aa.innerHTML = '';
   }
 
   // Tabela
