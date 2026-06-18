@@ -177,6 +177,27 @@
     </div>
   </div>
 
+  <!-- TELA PLANO DE CONTAS -->
+  <div class="tela" id="tela-plano-contas">
+    <div class="section-header">
+      <button class="btn btn-sm" onclick="voltarTela()">← Voltar</button>
+      <h2 id="titulo-plano-contas">Plano de Contas</h2>
+    </div>
+    <div id="msg-plano-contas"></div>
+    <div class="card" style="margin-bottom:16px">
+      <p style="font-size:13px;color:var(--text2);margin-bottom:14px">
+        Importe o plano de contas exportado do sistema contábil (.xls ou .xlsx). Apenas as contas <strong>analíticas</strong> (que recebem lançamento) serão carregadas para o autocomplete. Importar um novo arquivo substitui o plano de contas atual deste grupo.
+      </p>
+      <div class="drop-area" id="drop-area-plano" onclick="document.getElementById('file-input-plano').click()" ondragover="dragOver(event)" ondragleave="dragLeave(event)" ondrop="onDropPlano(event)">
+        <div class="drop-icon">📑</div>
+        <div class="drop-title">Arraste o plano de contas aqui ou clique para selecionar</div>
+        <div class="drop-sub">.xls ou .xlsx exportado do sistema contábil</div>
+      </div>
+    </div>
+    <div id="resumo-plano-contas"></div>
+    <input type="file" id="file-input-plano" accept=".xlsx,.xls" style="display:none" onchange="onFileChangePlano(event)">
+  </div>
+
   <!-- TELA NOVAS CHAVES -->
   <div class="tela" id="tela-novas-chaves">
     <div class="section-header">
@@ -190,7 +211,7 @@
     <div class="bulk-tool">
       <div class="bulk-tool-top">
         <input type="search" id="filtro-lote" placeholder="Pesquisar fornecedor, histórico, plano ou tipo..." oninput="filtrarNovasChavesEmLote()">
-        <input type="text" id="codigo-lote" placeholder="Conta para aplicar">
+        <input type="text" id="codigo-lote" class="conta-autocomplete" placeholder="Conta para aplicar" oninput="criarAutocompleteConta(this)" onfocus="criarAutocompleteConta(this)">
         <button class="btn" onclick="selecionarFiltradasEmLote()">Selecionar filtradas</button>
         <button class="btn btn-primary" onclick="aplicarCodigoEmLote()">Aplicar conta</button>
       </div>
@@ -264,10 +285,12 @@
 <script>
 const STORAGE_GRUPOS = 'zip_depara_grupos';
 const STORAGE_DEPARA = 'zip_depara_regras';
+const STORAGE_PLANO_CONTAS = 'zip_depara_plano_contas';
 const API_BASE_DEPARA = '/.netlify/functions/depara-base';
 
 let grupos = JSON.parse(localStorage.getItem(STORAGE_GRUPOS) || '[]');
 let depara = JSON.parse(localStorage.getItem(STORAGE_DEPARA) || '{}');
+let planoContas = JSON.parse(localStorage.getItem(STORAGE_PLANO_CONTAS) || '{}');
 let grupoAtivo = null;
 let linhasImportadas = [];
 let novasChavesTemp = [];
@@ -320,6 +343,7 @@ function montarChave(forn, plano, tipoDoc, historico) {
 function salvarStorage() {
   localStorage.setItem(STORAGE_GRUPOS, JSON.stringify(grupos));
   localStorage.setItem(STORAGE_DEPARA, JSON.stringify(depara));
+  localStorage.setItem(STORAGE_PLANO_CONTAS, JSON.stringify(planoContas));
   salvarBaseCompartilhada();
 }
 
@@ -341,9 +365,11 @@ async function carregarBaseCompartilhada(mostrarMensagem = false) {
     if (remoteUpdatedAt && remoteUpdatedAt < ultimaSyncLocal) return;
     grupos = Array.isArray(data.grupos) ? data.grupos : [];
     depara = data.depara && typeof data.depara === 'object' ? data.depara : {};
+    planoContas = data.planoContas && typeof data.planoContas === 'object' ? data.planoContas : {};
     ultimaSyncLocal = remoteUpdatedAt || Date.now();
     localStorage.setItem(STORAGE_GRUPOS, JSON.stringify(grupos));
     localStorage.setItem(STORAGE_DEPARA, JSON.stringify(depara));
+    localStorage.setItem(STORAGE_PLANO_CONTAS, JSON.stringify(planoContas));
     if (grupoAtivo && !grupos.includes(grupoAtivo)) grupoAtivo = null;
     renderGrupos();
     atualizarStatusBanco('Base compartilhada do site conectada. Todos usam os mesmos grupos e regras.', 'ok');
@@ -363,7 +389,7 @@ async function salvarBaseCompartilhada(forcar = false) {
   try {
     salvandoBaseCompartilhada = true;
     ultimaSyncLocal = Date.now();
-    const payload = { grupos, depara };
+    const payload = { grupos, depara, planoContas };
     const resp = await fetch(API_BASE_DEPARA, {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
@@ -441,6 +467,7 @@ function mostrarTela(id, registrarHistorico = true) {
   telaAtual = id;
   if (id === 'tela-home') renderGrupos();
   if (id === 'tela-regras') renderRegras();
+  if (id === 'tela-plano-contas') renderResumoPlanoContas();
   if (id === 'tela-importar' && grupoAtivo) {
     document.getElementById('titulo-importar').textContent = 'Importar planilha — ' + grupoAtivo;
   }
@@ -465,16 +492,18 @@ function renderGrupos() {
   }
   el.innerHTML = grupos.map(g => {
     const qtd = Object.keys(depara[g] || {}).length;
+    const qtdContas = (planoContas[g] || []).length;
     const isAtivo = g === grupoAtivo;
     return `<div class="grupo-card ${isAtivo ? 'ativo' : ''}">
       <div style="flex:1">
         <div class="grupo-nome">${g} ${isAtivo ? '<span class="badge badge-blue">ativo</span>' : ''}</div>
-        <div class="grupo-info">${qtd} regra${qtd !== 1 ? 's' : ''} de de-para</div>
+        <div class="grupo-info">${qtd} regra${qtd !== 1 ? 's' : ''} de de-para · ${qtdContas > 0 ? qtdContas + ' contas no plano' : 'plano de contas não carregado'}</div>
       </div>
       <div style="display:flex;gap:8px;flex-wrap:wrap">
         ${!isAtivo ? `<button class="btn btn-sm" onclick="selecionarGrupo('${g}')">Selecionar</button>` : ''}
         ${isAtivo ? `
           <button class="btn btn-sm" onclick="mostrarTela('tela-regras')">📋 Regras</button>
+          <button class="btn btn-sm" onclick="mostrarTela('tela-plano-contas')">📑 Plano de Contas</button>
           <button class="btn btn-sm btn-blue" onclick="mostrarTela('tela-importar')">⬆ Importar planilha</button>
         ` : ''}
         <button class="btn btn-sm btn-danger" onclick="excluirGrupo('${g}')">🗑</button>
@@ -554,6 +583,140 @@ function onDrop(e) {
   document.getElementById('drop-area').classList.remove('drag');
   if (e.dataTransfer.files[0]) processarArquivo(e.dataTransfer.files[0]);
 }
+
+function onFileChangePlano(e) {
+  if (e.target.files[0]) processarPlanoContas(e.target.files[0]);
+  e.target.value = '';
+}
+function onDropPlano(e) {
+  e.preventDefault();
+  document.getElementById('drop-area-plano').classList.remove('drag');
+  if (e.dataTransfer.files[0]) processarPlanoContas(e.dataTransfer.files[0]);
+}
+
+function processarPlanoContas(file) {
+  if (!grupoAtivo) { alert('Selecione um grupo antes de importar o plano de contas.'); return; }
+  const reader = new FileReader();
+  reader.onload = function(e) {
+    try {
+      const data = new Uint8Array(e.target.result);
+      const wb = XLSX.read(data, { type: 'array', cellDates: false });
+      const ws = wb.Sheets[wb.SheetNames[0]];
+      const raw = XLSX.utils.sheet_to_json(ws, { header: 1, defval: null });
+
+      const contas = [];
+      raw.forEach(row => {
+        if (!row) return;
+        const classificacao = row[7]; // coluna "Classificação" (H, índice 7)
+        if (!classificacao || typeof classificacao !== 'string') return;
+        if (classificacao.trim().toLowerCase() === 'classificação') return; // ignora linha de cabeçalho
+        const tipo = row[3]; // coluna "T" — 'S' = sintética (grupo), vazio = analítica
+        if (String(tipo || '').trim().toUpperCase() === 'S') return; // ignora sintéticas
+        // Nome real: primeira coluna não vazia entre os índices 10 e 17 (colunas de indentação do nome)
+        let nome = null;
+        for (let idx = 10; idx <= 17; idx++) {
+          if (row[idx]) { nome = row[idx]; break; }
+        }
+        if (!nome) return;
+        contas.push({ codigo: String(classificacao).trim(), nome: String(nome).trim() });
+      });
+
+      if (contas.length === 0) {
+        showMsgPlanoContas('Não encontrei contas analíticas nesse arquivo. Verifique se é um export de plano de contas no formato esperado.', 'warn');
+        return;
+      }
+
+      planoContas[grupoAtivo] = contas;
+      salvarStorage();
+      renderResumoPlanoContas();
+      showMsgPlanoContas(`${contas.length} contas analíticas carregadas com sucesso para "${grupoAtivo}".`, 'ok');
+    } catch (err) {
+      showMsgPlanoContas('Erro ao ler o arquivo: ' + err.message, 'warn');
+    }
+  };
+  reader.readAsArrayBuffer(file);
+}
+
+function showMsgPlanoContas(texto, tipo) {
+  const el = document.getElementById('msg-plano-contas');
+  el.innerHTML = `<div class="alert alert-${tipo}" style="margin-bottom:16px">${texto}</div>`;
+}
+
+function renderResumoPlanoContas() {
+  const el = document.getElementById('resumo-plano-contas');
+  if (!el) return;
+  document.getElementById('titulo-plano-contas').textContent = 'Plano de Contas — ' + grupoAtivo;
+  const contas = planoContas[grupoAtivo] || [];
+  if (contas.length === 0) {
+    el.innerHTML = `<div class="empty"><div class="empty-icon">📑</div>Nenhum plano de contas carregado para este grupo ainda.</div>`;
+    return;
+  }
+  el.innerHTML = `
+    <div class="card">
+      <h3>${contas.length} contas analíticas carregadas</h3>
+      <input type="search" placeholder="Buscar conta..." oninput="filtrarResumoPlanoContas(this.value)" style="margin-bottom:12px">
+      <div class="table-wrap" style="max-height:400px;overflow-y:auto">
+        <table id="tabela-resumo-plano">
+          <thead><tr><th style="width:160px">Código</th><th>Nome</th></tr></thead>
+          <tbody id="tbody-resumo-plano">
+            ${contas.map(c => `<tr><td class="mono">${escapeHtml(c.codigo)}</td><td>${escapeHtml(c.nome)}</td></tr>`).join('')}
+          </tbody>
+        </table>
+      </div>
+    </div>`;
+}
+
+function filtrarResumoPlanoContas(termo) {
+  const contas = planoContas[grupoAtivo] || [];
+  const filtro = normalizarTexto(termo || '');
+  const filtradas = filtro ? contas.filter(c => normalizarTexto(c.codigo + ' ' + c.nome).includes(filtro)) : contas;
+  document.getElementById('tbody-resumo-plano').innerHTML = filtradas.map(c => `<tr><td class="mono">${escapeHtml(c.codigo)}</td><td>${escapeHtml(c.nome)}</td></tr>`).join('');
+}
+
+// ---------- AUTOCOMPLETE DE CONTAS ----------
+let autocompleteAtivo = null;
+
+function criarAutocompleteConta(input) {
+  if (!grupoAtivo || !planoContas[grupoAtivo] || planoContas[grupoAtivo].length === 0) return;
+  fecharAutocomplete();
+  const termo = normalizarTexto(input.value || '');
+  if (!termo) return;
+  const contas = planoContas[grupoAtivo];
+  const resultados = contas.filter(c => normalizarTexto(c.codigo + ' ' + c.nome).includes(termo)).slice(0, 8);
+  if (resultados.length === 0) return;
+
+  const rect = input.getBoundingClientRect();
+  const lista = document.createElement('div');
+  lista.className = 'autocomplete-lista';
+  lista.style.cssText = `position:fixed;top:${rect.bottom + 2}px;left:${rect.left}px;width:${Math.max(rect.width, 260)}px;z-index:10000;background:var(--bg);border:1px solid var(--border2);border-radius:6px;box-shadow:0 4px 16px rgba(0,0,0,0.15);max-height:220px;overflow-y:auto`;
+  lista.innerHTML = resultados.map(c => `
+    <div class="autocomplete-item" data-codigo="${escapeAttr(c.codigo)}" style="padding:8px 12px;cursor:pointer;font-size:12.5px;border-bottom:1px solid var(--border)">
+      <div style="font-weight:600">${escapeHtml(c.nome)}</div>
+      <div class="mono" style="color:var(--text2);font-size:11px">${escapeHtml(c.codigo)}</div>
+    </div>`).join('');
+  document.body.appendChild(lista);
+  lista.querySelectorAll('.autocomplete-item').forEach(item => {
+    item.addEventListener('mousedown', ev => {
+      ev.preventDefault();
+      input.value = item.dataset.codigo;
+      input.dispatchEvent(new Event('input', { bubbles: true }));
+      fecharAutocomplete();
+    });
+    item.addEventListener('mouseenter', () => { item.style.background = 'var(--bg2)'; });
+    item.addEventListener('mouseleave', () => { item.style.background = ''; });
+  });
+  autocompleteAtivo = lista;
+}
+
+function fecharAutocomplete() {
+  if (autocompleteAtivo) { autocompleteAtivo.remove(); autocompleteAtivo = null; }
+}
+
+document.addEventListener('click', e => {
+  if (autocompleteAtivo && !e.target.classList.contains('conta-autocomplete') && !autocompleteAtivo.contains(e.target)) {
+    fecharAutocomplete();
+  }
+});
 
 function processarArquivo(file) {
   if (!grupoAtivo) { alert('Selecione um grupo antes de importar.'); return; }
@@ -647,7 +810,7 @@ function renderNovasChaves() {
       <td title="${escapeAttr(historicoExibido)}" style="color:var(--text2)">${escapeHtml(historicoExibido)}</td>
       <td title="${escapeAttr(numeroExibido)}" style="color:var(--text2)">${escapeHtml(numeroExibido)}</td>
       <td title="${escapeAttr(tipoDoc)}" style="color:var(--text2)">${escapeHtml(tipoDoc)}</td>
-      <td><input type="text" placeholder="Ex: 1.1.01.0001" value="${escapeAttr(codigosTemp[chave] || '')}" data-chave="${escapeAttr(chave)}" oninput="atualizarCodigoNovaChave(this)" onkeydown="confirmarCodigoComEnter(event, this)" onblur="ocultarPendenciaPreenchida(this)"></td>
+      <td><input type="text" class="conta-autocomplete" placeholder="Digite o código ou nome da conta" value="${escapeAttr(codigosTemp[chave] || '')}" data-chave="${escapeAttr(chave)}" oninput="atualizarCodigoNovaChave(this); criarAutocompleteConta(this)" onkeydown="confirmarCodigoComEnter(event, this)" onblur="ocultarPendenciaPreenchida(this)" onfocus="criarAutocompleteConta(this)"></td>
     </tr>`;
   }).join('');
   atualizarStatusLote(visiveis);
@@ -922,7 +1085,7 @@ function renderRegras() {
         <td style="color:var(--text2);white-space:nowrap">${tipoDoc}</td>
         <td style="color:var(--text2);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:120px">${hist || '<span style="color:var(--text3)">—</span>'}</td>
         <td>${editandoRegras
-          ? `<input type="text" value="${cod}" data-chave="${chave.replace(/"/g,'&quot;')}" oninput="editTemp[this.dataset.chave]=this.value" style="width:100%;font-size:12px">`
+          ? `<input type="text" class="conta-autocomplete" value="${cod}" data-chave="${chave.replace(/"/g,'&quot;')}" oninput="editTemp[this.dataset.chave]=this.value; criarAutocompleteConta(this)" onfocus="criarAutocompleteConta(this)" style="width:100%;font-size:12px">`
           : `<span class="mono" style="${!cod ? 'color:var(--text3);font-style:italic' : ''}">${cod || '—'}</span>`
         }</td>
         ${editandoRegras ? `<td style="text-align:center"><button class="btn btn-sm btn-danger" onclick="excluirRegra('${chave.replace(/'/g,"\\'")}')">🗑</button></td>` : ''}
