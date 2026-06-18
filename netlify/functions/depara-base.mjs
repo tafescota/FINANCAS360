@@ -5,11 +5,12 @@ const BLOB_KEY = "base";
 export default async (req, context) => {
   const store = getStore("depara");
 
+  // GET — retorna a base atual
   if (req.method === "GET") {
     try {
       const raw = await store.get(BLOB_KEY);
       if (!raw) {
-        return Response.json({ grupos: [], depara: {}, updatedAt: null });
+        return Response.json({ grupos: [], depara: {}, planoContas: {}, updatedAt: null });
       }
       const data = JSON.parse(raw);
       return Response.json(data);
@@ -18,6 +19,7 @@ export default async (req, context) => {
     }
   }
 
+  // POST ou PUT — salva a base
   if (req.method === "POST" || req.method === "PUT") {
     try {
       const body = await req.json();
@@ -32,6 +34,7 @@ export default async (req, context) => {
     }
   }
 
+  // OPTIONS — CORS preflight
   if (req.method === "OPTIONS") {
     return new Response(null, {
       status: 204,
