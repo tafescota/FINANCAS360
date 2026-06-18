@@ -92,7 +92,8 @@
   .historico-palavra.ativo { background: var(--blue-bg); color: var(--blue-text); box-shadow: inset 0 0 0 1px var(--blue); }
   .table-hint { color: var(--text2); font-size: 12px; margin: -6px 0 8px; }
   .bulk-tool { background: var(--bg); border: 1px solid var(--border); border-radius: var(--radius); padding: 14px; margin-bottom: 16px; box-shadow: var(--shadow); }
-  .bulk-tool-top { display: grid; grid-template-columns: minmax(220px, 1fr) 170px auto auto; gap: 10px; align-items: center; }
+  .bulk-tool-top { display: grid; grid-template-columns: minmax(260px, 1fr) minmax(160px, 220px) auto auto auto; gap: 10px; align-items: center; }
+  .bulk-tool-top .btn { justify-content: center; }
   .bulk-tool-options { display: flex; align-items: center; gap: 14px; margin-top: 10px; flex-wrap: wrap; }
   .compact-check { display: inline-flex; align-items: center; gap: 6px; color: var(--text2); font-size: 12px; cursor: pointer; user-select: none; }
   .bulk-tool-status { margin-top: 8px; color: var(--text2); font-size: 12px; }
@@ -113,6 +114,7 @@
   .metric { background: var(--bg2); border-radius: var(--radius-sm); padding: 12px 16px; }
   .metric-label { font-size: 11px; color: var(--text2); margin-bottom: 4px; }
   .metric-value { font-size: 22px; font-weight: 600; }
+  .metric-sub { font-size: 11px; color: var(--text2); margin-top: 6px; line-height: 1.45; }
   .metric-value.warn { color: #d97706; }
   .metric-value.ok { color: #16a34a; }
 
@@ -229,7 +231,7 @@
         <input type="text" id="codigo-lote" class="conta-autocomplete" placeholder="Conta para aplicar" oninput="criarAutocompleteConta(this)">
         <button class="btn" onclick="selecionarFiltradasEmLote()">Selecionar filtradas</button>
         <button class="btn btn-primary" onclick="aplicarCodigoEmLote()">Aplicar conta</button>
-        <button class="btn btn-blue" onclick="salvarTudoPreenchido()">💾 Salvar contas preenchidas</button>
+        <button class="btn btn-blue" onclick="salvarTudoPreenchido()">Salvar preenchidas</button>
       </div>
       <div class="bulk-tool-options">
         <label class="compact-check">
@@ -260,7 +262,7 @@
       <h2>Lançamentos gerados</h2>
     </div>
     <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:12px;margin-bottom:16px">
-      <div class="metric"><div class="metric-label">Total de lançamentos</div><div class="metric-value" id="met-total">0</div></div>
+      <div class="metric"><div class="metric-label">Total de lançamentos</div><div class="metric-value" id="met-total">0</div><div class="metric-sub"><div id="met-linhas-originais">0 linhas originais</div><div id="met-linhas-extras">0 linhas extras</div></div></div>
       <div class="metric"><div class="metric-label">Sem código</div><div class="metric-value" id="met-sem" class="">0</div></div>
       <div class="metric"><div class="metric-label">Valor total</div><div class="metric-value" style="font-size:16px" id="met-valor">R$ 0,00</div></div>
     </div>
@@ -1178,10 +1180,31 @@ function gerarLancamentos(dados, regras) {
     }
 
     lancamentosGerados.push({ idx, data: dataLiq, codDebito, codCredito: banco, valorLiq, valorFmt: fmtValor(valorLiq), complemento, empresa, plano, acrescimoDesconto, semCodigo: !codDebito });
+    if (acrescimoDesconto !== 0) {
+      const tipoAjuste = acrescimoDesconto < 0 ? 'DESCONTO' : 'ACRÉSCIMO';
+      const valorAjuste = Math.abs(acrescimoDesconto);
+      const complementoAjuste = `${tipoAjuste} - ${complemento}`;
+      lancamentosGerados.push({
+        idx,
+        data: dataLiq,
+        codDebito,
+        codCredito: banco,
+        valorLiq: valorAjuste,
+        valorFmt: fmtValor(valorAjuste),
+        complemento: complementoAjuste,
+        empresa,
+        plano,
+        acrescimoDesconto,
+        tipoAjuste,
+        semCodigo: !codDebito
+      });
+    }
   });
 
   // Métricas
   document.getElementById('met-total').textContent = lancamentosGerados.length;
+  document.getElementById('met-linhas-originais').textContent = `${dados.length} linha${dados.length !== 1 ? 's' : ''} original${dados.length !== 1 ? 'is' : ''}`;
+  document.getElementById('met-linhas-extras').textContent = `${ajustes.length} linha${ajustes.length !== 1 ? 's' : ''} extra${ajustes.length !== 1 ? 's' : ''} de acréscimo/desconto`;
   const semCod = lancamentosGerados.filter(l => l.semCodigo).length;
   const metSem = document.getElementById('met-sem');
   metSem.textContent = semCod;
@@ -1211,14 +1234,17 @@ function gerarLancamentos(dados, regras) {
 
   const aa = document.getElementById('alert-ajustes');
   if (ajustes.length > 0) {
-    const listaAjustes = ajustes.map(a => `<div><strong>${escapeHtml(a.empresa)}</strong> · ${escapeHtml(a.fornecedor)} · ${escapeHtml(a.plano)} · ajuste: R$ ${fmtValor(a.acrescimoDesconto)} · líquido: R$ ${fmtValor(a.valorLiq)}</div>`).join('');
+    const listaAjustes = ajustes.map(a => {
+      const tipo = a.acrescimoDesconto < 0 ? 'DESCONTO' : 'ACRÉSCIMO';
+      return `<div><strong>${tipo}</strong> · ${escapeHtml(a.empresa)} · ${escapeHtml(a.fornecedor)} · ${escapeHtml(a.plano)} · ajuste: R$ ${fmtValor(Math.abs(a.acrescimoDesconto))} · líquido: R$ ${fmtValor(a.valorLiq)}</div>`;
+    }).join('');
     aa.innerHTML = `<div class="alert alert-orange alert-pendentes" style="margin-bottom:12px">
       <div class="alert-pendentes-top">
         <div class="alert-pendentes-main">
           <span class="alert-pendentes-icon">⚠️</span>
           <div>
-            <span class="alert-pendentes-title">${ajustes.length} linha${ajustes.length > 1 ? 's' : ''} com acréscimo/desconto</span>
-            <span class="alert-pendentes-sub">valor líquido arredondado para 2 casas.</span>
+            <span class="alert-pendentes-title">${ajustes.length} linha${ajustes.length > 1 ? 's' : ''} extra${ajustes.length > 1 ? 's' : ''} de acréscimo/desconto</span>
+            <span class="alert-pendentes-sub">geradas além do lançamento líquido.</span>
           </div>
         </div>
         <button class="btn btn-sm" onclick="alternarListaPendentes(this)">Expandir</button>
