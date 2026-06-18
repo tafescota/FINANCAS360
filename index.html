@@ -71,11 +71,12 @@
   .table-novas th:nth-child(5) { width: 18%; }
   .table-novas th:nth-child(6) { width: 8%; }
   .table-novas th:nth-child(7) { width: 11%; }
-  .table-novas th:nth-child(8) { width: 100px; }
+  .table-novas th:nth-child(8) { width: 150px; }
   .table-novas td { min-height: 56px; white-space: normal; overflow-wrap: anywhere; line-height: 1.35; }
   .table-novas td:nth-child(2) { font-weight: 600; color: #111827; }
   .table-novas td:first-child, .table-novas th:first-child { text-align: center; padding-left: 10px; padding-right: 10px; }
   .table-novas input[type=text] { height: 34px; min-width: 0; font-size: 12px; padding-left: 8px; padding-right: 8px; }
+  .table-novas td .btn { height: 34px; padding: 0 10px; flex-shrink: 0; }
   .table-hint { color: var(--text2); font-size: 12px; margin: -6px 0 8px; }
   .bulk-tool { background: var(--bg); border: 1px solid var(--border); border-radius: var(--radius); padding: 14px; margin-bottom: 16px; box-shadow: var(--shadow); }
   .bulk-tool-top { display: grid; grid-template-columns: minmax(220px, 1fr) 170px auto auto; gap: 10px; align-items: center; }
@@ -701,11 +702,6 @@ function criarAutocompleteConta(input) {
       input.value = item.dataset.codigo;
       input.dispatchEvent(new Event('input', { bubbles: true }));
       fecharAutocomplete();
-      if (input.dataset.chave) {
-        confirmandoComEnter = true;
-        ocultarPendenciaPreenchida(input, true);
-        setTimeout(() => { confirmandoComEnter = false; }, 0);
-      }
     });
     item.addEventListener('mouseenter', () => { item.style.background = 'var(--bg2)'; });
     item.addEventListener('mouseleave', () => { item.style.background = ''; });
@@ -815,7 +811,10 @@ function renderNovasChaves() {
       <td title="${escapeAttr(historicoExibido)}" style="color:var(--text2)">${escapeHtml(historicoExibido)}</td>
       <td title="${escapeAttr(numeroExibido)}" style="color:var(--text2)">${escapeHtml(numeroExibido)}</td>
       <td title="${escapeAttr(tipoDoc)}" style="color:var(--text2)">${escapeHtml(tipoDoc)}</td>
-      <td><input type="text" class="conta-autocomplete" placeholder="Digite o código ou nome da conta" value="${escapeAttr(codigosTemp[chave] || '')}" data-chave="${escapeAttr(chave)}" oninput="atualizarCodigoNovaChave(this); criarAutocompleteConta(this)" onkeydown="confirmarCodigoComEnter(event, this)"></td>
+      <td style="display:flex;gap:6px;align-items:center">
+        <input type="text" class="conta-autocomplete" placeholder="Digite o código ou nome da conta" value="${escapeAttr(codigosTemp[chave] || '')}" data-chave="${escapeAttr(chave)}" oninput="atualizarCodigoNovaChave(this); criarAutocompleteConta(this)" style="flex:1">
+        <button type="button" class="btn btn-sm btn-primary" title="Confirmar esta conta" onclick="confirmarLinhaCodigo(this)">✓</button>
+      </td>
     </tr>`;
   }).join('');
   atualizarStatusLote(visiveis);
@@ -844,16 +843,17 @@ function atualizarCodigoNovaChave(inp) {
   atualizarStatusLote();
 }
 
-function confirmarCodigoComEnter(event, inp) {
-  if (event.key !== 'Enter' && event.key !== 'Tab') return;
-  if (event.key === 'Enter') event.preventDefault();
+function confirmarLinhaCodigo(btn) {
+  const inp = btn.closest('td').querySelector('input[data-chave]');
+  if (!inp) return;
+  codigosTemp[inp.dataset.chave] = inp.value.trim();
   confirmandoComEnter = true;
   ocultarPendenciaPreenchida(inp, true);
   setTimeout(() => { confirmandoComEnter = false; }, 0);
 }
 
 function ocultarPendenciaPreenchida(inp, focarProximo = false) {
-  if (!focarProximo) return; // só confirma com Enter, Tab ou seleção no autocomplete — nunca por clicar fora
+  if (!focarProximo) return; // só confirma quando o botão "✓" da linha é clicado, nunca por Tab, Enter ou clicar fora
   salvarCodigosPreenchidosNoGrupo();
   if (!document.getElementById('somente-pendentes')?.checked) {
     if (focarProximo) focarProximoCampoCodigo(inp);
