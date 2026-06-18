@@ -206,6 +206,7 @@
       <h2>Novas combinações encontradas</h2>
       <span class="tag-novas" id="tag-qtd-novas"></span>
     </div>
+    <div id="msg-novas-chaves"></div>
     <div class="alert alert-warn" style="margin-bottom:16px">
       ⚠️ Preencha o código contábil do Domínio para cada combinação nova. Pode deixar em branco — o lançamento ficará marcado para revisão.
     </div>
@@ -215,6 +216,7 @@
         <input type="text" id="codigo-lote" class="conta-autocomplete" placeholder="Conta para aplicar" oninput="criarAutocompleteConta(this)">
         <button class="btn" onclick="selecionarFiltradasEmLote()">Selecionar filtradas</button>
         <button class="btn btn-primary" onclick="aplicarCodigoEmLote()">Aplicar conta</button>
+        <button class="btn btn-blue" onclick="salvarTudoPreenchido()">💾 Salvar</button>
       </div>
       <div class="bulk-tool-options">
         <label class="compact-check">
@@ -841,6 +843,23 @@ function coletarCodigosNovasChaves() {
 function atualizarCodigoNovaChave(inp) {
   codigosTemp[inp.dataset.chave] = inp.value.trim();
   atualizarStatusLote();
+}
+
+function salvarTudoPreenchido() {
+  const campos = Array.from(document.querySelectorAll('#tbody-novas-chaves input[type=text][data-chave]'));
+  let qtd = 0;
+  campos.forEach(inp => {
+    const valor = inp.value.trim();
+    codigosTemp[inp.dataset.chave] = valor;
+    if (valor) qtd++;
+  });
+  salvarCodigosPreenchidosNoGrupo(false);
+  const el = document.getElementById('msg-novas-chaves');
+  const tipo = qtd > 0 ? 'ok' : 'warn';
+  const texto = qtd > 0 ? `✓ ${qtd} conta${qtd !== 1 ? 's' : ''} salva${qtd !== 1 ? 's' : ''} com sucesso.` : 'Nenhum campo preenchido para salvar.';
+  el.innerHTML = `<div class="alert alert-${tipo}" style="margin-bottom:16px">${texto} <button onclick="this.parentElement.remove()" style="background:none;border:none;cursor:pointer;float:right;font-size:16px">×</button></div>`;
+  setTimeout(() => { el.innerHTML = ''; }, 4000);
+  renderNovasChaves();
 }
 
 function confirmarLinhaCodigo(btn) {
