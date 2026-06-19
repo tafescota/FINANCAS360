@@ -333,6 +333,10 @@
       <button class="btn btn-sm btn-blue" onclick="mostrarTela('tela-importar')">Importar planilha</button>
       <button class="btn btn-sm" onclick="mostrarTela('tela-home')">Grupos</button>
     </div>
+    <div style="display:flex;gap:8px;margin-bottom:12px;flex-wrap:wrap">
+      <button class="btn btn-sm btn-primary" id="btn-regras-pagamentos" onclick="alterarTipoRegras('pagamentos')">Pagamentos</button>
+      <button class="btn btn-sm" id="btn-regras-recebimentos" onclick="alterarTipoRegras('recebimentos')">Recebimentos</button>
+    </div>
     <input type="search" id="filtro-regras" placeholder="Filtrar fornecedor ou plano..." oninput="renderRegras()" style="margin-bottom:14px">
     <div id="container-regras"></div>
   </div>
@@ -342,11 +346,13 @@
 <script>
 const STORAGE_GRUPOS = 'zip_depara_grupos';
 const STORAGE_DEPARA = 'zip_depara_regras';
+const STORAGE_DEPARA_RECEBIMENTOS = 'zip_depara_regras_recebimentos';
 const STORAGE_PLANO_CONTAS = 'zip_depara_plano_contas';
 const API_BASE_DEPARA = '/.netlify/functions/depara-base';
 
 let grupos = JSON.parse(localStorage.getItem(STORAGE_GRUPOS) || '[]');
 let depara = JSON.parse(localStorage.getItem(STORAGE_DEPARA) || '{}');
+let deparaRecebimentos = JSON.parse(localStorage.getItem(STORAGE_DEPARA_RECEBIMENTOS) || '{}');
 let planoContas = JSON.parse(localStorage.getItem(STORAGE_PLANO_CONTAS) || '{}');
 let grupoAtivo = null;
 let linhasImportadas = [];
@@ -356,6 +362,7 @@ let selecionadasLote = new Set();
 let lancamentosGerados = [];
 let editandoRegras = false;
 let editTemp = {};
+let tipoRegrasAtivo = 'pagamentos';
 let telaAtual = 'tela-home';
 let pilhaTelas = [];
 let confirmandoComEnter = false;
@@ -450,6 +457,7 @@ function obterChaveRegraNova(item) {
 function salvarStorage() {
   localStorage.setItem(STORAGE_GRUPOS, JSON.stringify(grupos));
   localStorage.setItem(STORAGE_DEPARA, JSON.stringify(depara));
+  localStorage.setItem(STORAGE_DEPARA_RECEBIMENTOS, JSON.stringify(deparaRecebimentos));
   localStorage.setItem(STORAGE_PLANO_CONTAS, JSON.stringify(planoContas));
   salvarBaseCompartilhada();
 }
@@ -472,10 +480,12 @@ async function carregarBaseCompartilhada(mostrarMensagem = false) {
     if (remoteUpdatedAt && remoteUpdatedAt < ultimaSyncLocal) return;
     grupos = Array.isArray(data.grupos) ? data.grupos : [];
     depara = data.depara && typeof data.depara === 'object' ? data.depara : {};
+    deparaRecebimentos = data.deparaRecebimentos && typeof data.deparaRecebimentos === 'object' ? data.deparaRecebimentos : {};
     planoContas = data.planoContas && typeof data.planoContas === 'object' ? data.planoContas : {};
     ultimaSyncLocal = remoteUpdatedAt || Date.now();
     localStorage.setItem(STORAGE_GRUPOS, JSON.stringify(grupos));
     localStorage.setItem(STORAGE_DEPARA, JSON.stringify(depara));
+    localStorage.setItem(STORAGE_DEPARA_RECEBIMENTOS, JSON.stringify(deparaRecebimentos));
     localStorage.setItem(STORAGE_PLANO_CONTAS, JSON.stringify(planoContas));
     if (grupoAtivo && !grupos.includes(grupoAtivo)) grupoAtivo = null;
     renderGrupos();
@@ -496,7 +506,7 @@ async function salvarBaseCompartilhada(forcar = false) {
   try {
     salvandoBaseCompartilhada = true;
     ultimaSyncLocal = Date.now();
-    const payload = { grupos, depara, planoContas };
+    const payload = { grupos, depara, deparaRecebimentos, planoContas };
     const resp = await fetch(API_BASE_DEPARA, {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
@@ -517,7 +527,8 @@ function exportarBaseDePara() {
     versao: 1,
     exportadoEm: new Date().toISOString(),
     grupos,
-    depara
+    depara,
+    deparaRecebimentos
   };
   const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json;charset=utf-8' });
   const url = URL.createObjectURL(blob);
@@ -544,6 +555,7 @@ function importarBaseDePara(event) {
       if (!substituir) return;
       grupos = payload.grupos;
       depara = payload.depara;
+      deparaRecebimentos = payload.deparaRecebimentos && typeof payload.deparaRecebimentos === 'object' ? payload.deparaRecebimentos : {};
       grupoAtivo = grupos.includes(grupoAtivo) ? grupoAtivo : null;
       salvarStorage();
       renderGrupos();
@@ -960,6 +972,7 @@ function renderSugestoesConciliacao(sugestoes, qtdPagamentos, qtdMovimentos, ent
   const linhasConciliadas = conciliadas.slice(0, 160).map(renderLinhaPagamento).join('');
   const pendentesPagamento = sugestoes.filter(s => !s.mov);
   const linhasPagamentosPendentes = pendentesPagamento.map(renderLinhaPagamento).join('');
+  const regrasRecebimentos = deparaRecebimentos[grupoAtivo] || {};
   const itensRecebimento = Array.from(entradasAgrupadas.values()).slice(0, 60).map((r, idx) => ({ ...r, id: `rec-${idx}`, movimento: 'recebimento' }));
   const itensSaidaExtra = saidasExtras.slice(0, 80).map(({ mov, idxMov }) => ({
     id: `saida-${idxMov}`,
@@ -988,6 +1001,9 @@ function renderSugestoesConciliacao(sugestoes, qtdPagamentos, qtdMovimentos, ent
   conciliacaoAplicadaTemp = false;
   conciliacaoItensTemp.forEach(item => {
     if (!(item.id in codigosConciliacaoTemp)) codigosConciliacaoTemp[item.id] = '';
+    if (item.movimento === 'recebimento' && !codigosConciliacaoTemp[item.id]) {
+      codigosConciliacaoTemp[item.id] = obterCodigoContaParaDominio(encontrarCodigoRegraRecebimentoConciliacao(regrasRecebimentos, item.tipo, item.historico));
+    }
   });
   const linhasEntradas = itensRecebimento.map(r => `<tr>
     <td><span class="badge badge-blue">Recebimento</span></td>
@@ -1175,6 +1191,7 @@ function atualizarCodigoConciliacaoModal(input) {
 
 function atualizarModalPendenciasConciliacao() {
   coletarCodigosConciliacao();
+  salvarRegrasRecebimentoConciliacao();
   abrirModalPendenciasConciliacao();
 }
 
@@ -1218,6 +1235,37 @@ function obterTrechoRegraRecebimento(item) {
   return selecionado || limparTextoECD(item.historico || '');
 }
 
+function montarChaveRecebimentoConciliacao(tipo, trecho, historicoInteiro = false) {
+  const tipoLimpo = limparTextoECD(tipo || 'Recebimento');
+  const trechoLimpo = limparTextoECD(trecho);
+  return historicoInteiro
+    ? `RECEBIMENTO | ${tipoLimpo} | HISTORICO_EXATO | ${trechoLimpo}`
+    : `RECEBIMENTO | ${tipoLimpo} | HISTORICO_CONTEM | ${trechoLimpo}`;
+}
+
+function obterChaveRegraRecebimentoConciliacao(item) {
+  const trecho = obterTrechoRegraRecebimento(item);
+  const historico = limparTextoECD(item.historico || '');
+  return montarChaveRecebimentoConciliacao(item.tipo, trecho, normalizarTexto(trecho) === normalizarTexto(historico));
+}
+
+function encontrarCodigoRegraRecebimentoConciliacao(regras, tipo, historico) {
+  const historicoLimpo = limparTextoECD(historico);
+  const tipoLimpo = limparTextoECD(tipo || 'Recebimento');
+  const chaveExata = montarChaveRecebimentoConciliacao(tipoLimpo, historicoLimpo, true);
+  if (regras[chaveExata]) return regras[chaveExata];
+
+  const prefixo = `RECEBIMENTO | ${tipoLimpo} | HISTORICO_CONTEM | `;
+  const historicoNormalizado = normalizarTexto(historicoLimpo);
+  const achada = Object.keys(regras).find(chave => {
+    if (!chave.startsWith(prefixo)) return false;
+    const trecho = chave.slice(prefixo.length);
+    const termos = normalizarTexto(trecho).split(/\s+/).filter(Boolean);
+    return termos.length > 0 && termos.every(termo => historicoNormalizado.includes(termo));
+  });
+  return achada ? regras[achada] : '';
+}
+
 function recebimentoAtendeRegra(item, itemRegra) {
   if (!item || !itemRegra || item.movimento !== 'recebimento') return false;
   if (normalizarTexto(item.tipo || '') !== normalizarTexto(itemRegra.tipo || '')) return false;
@@ -1240,12 +1288,27 @@ function aplicarRegraRecebimentoConciliacao(id, codigo) {
   });
 }
 
+function salvarRegrasRecebimentoConciliacao() {
+  if (!grupoAtivo) return;
+  const regras = Object.assign({}, deparaRecebimentos[grupoAtivo] || {});
+  conciliacaoItensTemp
+    .filter(item => item.movimento === 'recebimento')
+    .forEach(item => {
+      const codigo = obterCodigoContaParaDominio(codigosConciliacaoTemp[item.id]);
+      if (!codigo) return;
+      regras[obterChaveRegraRecebimentoConciliacao(item)] = codigo;
+    });
+  deparaRecebimentos[grupoAtivo] = regras;
+  salvarStorage();
+}
+
 function fecharModalPendenciasConciliacao() {
   document.getElementById('modal-pendencias-conciliacao')?.remove();
 }
 
 function salvarModalPendenciasConciliacao() {
   coletarCodigosConciliacao();
+  salvarRegrasRecebimentoConciliacao();
   fecharModalPendenciasConciliacao();
   gerarSugestoesConciliacao();
 }
@@ -1266,6 +1329,7 @@ function exportarConciliacaoBancaria() {
     abrirModalPendenciasConciliacao();
     return;
   }
+  salvarRegrasRecebimentoConciliacao();
   const cabecalho = ['Data','Cód. Conta Débito','Cód. Conta Crédito','Valor','Cód. Histórico','Complemento Histórico','Inicia Lote','Código Matriz/Filial','Plano de Contas Financeiro','Centro de Custo Débito','Centro de Custo Crédito'];
   const linhas = [];
   itensNovos.forEach(item => {
@@ -1318,12 +1382,13 @@ function renderGrupos() {
   }
   el.innerHTML = grupos.map(g => {
     const qtd = Object.keys(depara[g] || {}).length;
+    const qtdRecebimentos = Object.keys(deparaRecebimentos[g] || {}).length;
     const qtdContas = (planoContas[g] || []).length;
     const isAtivo = g === grupoAtivo;
     return `<div class="grupo-card ${isAtivo ? 'ativo' : ''}">
       <div style="flex:1">
         <div class="grupo-nome">${g} ${isAtivo ? '<span class="badge badge-blue">ativo</span>' : ''}</div>
-        <div class="grupo-info">${qtd} regra${qtd !== 1 ? 's' : ''} de de-para · ${qtdContas > 0 ? qtdContas + ' contas no plano' : 'plano de contas não carregado'}</div>
+        <div class="grupo-info">${qtd} regra${qtd !== 1 ? 's' : ''} de pagamentos · ${qtdRecebimentos} regra${qtdRecebimentos !== 1 ? 's' : ''} de recebimentos · ${qtdContas > 0 ? qtdContas + ' contas no plano' : 'plano de contas não carregado'}</div>
       </div>
       <div style="display:flex;gap:8px;flex-wrap:wrap">
         ${!isAtivo ? `<button class="btn btn-sm" onclick="selecionarGrupo('${g}')">Selecionar</button>` : ''}
@@ -1392,6 +1457,7 @@ function excluirGrupo(g) {
     if (!confirm(`Excluir o grupo "${g}" e todas as suas regras? Esta ação não pode ser desfeita.`)) return;
     grupos = grupos.filter(x => x !== g);
     delete depara[g];
+    delete deparaRecebimentos[g];
     if (grupoAtivo === g) grupoAtivo = null;
     salvarStorage();
     renderGrupos();
@@ -2092,43 +2158,85 @@ function exportarDominioPagamentos() {
 }
 
 // ---------- REGRAS ----------
+function alterarTipoRegras(tipo) {
+  if (editandoRegras && !confirm('Descartar a edição atual e trocar de lista?')) return;
+  tipoRegrasAtivo = tipo;
+  editandoRegras = false;
+  editTemp = {};
+  renderRegras();
+}
+
+function obterBaseRegrasAtiva() {
+  return tipoRegrasAtivo === 'recebimentos' ? deparaRecebimentos : depara;
+}
+
+function definirBaseRegrasAtiva(regras) {
+  if (tipoRegrasAtivo === 'recebimentos') deparaRecebimentos[grupoAtivo] = regras;
+  else depara[grupoAtivo] = regras;
+}
+
+function parseRegraParaTela(chave) {
+  const partes = chave.split(' | ');
+  if (partes[0] === 'RECEBIMENTO') {
+    return {
+      fornecedor: 'Recebimento bancário',
+      plano: 'Conciliação bancária',
+      tipoDoc: partes[1] || 'Recebimento',
+      historico: partes.slice(3).join(' | ') || '',
+      parcial: partes[2] === 'HISTORICO_CONTEM'
+    };
+  }
+  const regraParcial = partes[2] === 'HISTORICO_CONTEM';
+  return {
+    fornecedor: partes[0] || '',
+    plano: partes[1] || '',
+    tipoDoc: regraParcial ? 'Histórico contém' : (partes[2] || ''),
+    historico: regraParcial ? partes.slice(3).join(' | ') : (partes[3] || ''),
+    parcial: regraParcial
+  };
+}
+
 function renderRegras() {
   if (!grupoAtivo) return;
-  document.getElementById('titulo-regras').textContent = 'Regras de de-para — ' + grupoAtivo;
-  const regrasSalvas = depara[grupoAtivo] || {};
+  const ehRecebimentos = tipoRegrasAtivo === 'recebimentos';
+  document.getElementById('titulo-regras').textContent = `Regras de de-para — ${grupoAtivo}`;
+  const btnPag = document.getElementById('btn-regras-pagamentos');
+  const btnRec = document.getElementById('btn-regras-recebimentos');
+  if (btnPag && btnRec) {
+    btnPag.className = `btn btn-sm ${ehRecebimentos ? '' : 'btn-primary'}`;
+    btnRec.className = `btn btn-sm ${ehRecebimentos ? 'btn-primary' : ''}`;
+  }
+  const baseAtiva = obterBaseRegrasAtiva();
+  const regrasSalvas = baseAtiva[grupoAtivo] || {};
   const filtro = (document.getElementById('filtro-regras').value || '').toLowerCase();
   let chaves = Object.keys(regrasSalvas);
   if (filtro) chaves = chaves.filter(c => c.toLowerCase().includes(filtro));
 
   const container = document.getElementById('container-regras');
   if (chaves.length === 0) {
-    container.innerHTML = `<div class="card"><div class="empty"><div class="empty-icon">📭</div>${filtro ? 'Nenhuma regra encontrada para "' + filtro + '".' : 'Nenhuma regra cadastrada ainda. Importe uma planilha para começar.'}</div></div>`;
+    container.innerHTML = `<div class="card"><div class="empty"><div class="empty-icon">📭</div>${filtro ? 'Nenhuma regra encontrada para "' + filtro + '".' : `Nenhuma regra de ${ehRecebimentos ? 'recebimentos' : 'pagamentos'} cadastrada ainda.`}</div></div>`;
     return;
   }
 
   const dados = editandoRegras ? editTemp : regrasSalvas;
-  container.innerHTML = `<div class="table-wrap"><table>
+  container.innerHTML = `<div class="conciliacao-note" style="margin-bottom:10px">Mostrando ${chaves.length} regra${chaves.length !== 1 ? 's' : ''} de ${ehRecebimentos ? 'recebimentos/conciliação bancária' : 'pagamentos'}.</div>
+  <div class="table-wrap"><table>
     <thead><tr>
-      <th style="width:26%">Fornecedor</th>
-      <th style="width:22%">Plano de contas</th>
+      <th style="width:26%">${ehRecebimentos ? 'Origem' : 'Fornecedor'}</th>
+      <th style="width:22%">${ehRecebimentos ? 'Módulo' : 'Plano de contas'}</th>
       <th style="width:16%">Tipo de documento</th>
       <th style="width:16%">Histórico</th>
       <th style="width:130px">Código Domínio</th>
       ${editandoRegras ? '<th style="width:44px"></th>' : ''}
     </tr></thead>
     <tbody>${chaves.map((chave, i) => {
-      const partes = chave.split(' | ');
-      const forn = partes[0] || '';
-      const plano = partes[1] || '';
-      const regraParcial = partes[2] === 'HISTORICO_CONTEM';
-      const tipoDoc = regraParcial ? 'Histórico contém' : (partes[2] || '');
-      const hist = partes[3] || '';
+      const regra = parseRegraParaTela(chave);
       const cod = dados[chave] || '';
       return `<tr>
-        <td style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:180px">${forn}</td>
-        <td style="color:var(--text2);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:160px">${plano}</td>
-        <td style="color:var(--text2);white-space:nowrap">${tipoDoc}</td>
-        <td style="color:var(--text2);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:120px">${hist || '<span style="color:var(--text3)">—</span>'}</td>
+        <td style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:180px">${escapeHtml(regra.fornecedor)}</td>
+        <td style="color:var(--text2);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:160px">${escapeHtml(regra.plano)}</td>
+        <td style="color:var(--text2);white-space:nowrap">${escapeHtml(regra.tipoDoc)}</td>
+        <td style="color:var(--text2);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:120px">${regra.historico ? escapeHtml(regra.historico) : '<span style="color:var(--text3)">—</span>'}</td>
         <td>${editandoRegras
           ? `<input type="text" class="conta-autocomplete" value="${cod}" data-chave="${chave.replace(/"/g,'&quot;')}" oninput="editTemp[this.dataset.chave]=this.value; criarAutocompleteConta(this)" style="width:100%;font-size:12px">`
           : `<span class="mono" style="${!cod ? 'color:var(--text3);font-style:italic' : ''}">${cod || '—'}</span>`
@@ -2141,8 +2249,9 @@ function renderRegras() {
 
 function limparTodasRegras() {
   pedirSenha(() => {
-    if (!confirm(`Apagar TODAS as regras de de-para do grupo "${grupoAtivo}"? Esta ação não pode ser desfeita.`)) return;
-    depara[grupoAtivo] = {};
+    const rotulo = tipoRegrasAtivo === 'recebimentos' ? 'recebimentos' : 'pagamentos';
+    if (!confirm(`Apagar TODAS as regras de ${rotulo} do grupo "${grupoAtivo}"? As regras do outro tipo serão mantidas.`)) return;
+    definirBaseRegrasAtiva({});
     salvarStorage();
     renderRegras();
   });
@@ -2151,7 +2260,7 @@ function limparTodasRegras() {
 function ativarEdicaoRegras() {
   pedirSenha(() => {
     editandoRegras = true;
-    editTemp = Object.assign({}, depara[grupoAtivo] || {});
+    editTemp = Object.assign({}, obterBaseRegrasAtiva()[grupoAtivo] || {});
     document.getElementById('btn-editar-regras').style.display = 'none';
     document.getElementById('btn-salvar-regras').style.display = '';
     document.getElementById('btn-cancelar-regras').style.display = '';
@@ -2165,7 +2274,7 @@ function salvarEdicaoRegras() {
     editTemp[inp.dataset.chave] = obterCodigoContaParaDominio(inp.value);
     inp.value = editTemp[inp.dataset.chave];
   });
-  depara[grupoAtivo] = Object.assign({}, editTemp);
+  definirBaseRegrasAtiva(Object.assign({}, editTemp));
   salvarStorage();
   editandoRegras = false;
   document.getElementById('btn-editar-regras').style.display = '';
