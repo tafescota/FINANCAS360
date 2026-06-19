@@ -138,6 +138,16 @@
   .progress-fill { height: 100%; background: var(--blue); border-radius: 2px; transition: width 0.3s; }
   .conciliacao-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 12px; margin-bottom: 16px; }
   .conciliacao-note { color: var(--text2); font-size: 13px; line-height: 1.55; }
+  .conciliacao-preview { margin-top: 16px; }
+  .conciliacao-preview .table-wrap { max-height: 360px; overflow: auto; }
+  .conciliacao-row-ok { background: #f0fdf4; }
+  .conciliacao-row-ok td { border-bottom-color: #bbf7d0; }
+  .conciliacao-row-warn { background: #fef2f2; }
+  .conciliacao-row-warn td { border-bottom-color: #fecaca; }
+  .conciliacao-status { display: inline-block; border-radius: 999px; padding: 2px 9px; font-weight: 700; font-size: 11px; }
+  .conciliacao-status.ok { background: #dcfce7; color: #166534; border: 1px solid #86efac; }
+  .conciliacao-status.warn { background: #fee2e2; color: #991b1b; border: 1px solid #fecaca; }
+  .conciliacao-status.mid { background: #eff6ff; color: #1d4ed8; border: 1px solid #bfdbfe; }
 
   .tela { display: none; }
   .tela.ativa { display: block; }
@@ -280,7 +290,7 @@
       </table>
     </div>
     <div style="display:flex;gap:10px;flex-wrap:wrap">
-      <button class="btn btn-blue" onclick="exportarXLSX()">⬇ Exportar para Domínio (.xlsx)</button>
+      <button class="btn btn-blue" onclick="exportarDominioPagamentos()">⬇ Exportar Domínio pagamentos (.xlsx)</button>
       <button class="btn" onclick="mostrarTela('tela-conciliacao-bancaria')">Conciliação bancária</button>
       <button class="btn" onclick="mostrarTela('tela-importar')">Nova importação</button>
       <button class="btn" onclick="mostrarTela('tela-home')">Início</button>
@@ -300,9 +310,15 @@
       <p class="conciliacao-note" style="margin-bottom:14px">
         Esta área será usada para cruzar a planilha de pagamentos carregada nesta sessão com o extrato bancário. Os dados do extrato e os vínculos de conciliação serão temporários e não serão salvos na base compartilhada.
       </p>
-      <button class="btn btn-blue" disabled>Importar extrato bancário</button>
-      <span style="font-size:12px;color:var(--text2);margin-left:10px">Em teste a partir deste ponto.</span>
+      <button class="btn btn-blue" onclick="document.getElementById('extrato-bancario-input').click()">Importar extrato bancário</button>
+      <button class="btn" onclick="limparExtratoBancario()">Limpar extrato</button>
+      <button class="btn btn-primary" onclick="gerarSugestoesConciliacao()">Gerar sugestões</button>
+      <span style="font-size:12px;color:var(--text2);margin-left:10px">Aceita o relatório analítico de extrato em .xlsx.</span>
+      <input type="file" id="extrato-bancario-input" accept=".xlsx,.xls" style="display:none" onchange="onFileChangeExtratoBancario(event)">
+      <div id="msg-conciliacao-bancaria" style="margin-top:14px"></div>
     </div>
+    <div id="preview-conciliacao-bancaria" class="conciliacao-preview"></div>
+    <div id="resultado-conciliacao-bancaria" class="conciliacao-preview"></div>
   </div>
 
   <!-- TELA REGRAS -->
@@ -346,6 +362,15 @@ let confirmandoComEnter = false;
 let ultimaSyncLocal = 0;
 let salvandoBaseCompartilhada = false;
 let filtroLoteTimer = null;
+let extratoBancarioTemp = [];
+let infoExtratoBancarioTemp = null;
+let mostrarPreviewExtrato = false;
+let conciliacaoItensTemp = [];
+let codigosConciliacaoTemp = {};
+let vinculosPagamentoConciliacaoTemp = {};
+let trechosRecebimentoConciliacaoTemp = {};
+let conciliacaoAplicadaTemp = false;
+let mostrarLancamentosConciliados = false;
 
 const COLS = { TIPO:0, NUMERO:1, PARCELA:2, EMPRESA:3, FORNECEDOR:4, EMISSAO:5, VENCIMENTO:6, LIQUIDACAO:7, VALOR_BRUTO:8, COMPETENCIA:9, PLANO:10, CC:11, ACRESCIMO:12, VALOR_LIQ:13, CONTA:14, MEIO_PAG:15, TIPO_DOC:16, APROVADA:17, STATUS:18, HISTORICO:19 };
 
@@ -571,15 +596,718 @@ function renderConciliacaoBancaria() {
   const el = document.getElementById('resumo-conciliacao-bancaria');
   if (!el) return;
   const qtdPagamentos = linhasImportadas.length;
+  const entradas = extratoBancarioTemp.filter(m => m.valor > 0);
+  const saidas = extratoBancarioTemp.filter(m => m.valor < 0);
+  const pagamentosConciliaveis = linhasImportadas
+    .map((row, idx) => pagamentoConciliacao(row, idx))
+    .filter(p => (!infoExtratoBancarioTemp?.conta || p.conta === infoExtratoBancarioTemp.conta) && p.valor > 0);
+  const saidasPagamentos = extratoBancarioTemp
+    .filter(m => m.valor < 0 && normalizarTexto(m.tipoConciliacao).includes('parcelas de titulos'));
+  const totalPagamentos = arredondarMoeda(pagamentosConciliaveis.reduce((s, p) => s + p.valor, 0));
+  const totalSaidasPagamentos = arredondarMoeda(Math.abs(saidasPagamentos.reduce((s, m) => s + m.valor, 0)));
+  const diferencaConferencia = arredondarMoeda(totalPagamentos - totalSaidasPagamentos);
+  const valoresBatem = Math.abs(diferencaConferencia) < 0.01;
   el.innerHTML = `
     <div class="conciliacao-grid">
       <div class="metric"><div class="metric-label">Grupo ativo</div><div class="metric-value" style="font-size:16px">${escapeHtml(grupoAtivo || 'Nenhum')}</div></div>
       <div class="metric"><div class="metric-label">Pagamentos carregados</div><div class="metric-value">${qtdPagamentos}</div></div>
-      <div class="metric"><div class="metric-label">Extrato bancário</div><div class="metric-value" style="font-size:16px">Não importado</div></div>
+      <div class="metric"><div class="metric-label">Extrato bancário</div><div class="metric-value">${extratoBancarioTemp.length}</div><div class="metric-sub">${infoExtratoBancarioTemp ? escapeHtml(infoExtratoBancarioTemp.conta || 'Conta não identificada') : 'Não importado'}</div></div>
+      <div class="metric"><div class="metric-label">Entradas</div><div class="metric-value" style="font-size:16px">R$ ${fmtValor(entradas.reduce((s, m) => s + m.valor, 0))}</div><div class="metric-sub">${entradas.length} movimentos</div></div>
+      <div class="metric"><div class="metric-label">Saídas</div><div class="metric-value" style="font-size:16px">R$ ${fmtValor(Math.abs(saidas.reduce((s, m) => s + m.valor, 0)))}</div><div class="metric-sub">${saidas.length} movimentos</div></div>
+    </div>
+    <div class="alert ${valoresBatem ? 'alert-ok' : 'alert-warn'}">
+      <div>
+        <strong>Conferência de pagamentos:</strong>
+        pagamentos totais R$ ${fmtValor(totalPagamentos)} · pagamentos bancários R$ ${fmtValor(totalSaidasPagamentos)}
+        · ${valoresBatem ? 'valores batem' : 'diferença de R$ ' + fmtValor(Math.abs(diferencaConferencia))}
+      </div>
     </div>
     <div class="alert alert-orange">
       ⚠️ Marco de desenvolvimento: aba criada como módulo isolado. O fluxo atual de de-para, geração e exportação permanece preservado.
     </div>`;
+  renderPreviewExtratoBancario();
+}
+
+function onFileChangeExtratoBancario(e) {
+  if (e.target.files[0]) processarExtratoBancario(e.target.files[0]);
+  e.target.value = '';
+}
+
+function processarExtratoBancario(file) {
+  const reader = new FileReader();
+  reader.onload = function(e) {
+    try {
+      const data = new Uint8Array(e.target.result);
+      const wb = XLSX.read(data, { type: 'array', cellDates: true });
+      const nomePlanilha = wb.SheetNames.find(n => normalizarTexto(n).includes('extrato')) || wb.SheetNames[0];
+      const ws = wb.Sheets[nomePlanilha];
+      const raw = XLSX.utils.sheet_to_json(ws, { header: 1, defval: null });
+      const headerIdx = raw.findIndex(row => {
+        const cols = (row || []).map(c => normalizarTexto(c));
+        return cols.includes('data') && cols.includes('conta') && cols.includes('valor');
+      });
+      if (headerIdx === -1) throw new Error('Não encontrei o cabeçalho Data / Conta / Valor no extrato.');
+
+      const headers = raw[headerIdx].map(c => normalizarTexto(c));
+      const idx = nome => headers.indexOf(normalizarTexto(nome));
+      const col = {
+        data: idx('data'),
+        conta: idx('conta'),
+        valor: idx('valor'),
+        historico: idx('historico'),
+        complemento: idx('complemento'),
+        documento: idx('documento'),
+        empresa: idx('empresa'),
+        origem: idx('origem'),
+        saldo: idx('saldo'),
+        tipoConciliacao: idx('tipo de conciliacao')
+      };
+
+      const movimentos = raw.slice(headerIdx + 1).map(row => {
+        const valor = arredondarMoeda(row[col.valor]);
+        return {
+          data: row[col.data] || '',
+          conta: limparTextoECD(row[col.conta]),
+          valor,
+          historico: limparTextoECD(col.historico >= 0 ? row[col.historico] : ''),
+          complemento: limparTextoECD(col.complemento >= 0 ? row[col.complemento] : ''),
+          documento: limparTextoECD(col.documento >= 0 ? row[col.documento] : ''),
+          empresa: limparTextoECD(col.empresa >= 0 ? row[col.empresa] : ''),
+          origem: limparTextoECD(col.origem >= 0 ? row[col.origem] : ''),
+          saldo: col.saldo >= 0 ? arredondarMoeda(row[col.saldo]) : 0,
+          tipoConciliacao: limparTextoECD(col.tipoConciliacao >= 0 ? row[col.tipoConciliacao] : '')
+        };
+      }).filter(m => m.data && m.conta && m.valor !== 0);
+
+      if (movimentos.length === 0) throw new Error('Nenhum movimento com valor foi encontrado no extrato.');
+      extratoBancarioTemp = movimentos;
+      mostrarPreviewExtrato = false;
+      conciliacaoItensTemp = [];
+      codigosConciliacaoTemp = {};
+      vinculosPagamentoConciliacaoTemp = {};
+      trechosRecebimentoConciliacaoTemp = {};
+      conciliacaoAplicadaTemp = false;
+      infoExtratoBancarioTemp = {
+        arquivo: file.name,
+        conta: movimentos[0]?.conta || '',
+        planilha: nomePlanilha
+      };
+      mostrarMsgConciliacao(`${movimentos.length} movimento${movimentos.length !== 1 ? 's' : ''} importado${movimentos.length !== 1 ? 's' : ''} do extrato.`, 'ok');
+      renderConciliacaoBancaria();
+    } catch (err) {
+      mostrarMsgConciliacao('Erro ao importar extrato: ' + err.message, 'warn');
+    }
+  };
+  reader.readAsArrayBuffer(file);
+}
+
+function mostrarMsgConciliacao(texto, tipo = 'ok') {
+  const el = document.getElementById('msg-conciliacao-bancaria');
+  if (!el) return;
+  el.innerHTML = `<div class="alert alert-${tipo}">${escapeHtml(texto)}</div>`;
+}
+
+function limparExtratoBancario() {
+  extratoBancarioTemp = [];
+  infoExtratoBancarioTemp = null;
+  mostrarPreviewExtrato = false;
+  conciliacaoItensTemp = [];
+  codigosConciliacaoTemp = {};
+  vinculosPagamentoConciliacaoTemp = {};
+  trechosRecebimentoConciliacaoTemp = {};
+  conciliacaoAplicadaTemp = false;
+  mostrarMsgConciliacao('Extrato removido desta sessão.', 'orange');
+  renderConciliacaoBancaria();
+}
+
+function alternarPreviewExtratoBancario() {
+  mostrarPreviewExtrato = !mostrarPreviewExtrato;
+  renderPreviewExtratoBancario();
+}
+
+function renderPreviewExtratoBancario() {
+  const el = document.getElementById('preview-conciliacao-bancaria');
+  if (!el) return;
+  if (extratoBancarioTemp.length === 0) {
+    el.innerHTML = '';
+    return;
+  }
+  if (!mostrarPreviewExtrato) {
+    el.innerHTML = `<div class="card" style="padding:12px 16px">
+      <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap">
+        <div class="conciliacao-note">${extratoBancarioTemp.length} movimentos do extrato importados nesta sessão.</div>
+        <button class="btn btn-sm" onclick="alternarPreviewExtratoBancario()">Mostrar extrato importado</button>
+      </div>
+    </div>`;
+    return;
+  }
+  const linhas = extratoBancarioTemp.slice(0, 80).map(m => `
+    <tr>
+      <td style="white-space:nowrap">${escapeHtml(fmtDate(m.data))}</td>
+      <td>${escapeHtml(m.conta)}</td>
+      <td style="text-align:right;white-space:nowrap;color:${m.valor < 0 ? '#b91c1c' : '#166534'}">R$ ${fmtValor(m.valor)}</td>
+      <td>${escapeHtml(descricaoMovimentoExtrato(m))}</td>
+      <td>${escapeHtml(m.documento)}</td>
+      <td>${escapeHtml(m.tipoConciliacao)}</td>
+    </tr>`).join('');
+  el.innerHTML = `<div class="card">
+    <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:8px">
+      <h3 style="margin-bottom:0">Extrato importado</h3>
+      <button class="btn btn-sm" onclick="alternarPreviewExtratoBancario()">Ocultar extrato</button>
+    </div>
+    <p class="conciliacao-note" style="margin-bottom:10px">Mostrando até 80 movimentos. Estes dados ficam somente nesta sessão.</p>
+    <div class="table-wrap table-scroll">
+      <table>
+        <thead><tr><th>Data</th><th>Conta</th><th style="text-align:right">Valor</th><th>Histórico - Complemento - Tipo</th><th>Documento</th><th>Tipo</th></tr></thead>
+        <tbody>${linhas}</tbody>
+      </table>
+    </div>
+  </div>`;
+}
+
+function dataKey(v) {
+  const texto = fmtDate(v);
+  return texto || String(v || '');
+}
+
+function textoConciliacao(v) {
+  return normalizarTexto(limparTextoECD(v)).replace(/[^a-z0-9 ]/g, ' ').replace(/\s+/g, ' ').trim();
+}
+
+function descricaoMovimentoExtrato(mov) {
+  return [mov?.historico, mov?.complemento, mov?.tipoConciliacao]
+    .map(limparTextoECD)
+    .filter(Boolean)
+    .join(' - ');
+}
+
+function pagamentoConciliacao(row, idx) {
+  const tipoDoc = limparTextoECD(row[COLS.TIPO_DOC]);
+  const infoDoc = separarNumeroDoHistorico(tipoDoc, row[COLS.NUMERO], row[COLS.HISTORICO]);
+  return {
+    idx,
+    data: row[COLS.LIQUIDACAO],
+    dataKey: dataKey(row[COLS.LIQUIDACAO]),
+    fornecedor: limparTextoECD(row[COLS.FORNECEDOR]),
+    fornecedorNorm: textoConciliacao(row[COLS.FORNECEDOR]),
+    numero: limparTextoECD(row[COLS.NUMERO]),
+    valor: arredondarMoeda(row[COLS.VALOR_LIQ]),
+    conta: limparTextoECD(row[COLS.CONTA]),
+    meio: limparTextoECD(row[COLS.MEIO_PAG]),
+    plano: limparTextoECD(row[COLS.PLANO]),
+    historico: infoDoc.historico
+  };
+}
+
+function movimentoTextoConciliacao(mov) {
+  return textoConciliacao([descricaoMovimentoExtrato(mov), mov.documento].filter(Boolean).join(' '));
+}
+
+function fornecedorBatePagamentoMovimento(pag, movTexto) {
+  if (!pag.fornecedorNorm) return false;
+  const termos = pag.fornecedorNorm.split(' ').filter(t => t.length >= 3);
+  if (termos.length === 0) return false;
+  return termos.some(t => movTexto.includes(t)) || movTexto.includes(pag.fornecedorNorm);
+}
+
+function pagamentoEhTarifaBancaria(pag) {
+  const texto = textoConciliacao([pag.plano, pag.historico, pag.fornecedor].filter(Boolean).join(' '));
+  return texto.includes('tarifas bancarias')
+    || texto.includes('tarifa bancaria')
+    || texto.includes('manutencao de conta')
+    || texto.includes('cesta bancaria');
+}
+
+function gerarSugestoesConciliacao() {
+  const el = document.getElementById('resultado-conciliacao-bancaria');
+  if (!el) return;
+  if (linhasImportadas.length === 0) {
+    el.innerHTML = `<div class="alert alert-warn">Importe a planilha de pagamentos antes de gerar sugestões.</div>`;
+    return;
+  }
+  if (extratoBancarioTemp.length === 0) {
+    el.innerHTML = `<div class="alert alert-warn">Importe o extrato bancário antes de gerar sugestões.</div>`;
+    return;
+  }
+
+  const pagamentos = linhasImportadas
+    .map((row, idx) => pagamentoConciliacao(row, idx))
+    .filter(p => p.conta === infoExtratoBancarioTemp?.conta && p.valor > 0);
+  const movimentos = extratoBancarioTemp
+    .filter(m => m.valor < 0 && normalizarTexto(m.tipoConciliacao).includes('parcelas de titulos'));
+  const entradas = extratoBancarioTemp.filter(m => m.valor > 0);
+  const usadosMov = new Set();
+  const sugestoesPorPagamento = new Map();
+
+  pagamentos.forEach(pag => {
+    const vinculo = vinculosPagamentoConciliacaoTemp[`pag-${pag.idx}`];
+    if (vinculo === undefined || vinculo === '') return;
+    const idxOriginal = Number(vinculo);
+    const mov = extratoBancarioTemp[idxOriginal];
+    if (!mov || mov.valor >= 0) return;
+    const idxMov = movimentos.findIndex(m => m === mov);
+    if (idxMov >= 0 && usadosMov.has(idxMov)) return;
+    if (idxMov >= 0) usadosMov.add(idxMov);
+    sugestoesPorPagamento.set(pag.idx, { pag, mov, idxMov, status: 'conciliado', regra: 'Conciliado manualmente', diferenca: arredondarMoeda(pag.valor - Math.abs(mov.valor)) });
+  });
+
+  pagamentos.forEach(pag => {
+    if (sugestoesPorPagamento.has(pag.idx)) return;
+    const candidatos = movimentos
+      .map((mov, idxMov) => ({ mov, idxMov }))
+      .filter(({ mov, idxMov }) => {
+        const doc = String(mov.documento || '').trim();
+        return !usadosMov.has(idxMov)
+          && doc
+          && pag.numero === doc
+          && pag.dataKey === dataKey(mov.data)
+          && Math.abs(pag.valor - Math.abs(mov.valor)) < 0.01;
+      });
+    if (candidatos.length === 1) {
+      usadosMov.add(candidatos[0].idxMov);
+      sugestoesPorPagamento.set(pag.idx, { pag, mov: candidatos[0].mov, idxMov: candidatos[0].idxMov, status: 'conciliado', regra: 'Documento + data + valor', diferenca: 0 });
+    }
+  });
+
+  pagamentos.filter(p => !sugestoesPorPagamento.has(p.idx)).forEach(pag => {
+    const candidatos = movimentos
+      .map((mov, idxMov) => ({ mov, idxMov, movTexto: movimentoTextoConciliacao(mov) }))
+      .filter(({ mov, idxMov, movTexto }) => !usadosMov.has(idxMov)
+        && pag.dataKey === dataKey(mov.data)
+        && Math.abs(pag.valor - Math.abs(mov.valor)) < 0.01
+        && fornecedorBatePagamentoMovimento(pag, movTexto));
+    if (candidatos.length === 1) {
+      usadosMov.add(candidatos[0].idxMov);
+      sugestoesPorPagamento.set(pag.idx, { pag, mov: candidatos[0].mov, idxMov: candidatos[0].idxMov, status: 'provável', regra: 'Fornecedor + data + valor', diferenca: 0 });
+    }
+  });
+
+  pagamentos.filter(p => !sugestoesPorPagamento.has(p.idx) && pagamentoEhTarifaBancaria(p)).forEach(pag => {
+    const candidatos = movimentos
+      .map((mov, idxMov) => ({ mov, idxMov, movTexto: movimentoTextoConciliacao(mov) }))
+      .filter(({ mov, idxMov, movTexto }) => !usadosMov.has(idxMov)
+        && Math.abs(pag.valor - Math.abs(mov.valor)) < 0.01
+        && fornecedorBatePagamentoMovimento(pag, movTexto));
+    if (candidatos.length > 0) {
+      const escolhido = candidatos[0];
+      usadosMov.add(escolhido.idxMov);
+      sugestoesPorPagamento.set(pag.idx, { pag, mov: escolhido.mov, idxMov: escolhido.idxMov, status: 'conciliado', regra: 'Tarifa bancária: fornecedor + valor', diferenca: 0 });
+    }
+  });
+
+  movimentos.forEach((mov, idxMov) => {
+    if (usadosMov.has(idxMov)) return;
+    const movTexto = movimentoTextoConciliacao(mov);
+    const candidatos = pagamentos.filter(p => !sugestoesPorPagamento.has(p.idx)
+      && p.dataKey === dataKey(mov.data)
+      && fornecedorBatePagamentoMovimento(p, movTexto));
+    const soma = arredondarMoeda(candidatos.reduce((s, p) => s + p.valor, 0));
+    if (candidatos.length > 1 && Math.abs(soma - Math.abs(mov.valor)) < 0.01) {
+      usadosMov.add(idxMov);
+      candidatos.forEach(pag => {
+        sugestoesPorPagamento.set(pag.idx, { pag, mov, idxMov, status: 'agrupado', regra: 'Pagamento dentro de saída acumulada', diferenca: 0 });
+      });
+    }
+  });
+
+  const sugestoes = pagamentos.map(pag => sugestoesPorPagamento.get(pag.idx) || {
+    pag,
+    mov: null,
+    idxMov: null,
+    status: 'pendente',
+    regra: 'Precisa conciliar',
+    diferenca: pag.valor
+  });
+  const saidasExtras = movimentos
+    .map((mov, idxMov) => ({ mov, idxMov }))
+    .filter(item => !usadosMov.has(item.idxMov));
+
+  renderSugestoesConciliacao(sugestoes, pagamentos.length, movimentos.length, entradas, saidasExtras);
+}
+
+function renderSugestoesConciliacao(sugestoes, qtdPagamentos, qtdMovimentos, entradas = [], saidasExtras = []) {
+  const el = document.getElementById('resultado-conciliacao-bancaria');
+  const conciliadas = sugestoes.filter(s => s.mov);
+  const semSugestao = sugestoes.length - conciliadas.length;
+  const totalEntradas = arredondarMoeda(entradas.reduce((s, m) => s + Math.abs(m.valor), 0));
+  const entradasAgrupadas = new Map();
+  entradas.forEach(m => {
+    const descricao = descricaoMovimentoExtrato(m) || 'Sem histórico';
+    const chave = [m.tipoConciliacao || 'Recebimento', descricao].join('||');
+    const atual = entradasAgrupadas.get(chave) || { tipo: m.tipoConciliacao || 'Recebimento', historico: descricao, qtd: 0, total: 0, movimentos: [] };
+    atual.qtd += 1;
+    atual.total = arredondarMoeda(atual.total + Math.abs(m.valor));
+    atual.movimentos.push(m);
+    entradasAgrupadas.set(chave, atual);
+  });
+  const renderLinhaPagamento = s => {
+    const temSugestao = !!s.mov;
+    const classeLinha = temSugestao ? 'conciliacao-row-ok' : 'conciliacao-row-warn';
+    const classeStatus = temSugestao ? (s.status === 'conciliado' ? 'ok' : 'mid') : 'warn';
+    const extratoTxt = s.mov
+      ? `${escapeHtml(descricaoMovimentoExtrato(s.mov))}<br><span style="color:var(--text2)">R$ ${fmtValor(Math.abs(s.mov.valor))} - Doc. ${escapeHtml(s.mov.documento || 's/n')}</span>`
+      : '<span style="color:#991b1b;font-weight:600">Não encontrado no extrato. Precisa preencher na janela de pendências.</span>';
+    return `<tr class="${classeLinha}">
+      <td><span class="badge ${temSugestao ? 'badge-blue' : ''}">Pagamento</span></td>
+      <td style="white-space:nowrap">${escapeHtml(fmtDate(s.pag.data))}</td>
+      <td>${escapeHtml(s.pag.fornecedor || 'Sem fornecedor')}</td>
+      <td style="text-align:right;white-space:nowrap">R$ ${fmtValor(s.pag.valor)}</td>
+      <td>${extratoTxt}</td>
+      <td><span class="conciliacao-status ${classeStatus}">${escapeHtml(s.status)}</span></td>
+      <td>${escapeHtml(s.regra)}</td>
+    </tr>`;
+  };
+  const linhasConciliadas = conciliadas.slice(0, 160).map(renderLinhaPagamento).join('');
+  const pendentesPagamento = sugestoes.filter(s => !s.mov);
+  const linhasPagamentosPendentes = pendentesPagamento.map(renderLinhaPagamento).join('');
+  const itensRecebimento = Array.from(entradasAgrupadas.values()).slice(0, 60).map((r, idx) => ({ ...r, id: `rec-${idx}`, movimento: 'recebimento' }));
+  const itensSaidaExtra = saidasExtras.slice(0, 80).map(({ mov, idxMov }) => ({
+    id: `saida-${idxMov}`,
+    movimento: 'saida-pendente',
+    tipo: mov.tipoConciliacao || 'Saída não conciliada',
+    historico: descricaoMovimentoExtrato(mov) || 'Sem histórico',
+    qtd: 1,
+    total: Math.abs(mov.valor),
+    data: fmtDate(mov.data),
+    conta: mov.conta,
+    empresa: mov.empresa || '',
+    idxMov,
+    idxOriginal: extratoBancarioTemp.indexOf(mov)
+  }));
+  const itensPagamentoPendente = sugestoes.filter(s => !s.mov).map(s => ({
+    id: `pag-${s.pag.idx}`,
+    movimento: 'pagamento-pendente',
+    tipo: 'Pagamento não encontrado',
+    historico: s.pag.fornecedor || 'Sem fornecedor',
+    total: s.pag.valor,
+    data: fmtDate(s.pag.data),
+    conta: s.pag.conta,
+    empresa: ''
+  }));
+  conciliacaoItensTemp = [...itensPagamentoPendente, ...itensSaidaExtra, ...itensRecebimento];
+  conciliacaoAplicadaTemp = false;
+  conciliacaoItensTemp.forEach(item => {
+    if (!(item.id in codigosConciliacaoTemp)) codigosConciliacaoTemp[item.id] = '';
+  });
+  const linhasEntradas = itensRecebimento.map(r => `<tr>
+    <td><span class="badge badge-blue">Recebimento</span></td>
+    <td>${r.qtd} movimento${r.qtd !== 1 ? 's' : ''}</td>
+    <td><strong>${escapeHtml(r.tipo)}</strong><br><span style="color:var(--text2)">${escapeHtml(r.historico)}</span></td>
+    <td style="text-align:right;white-space:nowrap">R$ ${fmtValor(r.total)}</td>
+    <td>${codigosConciliacaoTemp[r.id] ? `<span class="mono">${escapeHtml(codigosConciliacaoTemp[r.id])}</span>` : '<span style="color:#1d4ed8;font-weight:600">Preencher na janela de pendências</span>'}</td>
+    <td><span class="conciliacao-status ${codigosConciliacaoTemp[r.id] ? 'ok' : 'mid'}">${codigosConciliacaoTemp[r.id] ? 'preenchido' : 'de-para'}</span></td>
+    <td>${escapeHtml(r.tipo)}</td>
+  </tr>`).join('');
+  const linhasSaidasExtras = itensSaidaExtra.map(r => `<tr class="conciliacao-row-warn">
+    <td><span class="badge">Saída pendente</span></td>
+    <td>${escapeHtml(r.data || '')}</td>
+    <td><strong>${escapeHtml(r.tipo)}</strong><br><span style="color:var(--text2)">${escapeHtml(r.historico)}</span></td>
+    <td style="text-align:right;white-space:nowrap">R$ ${fmtValor(r.total)}</td>
+    <td><span style="color:#991b1b;font-weight:600">Escolha esta saída em um pagamento pendente</span></td>
+    <td><span class="conciliacao-status warn">conciliar</span></td>
+    <td>Conciliar manualmente</td>
+  </tr>`).join('');
+  const textoBotaoConciliados = mostrarLancamentosConciliados ? 'Recolher lançamentos conciliados' : 'Expandir lançamentos conciliados';
+  const secaoConciliados = `<tr>
+    <td colspan="7" style="background:#dcfce7;border-bottom:1px solid #86efac;border-left:4px solid #16a34a;padding:12px 14px">
+      <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap">
+        <strong style="color:#166534;font-size:14px">✓ ${conciliadas.length} lançamento${conciliadas.length !== 1 ? 's' : ''} conciliado${conciliadas.length !== 1 ? 's' : ''} - OK</strong>
+        <button class="btn btn-sm" onclick="alternarLancamentosConciliados()">${textoBotaoConciliados}</button>
+      </div>
+    </td>
+  </tr>${mostrarLancamentosConciliados ? linhasConciliadas : ''}`;
+  const qtdPendencias = pendentesPagamento.length + itensSaidaExtra.length + itensRecebimento.length;
+  const secaoPendencias = `<tr>
+    <td colspan="7" style="background:#fff7ed;border-bottom:1px solid #fed7aa;padding:10px 14px">
+      <strong>${qtdPendencias} pendência${qtdPendencias !== 1 ? 's' : ''} para revisar/preencher</strong>
+    </td>
+  </tr>`;
+  const linhas = secaoConciliados + secaoPendencias + linhasPagamentosPendentes + linhasSaidasExtras + linhasEntradas;
+
+  el.innerHTML = `<div class="card">
+    <h3>Conciliação e de-para</h3>
+    <div class="conciliacao-grid">
+      <div class="metric"><div class="metric-label">Pagamentos analisados</div><div class="metric-value">${qtdPagamentos}</div></div>
+      <div class="metric"><div class="metric-label">Saídas do extrato</div><div class="metric-value">${qtdMovimentos}</div></div>
+      <div class="metric"><div class="metric-label">Pagamentos conciliados</div><div class="metric-value ok">${conciliadas.length}</div></div>
+      <div class="metric"><div class="metric-label">Pagamentos pendentes</div><div class="metric-value ${semSugestao > 0 ? 'warn' : 'ok'}">${semSugestao}</div></div>
+      <div class="metric"><div class="metric-label">Saídas pendentes</div><div class="metric-value ${saidasExtras.length > 0 ? 'warn' : 'ok'}">${saidasExtras.length}</div></div>
+      <div class="metric"><div class="metric-label">Recebimentos</div><div class="metric-value">${entradas.length}</div><div class="metric-sub">R$ ${fmtValor(totalEntradas)}</div></div>
+      <div class="metric"><div class="metric-label">De-para recebimentos</div><div class="metric-value">${entradasAgrupadas.size}</div></div>
+    </div>
+    <p class="conciliacao-note" style="margin-bottom:10px">Pagamentos são validados contra as saídas do extrato. Recebimentos aparecem no mesmo quadro para montar o de-para, sem salvar dados da planilha na base compartilhada.</p>
+    <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-bottom:12px">
+      <button class="btn btn-primary" onclick="abrirModalPendenciasConciliacao()">Preencher pendências</button>
+      <button class="btn btn-blue" onclick="exportarConciliacaoBancaria()">Exportar Domínio conciliação (.xlsx)</button>
+      <span class="conciliacao-note">Exporta só recebimentos novos. Saídas pendentes devem ser conciliadas com pagamentos.</span>
+    </div>
+    <div class="table-wrap table-scroll">
+      <table>
+        <thead><tr><th>Movimento</th><th>Data / Grupo</th><th>Descrição</th><th style="text-align:right">Valor</th><th>Extrato / De-para</th><th>Status</th><th>Regra</th></tr></thead>
+        <tbody>${linhas || '<tr><td colspan="7" style="text-align:center;color:var(--text2);padding:24px">Nenhum movimento para exibir.</td></tr>'}</tbody>
+      </table>
+    </div>
+  </div>`;
+}
+
+function atualizarCodigoConciliacao(input) {
+  if (!input?.dataset?.conciliacaoId) return;
+  codigosConciliacaoTemp[input.dataset.conciliacaoId] = obterCodigoContaParaDominio(input.value);
+}
+
+function alternarLancamentosConciliados() {
+  mostrarLancamentosConciliados = !mostrarLancamentosConciliados;
+  gerarSugestoesConciliacao();
+}
+
+function coletarCodigosConciliacao() {
+  document.querySelectorAll('[data-conciliacao-id]').forEach(inp => {
+    codigosConciliacaoTemp[inp.dataset.conciliacaoId] = obterCodigoContaParaDominio(inp.value);
+    inp.value = codigosConciliacaoTemp[inp.dataset.conciliacaoId];
+  });
+  document.querySelectorAll('[data-conciliacao-modal-id]').forEach(inp => {
+    codigosConciliacaoTemp[inp.dataset.conciliacaoModalId] = obterCodigoContaParaDominio(inp.value);
+    inp.value = codigosConciliacaoTemp[inp.dataset.conciliacaoModalId];
+  });
+  document.querySelectorAll('[data-vinculo-pagamento-id]').forEach(sel => {
+    vinculosPagamentoConciliacaoTemp[sel.dataset.vinculoPagamentoId] = sel.value;
+  });
+}
+
+function labelMovimentoConciliacao(item) {
+  if (item.movimento === 'pagamento-pendente') return 'Pagamento pendente';
+  if (item.movimento === 'saida-pendente') return 'Saída pendente';
+  if (item.movimento === 'recebimento') return 'Recebimento';
+  return item.movimento || 'Movimento';
+}
+
+function abrirModalPendenciasConciliacao() {
+  if (conciliacaoItensTemp.length === 0) {
+    alert('Gere as sugestões de conciliação antes de preencher pendências.');
+    return;
+  }
+  coletarCodigosConciliacao();
+  const modalAnterior = document.getElementById('modal-pendencias-conciliacao');
+  if (modalAnterior) modalAnterior.remove();
+  const modal = document.createElement('div');
+  modal.id = 'modal-pendencias-conciliacao';
+  modal.style.cssText = 'position:fixed;inset:0;background:rgba(15,23,42,0.55);display:flex;align-items:center;justify-content:center;z-index:9999;padding:24px';
+  const saidasPendentes = conciliacaoItensTemp.filter(item => item.movimento === 'saida-pendente');
+  const itensModal = conciliacaoItensTemp
+    .filter(item => item.movimento !== 'saida-pendente')
+    .filter(item => {
+      if (item.movimento === 'pagamento-pendente') return !vinculosPagamentoConciliacaoTemp[item.id];
+      if (item.movimento === 'recebimento') return !obterCodigoContaParaDominio(codigosConciliacaoTemp[item.id]);
+      return true;
+    });
+  const linhas = itensModal.map(item => {
+    const valor = codigosConciliacaoTemp[item.id] || '';
+    const selecionadasEmOutros = new Set(Object.entries(vinculosPagamentoConciliacaoTemp)
+      .filter(([id, valorSelecionado]) => id !== item.id && valorSelecionado !== '')
+      .map(([, valorSelecionado]) => String(valorSelecionado)));
+    const saidasDisponiveis = saidasPendentes.filter(saida => !selecionadasEmOutros.has(String(saida.idxOriginal)));
+    const mesmasSaidas = saidasDisponiveis.filter(saida => Math.abs(saida.total - item.total) < 0.01);
+    const outrasSaidas = saidasDisponiveis.filter(saida => Math.abs(saida.total - item.total) >= 0.01).slice(0, 20);
+    const campoAcao = item.movimento === 'pagamento-pendente'
+      ? `<select data-vinculo-pagamento-id="${escapeAttr(item.id)}" onchange="atualizarVinculoPagamentoConciliacao(this)" style="width:100%;padding:8px 10px;border:1px solid var(--border2);border-radius:var(--radius-sm);background:var(--bg);color:var(--text)">
+          <option value="">Selecione o movimento do extrato</option>
+          <optgroup label="Mesmo valor do pagamento">
+          ${mesmasSaidas
+            .map(saida => `<option value="${saida.idxOriginal}" ${String(vinculosPagamentoConciliacaoTemp[item.id] || '') === String(saida.idxOriginal) ? 'selected' : ''}>${escapeHtml(saida.data)} - R$ ${fmtValor(saida.total)} - ${escapeHtml(saida.historico)}</option>`)
+            .join('')}
+          </optgroup>
+          <optgroup label="Outras saídas disponíveis">
+          ${outrasSaidas
+            .map(saida => `<option value="${saida.idxOriginal}" ${String(vinculosPagamentoConciliacaoTemp[item.id] || '') === String(saida.idxOriginal) ? 'selected' : ''}>${escapeHtml(saida.data)} - R$ ${fmtValor(saida.total)} - ${escapeHtml(saida.historico)}</option>`)
+            .join('')}
+          </optgroup>
+        </select>
+        <div class="conciliacao-note" style="margin-top:4px">${mesmasSaidas.length} opção${mesmasSaidas.length !== 1 ? 'ões' : ''} com o mesmo valor de R$ ${fmtValor(item.total)}</div>`
+      : `<input type="text" class="conta-autocomplete" data-conciliacao-modal-id="${escapeAttr(item.id)}" value="${escapeAttr(valor)}" placeholder="Digite código ou conta" oninput="atualizarCodigoConciliacaoModal(this); criarAutocompleteConta(this)" style="width:100%">`;
+    const descricaoItem = item.movimento === 'recebimento'
+      ? `<strong>${escapeHtml(item.tipo || '')}</strong><div class="historico-regra-label" style="margin-top:6px">Clique nas palavras da regra:</div>${renderPalavrasRecebimentoConciliacao(item)}`
+      : `<strong>${escapeHtml(item.tipo || '')}</strong><br><span style="color:var(--text2)">${escapeHtml(item.historico || '')}</span>`;
+    return `<tr>
+      <td><span class="badge ${item.movimento === 'recebimento' ? 'badge-blue' : ''}">${escapeHtml(labelMovimentoConciliacao(item))}</span></td>
+      <td>${escapeHtml(item.data || (item.qtd ? `${item.qtd} movimento${item.qtd !== 1 ? 's' : ''}` : ''))}</td>
+      <td>${descricaoItem}</td>
+      <td style="text-align:right;white-space:nowrap">R$ ${fmtValor(item.total)}</td>
+      <td>${campoAcao}</td>
+    </tr>`;
+  }).join('');
+  modal.innerHTML = `
+    <div style="background:var(--bg);border-radius:var(--radius);box-shadow:0 16px 48px rgba(0,0,0,0.25);width:min(1040px,96vw);max-height:86vh;display:flex;flex-direction:column">
+      <div style="padding:18px 22px;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between;gap:12px">
+        <div>
+          <h3 style="margin-bottom:2px">Preencher pendências da conciliação</h3>
+          <div class="conciliacao-note">${itensModal.length} item${itensModal.length !== 1 ? 's' : ''} para revisar. As saídas pendentes aparecem como opções dos pagamentos.</div>
+        </div>
+        <div style="display:flex;gap:8px;align-items:center">
+          <button class="btn btn-sm" onclick="atualizarModalPendenciasConciliacao()">Atualizar pendências</button>
+          <button class="btn btn-sm" onclick="fecharModalPendenciasConciliacao()">Fechar</button>
+        </div>
+      </div>
+      <div style="padding:16px 22px;overflow:auto">
+        <div class="table-wrap table-scroll">
+          <table>
+            <thead><tr><th>Movimento</th><th>Data / Grupo</th><th>Descrição</th><th style="text-align:right">Valor</th><th>Conciliar com / De-para</th></tr></thead>
+            <tbody>${linhas || `<tr><td colspan="5" style="text-align:center;color:var(--ok-text);background:var(--ok-bg);padding:24px">Todas as pendências desta janela foram preenchidas.</td></tr>`}</tbody>
+          </table>
+        </div>
+      </div>
+      <div style="padding:14px 22px;border-top:1px solid var(--border);display:flex;justify-content:flex-end;gap:10px">
+        <button class="btn" onclick="fecharModalPendenciasConciliacao()">Cancelar</button>
+        <button class="btn" onclick="atualizarModalPendenciasConciliacao()">Atualizar pendências</button>
+        <button class="btn btn-primary" onclick="salvarModalPendenciasConciliacao()">Salvar preenchimentos</button>
+      </div>
+    </div>`;
+  document.body.appendChild(modal);
+  setTimeout(() => modal.querySelector('input[data-conciliacao-modal-id]')?.focus(), 0);
+}
+
+function atualizarCodigoConciliacaoModal(input) {
+  if (!input?.dataset?.conciliacaoModalId) return;
+  const id = input.dataset.conciliacaoModalId;
+  const codigo = obterCodigoContaParaDominio(input.value);
+  codigosConciliacaoTemp[id] = codigo;
+  aplicarRegraRecebimentoConciliacao(id, codigo);
+}
+
+function atualizarModalPendenciasConciliacao() {
+  coletarCodigosConciliacao();
+  abrirModalPendenciasConciliacao();
+}
+
+function atualizarVinculoPagamentoConciliacao(select) {
+  if (!select?.dataset?.vinculoPagamentoId) return;
+  vinculosPagamentoConciliacaoTemp[select.dataset.vinculoPagamentoId] = select.value;
+  abrirModalPendenciasConciliacao();
+}
+
+function renderPalavrasRecebimentoConciliacao(item) {
+  const palavras = palavrasHistorico(item.historico || '');
+  if (palavras.length === 0) return '';
+  const selecionadas = new Set(trechosRecebimentoConciliacaoTemp[item.id]?.indices || []);
+  return `<div class="historico-palavras">${palavras.map((palavra, idx) => {
+    const ativa = selecionadas.has(idx);
+    return `<button type="button" class="historico-palavra ${ativa ? 'ativo' : ''}" data-rec-id="${escapeAttr(item.id)}" data-idx="${idx}" onclick="selecionarPalavraRecebimentoConciliacao(this)" title="Usar '${escapeAttr(palavra)}' na regra">${escapeHtml(palavra)}</button>`;
+  }).join(' ')}</div>`;
+}
+
+function selecionarPalavraRecebimentoConciliacao(btn) {
+  const id = btn.dataset.recId;
+  const idx = Number(btn.dataset.idx);
+  const item = conciliacaoItensTemp.find(i => i.id === id);
+  if (!item || Number.isNaN(idx)) return;
+  const atual = trechosRecebimentoConciliacaoTemp[id] || { indices: [], trecho: '' };
+  const selecionadas = new Set(atual.indices || []);
+  if (selecionadas.has(idx)) selecionadas.delete(idx);
+  else selecionadas.add(idx);
+  const indices = [...selecionadas].sort((a, b) => a - b);
+  const palavras = palavrasHistorico(item.historico || '');
+  trechosRecebimentoConciliacaoTemp[id] = {
+    indices,
+    trecho: indices.map(i => palavras[i]).filter(Boolean).join(' ')
+  };
+  btn.classList.toggle('ativo', selecionadas.has(idx));
+  aplicarRegraRecebimentoConciliacao(id, codigosConciliacaoTemp[id]);
+}
+
+function obterTrechoRegraRecebimento(item) {
+  const selecionado = limparTextoECD(trechosRecebimentoConciliacaoTemp[item.id]?.trecho || '');
+  return selecionado || limparTextoECD(item.historico || '');
+}
+
+function recebimentoAtendeRegra(item, itemRegra) {
+  if (!item || !itemRegra || item.movimento !== 'recebimento') return false;
+  if (normalizarTexto(item.tipo || '') !== normalizarTexto(itemRegra.tipo || '')) return false;
+  const termos = normalizarTexto(obterTrechoRegraRecebimento(itemRegra)).split(/\s+/).filter(Boolean);
+  const historico = normalizarTexto(item.historico || '');
+  return termos.length > 0 && termos.every(termo => historico.includes(termo));
+}
+
+function aplicarRegraRecebimentoConciliacao(id, codigo) {
+  codigo = obterCodigoContaParaDominio(codigo);
+  if (!codigo) return;
+  const itemRegra = conciliacaoItensTemp.find(item => item.id === id && item.movimento === 'recebimento');
+  if (!itemRegra) return;
+  conciliacaoItensTemp.forEach(item => {
+    if (recebimentoAtendeRegra(item, itemRegra)) {
+      codigosConciliacaoTemp[item.id] = codigo;
+      const campo = document.querySelector(`[data-conciliacao-modal-id="${CSS.escape(item.id)}"]`);
+      if (campo) campo.value = codigo;
+    }
+  });
+}
+
+function fecharModalPendenciasConciliacao() {
+  document.getElementById('modal-pendencias-conciliacao')?.remove();
+}
+
+function salvarModalPendenciasConciliacao() {
+  coletarCodigosConciliacao();
+  fecharModalPendenciasConciliacao();
+  gerarSugestoesConciliacao();
+}
+
+function exportarConciliacaoBancaria() {
+  coletarCodigosConciliacao();
+  if (conciliacaoItensTemp.length === 0) {
+    alert('Gere as sugestões de conciliação antes de exportar.');
+    return;
+  }
+  const itensNovos = conciliacaoItensTemp.filter(item => item.movimento === 'recebimento');
+  if (itensNovos.length === 0) {
+    alert('Não há movimentos novos para exportar na conciliação. Os pagamentos já ficam no arquivo de pagamentos.');
+    return;
+  }
+  const pendentes = itensNovos.filter(item => !obterCodigoContaParaDominio(codigosConciliacaoTemp[item.id]));
+  if (pendentes.length > 0) {
+    abrirModalPendenciasConciliacao();
+    return;
+  }
+  const cabecalho = ['Data','Cód. Conta Débito','Cód. Conta Crédito','Valor','Cód. Histórico','Complemento Histórico','Inicia Lote','Código Matriz/Filial','Plano de Contas Financeiro','Centro de Custo Débito','Centro de Custo Crédito'];
+  const linhas = [];
+  itensNovos.forEach(item => {
+    const codigo = obterCodigoContaParaDominio(codigosConciliacaoTemp[item.id]);
+    if (item.movimento === 'recebimento') {
+      const movimentos = item.movimentos && item.movimentos.length ? item.movimentos : [item];
+      movimentos.forEach(mov => {
+        linhas.push([
+          fmtDate(mov.data || item.data),
+          limparTextoExportacaoDominio(mov.conta || item.conta || infoExtratoBancarioTemp?.conta || ''),
+          codigo,
+          arredondarMoeda(Math.abs(mov.valor || item.total)),
+          '',
+          limparTextoExportacaoDominio(descricaoMovimentoExtrato(mov) || item.historico),
+          linhas.length === 0 ? 1 : '',
+          limparTextoExportacaoDominio(mov.empresa || item.empresa || grupoAtivo || ''),
+          limparTextoExportacaoDominio(item.tipo || ''),
+          '',
+          ''
+        ]);
+      });
+      return;
+    }
+    linhas.push([
+      item.data || '',
+      codigo,
+      limparTextoExportacaoDominio(item.conta || infoExtratoBancarioTemp?.conta || ''),
+      arredondarMoeda(item.total),
+      '',
+      limparTextoExportacaoDominio(item.historico),
+      linhas.length === 0 ? 1 : '',
+      limparTextoExportacaoDominio(item.empresa || grupoAtivo || ''),
+      limparTextoExportacaoDominio(item.tipo || ''),
+      '',
+      ''
+    ]);
+  });
+  const ws = XLSX.utils.aoa_to_sheet([cabecalho, ...linhas]);
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, 'Domínio Conciliação');
+  const data = new Date().toLocaleDateString('pt-BR').replace(/\//g,'-');
+  XLSX.writeFile(wb, `Dominio_Conciliacao_Bancaria_${grupoAtivo}_${data}.xlsx`);
 }
 
 function renderGrupos() {
@@ -1349,9 +2077,10 @@ function gerarLancamentos(dados, regras) {
   mostrarTela('tela-resultado');
 }
 
-function exportarXLSX() {
+function exportarDominioPagamentos() {
   const cabecalho = ['Data','Cód. Conta Débito','Cód. Conta Crédito','Valor','Cód. Histórico','Complemento Histórico','Inicia Lote','Código Matriz/Filial','Plano de Contas Financeiro','Centro de Custo Débito','Centro de Custo Crédito'];
-  const linhas = lancamentosGerados.map((l, i) => [
+  const lancamentosPagamentos = lancamentosGerados.filter(l => !l.origemConciliacao);
+  const linhas = lancamentosPagamentos.map((l, i) => [
     l.data, l.codDebito, limparTextoExportacaoDominio(l.codCredito), l.valorLiq, '', limparTextoExportacaoDominio(l.complemento),
     i === 0 ? 1 : '', limparTextoExportacaoDominio(l.empresa), limparTextoExportacaoDominio(l.plano), '', ''
   ]);
@@ -1359,7 +2088,7 @@ function exportarXLSX() {
   const wb = XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(wb, ws, 'Lançamentos Domínio');
   const data = new Date().toLocaleDateString('pt-BR').replace(/\//g,'-');
-  XLSX.writeFile(wb, `Lancamentos_${grupoAtivo}_${data}.xlsx`);
+  XLSX.writeFile(wb, `Dominio_Pagamentos_${grupoAtivo}_${data}.xlsx`);
 }
 
 // ---------- REGRAS ----------
