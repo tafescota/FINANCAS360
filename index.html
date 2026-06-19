@@ -329,8 +329,8 @@
       <button class="btn btn-sm" id="btn-editar-regras" onclick="ativarEdicaoRegras()">✏️ Editar</button>
       <button class="btn btn-sm btn-primary" id="btn-salvar-regras" style="display:none" onclick="salvarEdicaoRegras()">Salvar alterações</button>
       <button class="btn btn-sm" id="btn-cancelar-regras" style="display:none" onclick="cancelarEdicaoRegras()">Cancelar</button>
-      <button class="btn btn-sm btn-danger" onclick="limparTodasRegras()">🗑 Limpar tudo</button>
-      <button class="btn btn-sm btn-blue" onclick="mostrarTela('tela-importar')">Importar planilha</button>
+      <button class="btn btn-sm btn-danger" id="btn-limpar-regras" onclick="limparTodasRegras()">🗑 Limpar tudo</button>
+      <button class="btn btn-sm btn-blue" id="btn-importar-regras" onclick="mostrarTela('tela-importar')">Importar planilha</button>
       <button class="btn btn-sm" onclick="mostrarTela('tela-home')">Grupos</button>
     </div>
     <div style="display:flex;gap:8px;margin-bottom:12px;flex-wrap:wrap">
@@ -2199,13 +2199,21 @@ function parseRegraParaTela(chave) {
 function renderRegras() {
   if (!grupoAtivo) return;
   const ehRecebimentos = tipoRegrasAtivo === 'recebimentos';
-  document.getElementById('titulo-regras').textContent = `Regras de de-para — ${grupoAtivo}`;
+  document.getElementById('titulo-regras').textContent = `Regras de ${ehRecebimentos ? 'recebimentos' : 'pagamentos'} — ${grupoAtivo}`;
   const btnPag = document.getElementById('btn-regras-pagamentos');
   const btnRec = document.getElementById('btn-regras-recebimentos');
   if (btnPag && btnRec) {
     btnPag.className = `btn btn-sm ${ehRecebimentos ? '' : 'btn-primary'}`;
     btnRec.className = `btn btn-sm ${ehRecebimentos ? 'btn-primary' : ''}`;
   }
+  const btnEditar = document.getElementById('btn-editar-regras');
+  const btnSalvar = document.getElementById('btn-salvar-regras');
+  const btnLimpar = document.getElementById('btn-limpar-regras');
+  const btnImportar = document.getElementById('btn-importar-regras');
+  if (btnEditar) btnEditar.textContent = `✏️ Editar ${ehRecebimentos ? 'recebimentos' : 'pagamentos'}`;
+  if (btnSalvar) btnSalvar.textContent = `Salvar ${ehRecebimentos ? 'recebimentos' : 'pagamentos'}`;
+  if (btnLimpar) btnLimpar.textContent = `🗑 Limpar só ${ehRecebimentos ? 'recebimentos' : 'pagamentos'}`;
+  if (btnImportar) btnImportar.style.display = ehRecebimentos ? 'none' : '';
   const baseAtiva = obterBaseRegrasAtiva();
   const regrasSalvas = baseAtiva[grupoAtivo] || {};
   const filtro = (document.getElementById('filtro-regras').value || '').toLowerCase();
@@ -2250,7 +2258,8 @@ function renderRegras() {
 function limparTodasRegras() {
   pedirSenha(() => {
     const rotulo = tipoRegrasAtivo === 'recebimentos' ? 'recebimentos' : 'pagamentos';
-    if (!confirm(`Apagar TODAS as regras de ${rotulo} do grupo "${grupoAtivo}"? As regras do outro tipo serão mantidas.`)) return;
+    const outro = tipoRegrasAtivo === 'recebimentos' ? 'pagamentos' : 'recebimentos';
+    if (!confirm(`Vou apagar SOMENTE as regras de ${rotulo} do grupo "${grupoAtivo}". As regras de ${outro} serão mantidas. Pode continuar?`)) return;
     definirBaseRegrasAtiva({});
     salvarStorage();
     renderRegras();
