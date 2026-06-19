@@ -136,6 +136,8 @@
 
   .progress-bar { height: 4px; background: var(--bg3); border-radius: 2px; margin: 12px 0; overflow: hidden; }
   .progress-fill { height: 100%; background: var(--blue); border-radius: 2px; transition: width 0.3s; }
+  .conciliacao-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 12px; margin-bottom: 16px; }
+  .conciliacao-note { color: var(--text2); font-size: 13px; line-height: 1.55; }
 
   .tela { display: none; }
   .tela.ativa { display: block; }
@@ -279,8 +281,27 @@
     </div>
     <div style="display:flex;gap:10px;flex-wrap:wrap">
       <button class="btn btn-blue" onclick="exportarXLSX()">⬇ Exportar para Domínio (.xlsx)</button>
+      <button class="btn" onclick="mostrarTela('tela-conciliacao-bancaria')">Conciliação bancária</button>
       <button class="btn" onclick="mostrarTela('tela-importar')">Nova importação</button>
       <button class="btn" onclick="mostrarTela('tela-home')">Início</button>
+    </div>
+  </div>
+
+  <!-- TELA CONCILIACAO BANCARIA -->
+  <div class="tela" id="tela-conciliacao-bancaria">
+    <div class="section-header">
+      <button class="btn btn-sm" onclick="voltarTela()">← Voltar</button>
+      <h2>Conciliação bancária</h2>
+      <button class="btn btn-sm" onclick="mostrarTela('tela-home')">Grupos</button>
+    </div>
+    <div id="resumo-conciliacao-bancaria"></div>
+    <div class="card">
+      <h3>Importar extrato bancário</h3>
+      <p class="conciliacao-note" style="margin-bottom:14px">
+        Esta área será usada para cruzar a planilha de pagamentos carregada nesta sessão com o extrato bancário. Os dados do extrato e os vínculos de conciliação serão temporários e não serão salvos na base compartilhada.
+      </p>
+      <button class="btn btn-blue" disabled>Importar extrato bancário</button>
+      <span style="font-size:12px;color:var(--text2);margin-left:10px">Em teste a partir deste ponto.</span>
     </div>
   </div>
 
@@ -529,6 +550,7 @@ function mostrarTela(id, registrarHistorico = true) {
   if (id === 'tela-home') renderGrupos();
   if (id === 'tela-regras') renderRegras();
   if (id === 'tela-plano-contas') renderResumoPlanoContas();
+  if (id === 'tela-conciliacao-bancaria') renderConciliacaoBancaria();
   if (id === 'tela-importar' && grupoAtivo) {
     document.getElementById('titulo-importar').textContent = 'Importar planilha — ' + grupoAtivo;
   }
@@ -543,6 +565,21 @@ function showMsg(texto, tipo = 'ok') {
   const el = document.getElementById('msg-global');
   el.innerHTML = `<div class="alert alert-${tipo}" style="margin-bottom:16px">${texto} <button onclick="this.parentElement.remove()" style="background:none;border:none;cursor:pointer;float:right;font-size:16px">×</button></div>`;
   setTimeout(() => el.innerHTML = '', 4000);
+}
+
+function renderConciliacaoBancaria() {
+  const el = document.getElementById('resumo-conciliacao-bancaria');
+  if (!el) return;
+  const qtdPagamentos = linhasImportadas.length;
+  el.innerHTML = `
+    <div class="conciliacao-grid">
+      <div class="metric"><div class="metric-label">Grupo ativo</div><div class="metric-value" style="font-size:16px">${escapeHtml(grupoAtivo || 'Nenhum')}</div></div>
+      <div class="metric"><div class="metric-label">Pagamentos carregados</div><div class="metric-value">${qtdPagamentos}</div></div>
+      <div class="metric"><div class="metric-label">Extrato bancário</div><div class="metric-value" style="font-size:16px">Não importado</div></div>
+    </div>
+    <div class="alert alert-orange">
+      ⚠️ Marco de desenvolvimento: aba criada como módulo isolado. O fluxo atual de de-para, geração e exportação permanece preservado.
+    </div>`;
 }
 
 function renderGrupos() {
@@ -565,6 +602,7 @@ function renderGrupos() {
         ${isAtivo ? `
           <button class="btn btn-sm" onclick="mostrarTela('tela-regras')">📋 Regras</button>
           <button class="btn btn-sm" onclick="mostrarTela('tela-plano-contas')">📑 Plano de Contas</button>
+          <button class="btn btn-sm" onclick="mostrarTela('tela-conciliacao-bancaria')">🏦 Conciliação</button>
           <button class="btn btn-sm btn-blue" onclick="mostrarTela('tela-importar')">⬆ Importar planilha</button>
         ` : ''}
         <button class="btn btn-sm btn-danger" onclick="excluirGrupo('${g}')">🗑</button>
@@ -593,7 +631,7 @@ function criarGrupo() {
   showMsg(`Grupo "${nome}" criado com sucesso.`, 'ok');
 }
 
-const SENHA_ADMIN = '66832';
+const SENHA_ADMIN = '66833';
 
 function pedirSenha(callback) {
   const modal = document.createElement('div');
