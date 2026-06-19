@@ -10,7 +10,7 @@ export default async (req, context) => {
     try {
       const raw = await store.get(BLOB_KEY);
       if (!raw) {
-        return Response.json({ grupos: [], depara: {}, planoContas: {}, updatedAt: null });
+        return Response.json({ grupos: [], depara: {}, deparaRecebimentos: {}, planoContas: {}, updatedAt: null });
       }
       const data = JSON.parse(raw);
       return Response.json(data);
