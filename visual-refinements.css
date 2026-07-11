@@ -470,6 +470,14 @@ tbody tr:hover:not(.conciliacao-row-ok):not(.conciliacao-row-warn) {
   padding: 10px 14px;
 }
 
+.conciliation-section-row.ok {
+  background: #f0fdf4;
+  border-bottom: 1px solid #86efac;
+  border-left: 4px solid #16a34a;
+  color: #166534;
+  padding: 10px 14px;
+}
+
 .conciliation-section-title {
   align-items: center;
   display: flex;
