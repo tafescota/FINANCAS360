@@ -315,11 +315,11 @@
       <button class="btn btn-sm" onclick="voltarTela()">← Voltar</button>
       <h2>Lançamentos gerados</h2>
     </div>
-    <div class="resultado-actions" style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:16px">
+    <div class="resultado-actions" style="display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin-bottom:16px">
+      <button class="btn btn-primary" onclick="mostrarTela('tela-conciliacao-bancaria')">Importar extrato para conciliação bancária</button>
       <button class="btn btn-blue" onclick="exportarDominioFinal()">⬇ Exportar Domínio final (.xlsx)</button>
-      <button class="btn" onclick="mostrarTela('tela-conciliacao-bancaria')">Conciliação bancária</button>
-      <button class="btn" onclick="mostrarTela('tela-importar')">Nova importação</button>
-      <button class="btn" onclick="mostrarTela('tela-home')">Início</button>
+      <button class="btn" onclick="exportarDominioPagamentos()">Exportar somente pagamentos (.xlsx)</button>
+      <span class="conciliacao-note">O ideal é exportar o arquivo final após validar a conciliação. Use pagamentos somente quando não for conciliar extrato.</span>
     </div>
     <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:12px;margin-bottom:16px">
       <div class="metric"><div class="metric-label">Total de lançamentos</div><div class="metric-value" id="met-total">0</div><div class="metric-sub"><div id="met-linhas-originais">0 linhas originais</div><div id="met-linhas-extras">0 linhas extras</div></div></div>
