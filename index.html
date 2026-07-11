@@ -316,7 +316,7 @@
       <h2>Lançamentos gerados</h2>
     </div>
     <div class="resultado-actions" style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:16px">
-      <button class="btn btn-blue" onclick="exportarDominioPagamentos()">⬇ Exportar Domínio pagamentos (.xlsx)</button>
+      <button class="btn btn-blue" onclick="exportarDominioFinal()">⬇ Exportar Domínio final (.xlsx)</button>
       <button class="btn" onclick="mostrarTela('tela-conciliacao-bancaria')">Conciliação bancária</button>
       <button class="btn" onclick="mostrarTela('tela-importar')">Nova importação</button>
       <button class="btn" onclick="mostrarTela('tela-home')">Início</button>
@@ -1298,7 +1298,9 @@ function renderSugestoesConciliacao(sugestoes, qtdPagamentos, qtdMovimentos, ent
     </tr>`;
   };
   const linhasEntradasPendentes = entradasPendentes.map(r => renderLinhaRecebimento(r, false)).join('');
-  const linhasEntradasPreenchidas = entradasPreenchidas.map(r => renderLinhaRecebimento(r, !mostrarPendenciasPreenchidas)).join('');
+  const linhasEntradasPreenchidas = mostrarPendenciasPreenchidas
+    ? entradasPreenchidas.map(r => renderLinhaRecebimento(r, false)).join('')
+    : '';
   const linhasSaidasExtras = itensSaidaExtra.map(r => `<tr class="conciliacao-row-warn">
     <td><span class="badge">Saída pendente</span></td>
     <td class="col-secondary">${escapeHtml(r.data || '')}</td>
@@ -1320,12 +1322,13 @@ function renderSugestoesConciliacao(sugestoes, qtdPagamentos, qtdMovimentos, ent
   const qtdPendencias = pendentesPagamento.length + itensSaidaExtra.length + itensRecebimento.length;
   const qtdParaResolver = pendentesPagamento.length + itensSaidaExtra.length + entradasPendentes.length;
   const textoBotaoPreenchidas = mostrarPendenciasPreenchidas ? 'Recolher pendências preenchidas' : 'Expandir pendências preenchidas';
+  const pendenciasOk = qtdParaResolver === 0;
   const secaoPendencias = `<tr>
-    <td colspan="7" class="conciliation-section-row pending">
+    <td colspan="7" class="conciliation-section-row ${pendenciasOk ? 'ok' : 'pending'}">
       <div class="conciliation-section-title">
         <div>
-          <strong>${qtdPendencias} pendência${qtdPendencias !== 1 ? 's' : ''} para revisar/preencher</strong>
-          <span>${qtdParaResolver} ainda precisam de ação · ${entradasPreenchidas.length} preenchida${entradasPreenchidas.length !== 1 ? 's' : ''}</span>
+          <strong>${pendenciasOk ? '✓ Pendências preenchidas - OK' : `${qtdParaResolver} pendência${qtdParaResolver !== 1 ? 's' : ''} para revisar/preencher`}</strong>
+          <span>${pendenciasOk ? `${entradasPreenchidas.length} regra${entradasPreenchidas.length !== 1 ? 's' : ''} já preenchida${entradasPreenchidas.length !== 1 ? 's' : ''}` : `${qtdParaResolver} ainda precisam de ação · ${entradasPreenchidas.length} preenchida${entradasPreenchidas.length !== 1 ? 's' : ''}`}</span>
         </div>
         ${entradasPreenchidas.length ? `<button class="btn btn-sm" onclick="alternarPendenciasPreenchidas()">${textoBotaoPreenchidas}</button>` : ''}
       </div>
@@ -1344,9 +1347,9 @@ function renderSugestoesConciliacao(sugestoes, qtdPagamentos, qtdMovimentos, ent
     </div>
     <p class="conciliacao-note" style="margin-bottom:10px">Pagamentos são validados contra as saídas do extrato. As pendências devem ser conciliadas manualmente quando não houver sugestão automática.</p>
     <div class="conciliation-actions">
-      <button class="btn btn-primary" onclick="abrirModalPendenciasConciliacao()">Preencher pendências</button>
-      <button class="btn btn-blue" onclick="exportarConciliacaoBancaria()">Exportar Domínio conciliação (.xlsx)</button>
-      <span class="conciliacao-note">Saídas pendentes devem ser conciliadas com pagamentos antes da exportação.</span>
+      ${qtdParaResolver > 0 ? '<button class="btn btn-primary" onclick="abrirModalPendenciasConciliacao()">Preencher pendências</button>' : ''}
+      <button class="btn" onclick="mostrarTela('tela-resultado')">Voltar aos lançamentos</button>
+      <span class="conciliacao-note">${qtdParaResolver > 0 ? 'Saídas pendentes devem ser conciliadas com pagamentos antes da exportação final.' : 'Tudo preenchido para esta conciliação. A exportação fica no arquivo final.'}</span>
     </div>
     <div class="table-wrap table-scroll conciliacao-table-wrap">
       <table class="conciliation-table">
@@ -1612,24 +1615,23 @@ function salvarModalPendenciasConciliacao() {
   gerarSugestoesConciliacao();
 }
 
-function exportarConciliacaoBancaria() {
+const CABECALHO_DOMINIO = ['Data','Cód. Conta Débito','Cód. Conta Crédito','Valor','Cód. Histórico','Complemento Histórico','Inicia Lote','Código Matriz/Filial','Centro de Custo Débito','Centro de Custo Crédito'];
+
+function montarLinhasDominioConciliacao({ validarPendencias = true } = {}) {
   coletarCodigosConciliacao();
   if (conciliacaoItensTemp.length === 0) {
-    alert('Gere as sugestões de conciliação antes de exportar.');
-    return;
+    return [];
   }
   const itensNovos = conciliacaoItensTemp.filter(item => item.movimento === 'recebimento');
   if (itensNovos.length === 0) {
-    alert('Não há movimentos novos para exportar na conciliação. Os pagamentos já ficam no arquivo de pagamentos.');
-    return;
+    return [];
   }
   const pendentes = itensNovos.filter(item => !obterCodigoContaParaDominio(codigosConciliacaoTemp[item.id]));
-  if (pendentes.length > 0) {
+  if (pendentes.length > 0 && validarPendencias) {
     abrirModalPendenciasConciliacao();
-    return;
+    return null;
   }
   salvarRegrasRecebimentoConciliacao();
-  const cabecalho = ['Data','Cód. Conta Débito','Cód. Conta Crédito','Valor','Cód. Histórico','Complemento Histórico','Inicia Lote','Código Matriz/Filial','Plano de Contas Financeiro','Centro de Custo Débito','Centro de Custo Crédito'];
   const linhas = [];
   itensNovos.forEach(item => {
     const codigo = obterCodigoContaParaDominio(codigosConciliacaoTemp[item.id]);
@@ -1643,9 +1645,8 @@ function exportarConciliacaoBancaria() {
           arredondarMoeda(Math.abs(mov.valor || item.total)),
           '',
           limparTextoExportacaoDominio(descricaoMovimentoExtrato(mov) || item.historico),
-          linhas.length === 0 ? 1 : '',
+          '',
           limparTextoExportacaoDominio(mov.empresa || item.empresa || grupoAtivo || ''),
-          limparTextoExportacaoDominio(item.tipo || ''),
           '',
           ''
         ]);
@@ -1659,14 +1660,24 @@ function exportarConciliacaoBancaria() {
       arredondarMoeda(item.total),
       '',
       limparTextoExportacaoDominio(item.historico),
-      linhas.length === 0 ? 1 : '',
+      '',
       limparTextoExportacaoDominio(item.empresa || grupoAtivo || ''),
-      limparTextoExportacaoDominio(item.tipo || ''),
       '',
       ''
     ]);
   });
-  const ws = XLSX.utils.aoa_to_sheet([cabecalho, ...linhas]);
+  return linhas;
+}
+
+function exportarConciliacaoBancaria() {
+  const linhas = montarLinhasDominioConciliacao();
+  if (linhas === null) return;
+  if (linhas.length === 0) {
+    alert('Não há movimentos novos para exportar na conciliação. Os pagamentos já ficam no arquivo final.');
+    return;
+  }
+  linhas[0][6] = 1;
+  const ws = XLSX.utils.aoa_to_sheet([CABECALHO_DOMINIO, ...linhas]);
   const wb = XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(wb, ws, 'Domínio Conciliação');
   const data = new Date().toLocaleDateString('pt-BR').replace(/\//g,'-');
@@ -2432,18 +2443,46 @@ function gerarLancamentos(dados, regras) {
   mostrarTela('tela-resultado');
 }
 
-function exportarDominioPagamentos() {
-  const cabecalho = ['Data','Cód. Conta Débito','Cód. Conta Crédito','Valor','Cód. Histórico','Complemento Histórico','Inicia Lote','Código Matriz/Filial','Plano de Contas Financeiro','Centro de Custo Débito','Centro de Custo Crédito'];
+function montarLinhasDominioPagamentos() {
   const lancamentosPagamentos = lancamentosGerados.filter(l => !l.origemConciliacao);
-  const linhas = lancamentosPagamentos.map((l, i) => [
+  return lancamentosPagamentos.map(l => [
     l.data, l.codDebito, limparTextoExportacaoDominio(l.codCredito), l.valorLiq, '', limparTextoExportacaoDominio(l.complemento),
-    i === 0 ? 1 : '', limparTextoExportacaoDominio(l.empresa), limparTextoExportacaoDominio(l.plano), '', ''
+    '', limparTextoExportacaoDominio(l.empresa), '', ''
   ]);
-  const ws = XLSX.utils.aoa_to_sheet([cabecalho, ...linhas]);
+}
+
+function exportarDominioPagamentos() {
+  const linhas = montarLinhasDominioPagamentos();
+  if (linhas.length === 0) {
+    alert('Gere os lançamentos antes de exportar.');
+    return;
+  }
+  linhas[0][6] = 1;
+  const ws = XLSX.utils.aoa_to_sheet([CABECALHO_DOMINIO, ...linhas]);
   const wb = XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(wb, ws, 'Lançamentos Domínio');
   const data = new Date().toLocaleDateString('pt-BR').replace(/\//g,'-');
   XLSX.writeFile(wb, `Dominio_Pagamentos_${grupoAtivo}_${data}.xlsx`);
+}
+
+function exportarDominioFinal() {
+  const linhasPagamentos = montarLinhasDominioPagamentos();
+  if (linhasPagamentos.length === 0) {
+    alert('Gere os lançamentos de pagamentos antes de exportar.');
+    return;
+  }
+  const linhasConciliacao = montarLinhasDominioConciliacao();
+  if (linhasConciliacao === null) return;
+
+  const linhas = [...linhasPagamentos, ...linhasConciliacao];
+  linhas.forEach(l => { l[6] = ''; });
+  if (linhas.length > 0) linhas[0][6] = 1;
+
+  const ws = XLSX.utils.aoa_to_sheet([CABECALHO_DOMINIO, ...linhas]);
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, 'Lançamentos Domínio');
+  const data = new Date().toLocaleDateString('pt-BR').replace(/\//g,'-');
+  XLSX.writeFile(wb, `Dominio_Final_${grupoAtivo}_${data}.xlsx`);
 }
 
 // ---------- REGRAS ----------
