@@ -141,25 +141,19 @@
   .progress-fill { height: 100%; background: var(--blue); border-radius: 2px; transition: width 0.3s; }
   .conciliacao-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 12px; margin-bottom: 16px; }
   .conciliacao-note { color: var(--text2); font-size: 13px; line-height: 1.55; }
-  .fechamento-panel { background: var(--bg); border: 1px solid var(--border); border-radius: var(--radius); padding: 20px 24px; box-shadow: var(--shadow); margin-bottom: 16px; }
-  .fechamento-panel-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; margin-bottom: 16px; flex-wrap: wrap; }
-  .fechamento-eyebrow { color: var(--text2); font-size: 12px; margin-bottom: 4px; }
-  .fechamento-title { font-weight: 700; font-size: 16px; }
-  .fechamento-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(230px, 1fr)); gap: 10px; margin-bottom: 16px; }
-  .fechamento-card { background: var(--bg); border: 1px solid var(--border); border-radius: var(--radius-sm); padding: 14px; display: flex; flex-direction: column; gap: 10px; min-height: 150px; }
-  .fechamento-card.ok { border-color: #bbf7d0; background: #fbfffd; }
-  .fechamento-card.warn { border-color: var(--border); background: #fff; }
-  .fechamento-card-title { font-weight: 700; font-size: 13px; }
-  .fechamento-card-status { color: var(--text2); font-size: 12px; line-height: 1.45; flex: 1; }
-  .fechamento-actions { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; margin-bottom: 16px; }
-  .fechamento-primary-action { display: flex; justify-content: flex-end; gap: 10px; align-items: center; padding-top: 12px; border-top: 1px solid var(--border); }
-  .fechamento-primary-action .conciliacao-note { margin-right: auto; }
-  .fechamento-checklist { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 10px; margin-bottom: 16px; }
-  .fechamento-check { border: 1px solid var(--border); background: var(--bg); border-radius: var(--radius-sm); padding: 12px 14px; }
-  .fechamento-check strong { display: block; font-size: 13px; margin-bottom: 3px; }
-  .fechamento-check.ok { border-color: #bbf7d0; background: #f8fffb; }
-  .fechamento-check.warn { border-color: #fde68a; background: #fffdf4; }
-  .fechamento-final-actions { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; margin-top: 14px; }
+  .package-list { display: grid; gap: 8px; margin-top: 12px; }
+  .package-row { display: grid; grid-template-columns: minmax(180px, 1.4fr) 150px minmax(120px, .9fr) 90px 1fr; gap: 10px; align-items: center; padding: 10px 12px; border: 1px solid var(--border); border-radius: var(--radius-sm); background: var(--bg); font-size: 12.5px; }
+  .package-row.error { border-color: #fecaca; background: #fff7f7; }
+  .package-file { font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .package-meta { color: var(--text2); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .package-alerts { display: grid; gap: 8px; margin: 12px 0 16px; }
+  .package-alert { padding: 9px 12px; border-radius: var(--radius-sm); border: 1px solid var(--border); background: var(--bg); color: var(--text2); font-size: 12.5px; }
+  .package-alert.warn { background: #fff7ed; border-color: #fed7aa; color: #9a3412; }
+  .package-alert.error { background: #fef2f2; border-color: #fecaca; color: #991b1b; }
+  .package-alert.ok { background: #f0fdf4; border-color: #bbf7d0; color: #166534; }
+  @media (max-width: 900px) {
+    .package-row { grid-template-columns: 1fr; gap: 4px; }
+  }
   .review-stack { display: grid; gap: 14px; }
   .review-card { background: var(--bg); border: 1px solid var(--border); border-radius: var(--radius); box-shadow: var(--shadow); overflow: hidden; }
   .review-card.warning { border-color: #f3d78a; background: #fffdf7; }
@@ -198,11 +192,12 @@
   .tela { display: none; }
   .tela.ativa { display: block; }
 </style>
+<link rel="stylesheet" href="visual-refinements.css">
 </head>
 <body>
 
 <div class="topbar">
-  <span class="topbar-logo">zip</span>
+  <span class="topbar-logo"><img src="assets/zip-logo-topbar.webp?v=2" alt="Zip Contabilidade" class="topbar-logo-img"></span>
   <span class="topbar-sub">Conciliação F360</span>
   <span class="topbar-grupo" id="topbar-grupo" style="display:none"></span>
 </div>
@@ -250,81 +245,6 @@
       <div class="drop-title">Arraste a planilha aqui ou clique para selecionar</div>
       <div class="drop-sub">Arquivo de Parcelas de Títulos exportado do financeiro (.xlsx ou .xlsm)</div>
     </div>
-  </div>
-
-  <!-- TELA FECHAMENTO UNIFICADO -->
-  <div class="tela" id="tela-fechamento-unificado">
-    <div class="section-header">
-      <button class="btn btn-sm" onclick="voltarTela()">← Voltar</button>
-      <h2 id="titulo-fechamento-unificado">Fechamento unificado</h2>
-      <button class="btn btn-sm" onclick="mostrarTela('tela-home')">Grupos</button>
-    </div>
-    <div id="msg-fechamento-unificado"></div>
-    <div id="resumo-fechamento-unificado"></div>
-    <div class="fechamento-panel">
-      <div class="fechamento-panel-head">
-        <div>
-          <div class="fechamento-eyebrow">Etapa 1</div>
-          <div class="fechamento-title">Importe os arquivos do fechamento</div>
-          <div class="conciliacao-note">Depois de conferir, o sistema roda a conciliação automaticamente e mostra somente o que precisa de ação.</div>
-        </div>
-      </div>
-      <div class="fechamento-grid">
-        <div class="fechamento-card" id="card-fechamento-pagamentos">
-          <div class="fechamento-card-title">Pagamentos</div>
-          <div class="fechamento-card-status" id="status-fechamento-pagamentos">Não importado.</div>
-          <button class="btn btn-blue" onclick="document.getElementById('fechamento-pagamentos-input').click()">Importar pagamentos</button>
-        </div>
-        <div class="fechamento-card" id="card-fechamento-extrato">
-          <div class="fechamento-card-title">Extrato bancário</div>
-          <div class="fechamento-card-status" id="status-fechamento-extrato">Não importado.</div>
-          <button class="btn btn-blue" onclick="document.getElementById('fechamento-extrato-input').click()">Importar extrato bancário</button>
-        </div>
-        <div class="fechamento-card" id="card-fechamento-receber">
-          <div class="fechamento-card-title">Títulos a receber</div>
-          <div class="fechamento-card-status" id="status-fechamento-receber">Opcional para apoio/validação.</div>
-          <button class="btn" onclick="document.getElementById('fechamento-receber-input').click()">Importar títulos a receber</button>
-        </div>
-        <div class="fechamento-card" id="card-fechamento-cartoes">
-          <div class="fechamento-card-title">Cartões a receber</div>
-          <div class="fechamento-card-status" id="status-fechamento-cartoes">Usado para taxas por competência.</div>
-          <button class="btn" onclick="document.getElementById('fechamento-cartoes-input').click()">Importar cartões</button>
-        </div>
-        <div class="fechamento-card" id="card-fechamento-aplicacao">
-          <div class="fechamento-card-title">Extrato de aplicação</div>
-          <div class="fechamento-card-status" id="status-fechamento-aplicacao">Opcional para aplicação/resgate.</div>
-          <button class="btn" onclick="document.getElementById('fechamento-aplicacao-input').click()">Importar aplicação</button>
-        </div>
-      </div>
-      <div class="fechamento-primary-action">
-        <div class="conciliacao-note">Conferência de pendências, conciliação bancária e apuração das taxas em um único passo.</div>
-        <button class="btn btn-primary" onclick="abrirPendenciasFechamento()">OK - Conferir fechamento</button>
-      </div>
-    </div>
-    <div id="resultado-fechamento-unificado"></div>
-    <input type="file" id="fechamento-pagamentos-input" accept=".xlsx,.xlsm,.xls" style="display:none" onchange="onFileChangeFechamentoPagamentos(event)">
-    <input type="file" id="fechamento-receber-input" accept=".xlsx,.xlsm,.xls" style="display:none" onchange="onFileChangeFechamentoReceber(event)">
-    <input type="file" id="fechamento-cartoes-input" accept=".xlsx,.xlsm,.xls" style="display:none" onchange="onFileChangeFechamentoCartoes(event)">
-    <input type="file" id="fechamento-extrato-input" accept=".xlsx,.xlsm,.xls" style="display:none" onchange="onFileChangeFechamentoExtrato(event)">
-    <input type="file" id="fechamento-aplicacao-input" accept=".xlsx,.xlsm,.xls" style="display:none" onchange="onFileChangeFechamentoAplicacao(event)">
-  </div>
-
-  <!-- TELA PENDENCIAS DO FECHAMENTO -->
-  <div class="tela" id="tela-pendencias-fechamento">
-    <div class="section-header">
-      <button class="btn btn-sm" onclick="mostrarTela('tela-fechamento-unificado')">← Voltar</button>
-      <h2 id="titulo-pendencias-fechamento">Conferência do fechamento</h2>
-      <button class="btn btn-sm" onclick="mostrarTela('tela-home')">Grupos</button>
-    </div>
-    <div id="msg-pendencias-fechamento"></div>
-    <div id="resumo-pendencias-fechamento"></div>
-    <div id="lista-pendencias-fechamento"></div>
-    <div class="fechamento-actions" style="margin-top:16px">
-      <button class="btn btn-primary" onclick="confirmarPendenciasFechamento()">Concluir conferência</button>
-      <button class="btn" onclick="atualizarPendenciasFechamento()">Atualizar conferência</button>
-      <button class="btn" onclick="mostrarTela('tela-fechamento-unificado')">Voltar ao fechamento</button>
-    </div>
-    <div id="preview-final-fechamento"></div>
   </div>
 
   <!-- TELA PLANO DE CONTAS -->
@@ -385,7 +305,6 @@
     </div>
     <div style="display:flex;gap:10px;flex-wrap:wrap">
       <button class="btn btn-primary" onclick="salvarNovasChavesEGerar()">Salvar e gerar lançamentos</button>
-      <button class="btn" onclick="salvarNovasChavesEVoltarPendencias()">Salvar e voltar às pendências</button>
       <button class="btn" onclick="mostrarTela('tela-home')">Cancelar</button>
     </div>
   </div>
@@ -395,6 +314,12 @@
     <div class="section-header">
       <button class="btn btn-sm" onclick="voltarTela()">← Voltar</button>
       <h2>Lançamentos gerados</h2>
+    </div>
+    <div class="resultado-actions" style="display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin-bottom:16px">
+      <button class="btn btn-primary" onclick="mostrarTela('tela-conciliacao-bancaria')">Importar extrato para conciliação bancária</button>
+      <button class="btn btn-blue" onclick="exportarDominioFinal()">⬇ Exportar Domínio final (.xlsx)</button>
+      <button class="btn" onclick="exportarDominioPagamentos()">Exportar somente pagamentos (.xlsx)</button>
+      <span class="conciliacao-note">O ideal é exportar o arquivo final após validar a conciliação. Use pagamentos somente quando não for conciliar extrato.</span>
     </div>
     <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:12px;margin-bottom:16px">
       <div class="metric"><div class="metric-label">Total de lançamentos</div><div class="metric-value" id="met-total">0</div><div class="metric-sub"><div id="met-linhas-originais">0 linhas originais</div><div id="met-linhas-extras">0 linhas extras</div></div></div>
@@ -410,12 +335,6 @@
         </thead>
         <tbody id="tbody-resultado"></tbody>
       </table>
-    </div>
-    <div style="display:flex;gap:10px;flex-wrap:wrap">
-      <button class="btn btn-blue" onclick="exportarDominioPagamentos()">⬇ Exportar Domínio pagamentos (.xlsx)</button>
-      <button class="btn" onclick="mostrarTela('tela-conciliacao-bancaria')">Conciliação bancária</button>
-      <button class="btn" onclick="mostrarTela('tela-importar')">Nova importação</button>
-      <button class="btn" onclick="mostrarTela('tela-home')">Início</button>
     </div>
   </div>
 
@@ -502,17 +421,7 @@ let vinculosPagamentoConciliacaoTemp = {};
 let trechosRecebimentoConciliacaoTemp = {};
 let conciliacaoAplicadaTemp = false;
 let mostrarLancamentosConciliados = false;
-let titulosReceberTemp = [];
-let cartoesReceberTemp = [];
-let taxasCartoesTemp = [];
-let extratoAplicacaoTemp = [];
-let infoFechamentoTemp = {
-  pagamentos: null,
-  receber: null,
-  cartoes: null,
-  extrato: null,
-  aplicacao: null
-};
+let mostrarPendenciasPreenchidas = false;
 
 const COLS = { TIPO:0, NUMERO:1, PARCELA:2, EMPRESA:3, FORNECEDOR:4, EMISSAO:5, VENCIMENTO:6, LIQUIDACAO:7, VALOR_BRUTO:8, COMPETENCIA:9, PLANO:10, CC:11, ACRESCIMO:12, VALOR_LIQ:13, CONTA:14, MEIO_PAG:15, TIPO_DOC:16, APROVADA:17, STATUS:18, HISTORICO:19 };
 
@@ -563,6 +472,10 @@ function montarChaveHistoricoContem(forn, plano, tipoDoc, trecho) {
   return forn + ' | ' + plano + ' | ' + tipoDoc + ' | HISTORICO_CONTEM | ' + limparTextoECD(trecho);
 }
 
+function tipoAjustePonta(tipoAjuste, ponta) {
+  return `${tipoAjuste} - ${ponta}`;
+}
+
 function encontrarCodigoRegra(regras, forn, plano, tipoDoc, historico) {
   const chaveExata = montarChave(forn, plano, tipoDoc, historico);
   if (regras[chaveExata]) return regras[chaveExata];
@@ -579,6 +492,16 @@ function encontrarCodigoRegra(regras, forn, plano, tipoDoc, historico) {
     return termos.length > 0 && termos.every(termo => historicoNormalizado.includes(termo));
   });
   return achada ? regras[achada] : '';
+}
+
+function encontrarCodigoRegraAjuste(regras, forn, plano, tipoAjuste, ponta, historico) {
+  const codigoPonta = encontrarCodigoRegra(regras, forn, plano, tipoAjustePonta(tipoAjuste, ponta), historico);
+  if (codigoPonta) return codigoPonta;
+
+  const pontaNaturalLegada =
+    (tipoAjuste === 'DESCONTO' && ponta === 'CRÉDITO') ||
+    (tipoAjuste === 'ACRÉSCIMO' && ponta === 'DÉBITO');
+  return pontaNaturalLegada ? encontrarCodigoRegra(regras, forn, plano, tipoAjuste, historico) : '';
 }
 
 function obterChaveRegraNova(item) {
@@ -728,8 +651,6 @@ function mostrarTela(id, registrarHistorico = true) {
   if (id === 'tela-regras') renderRegras();
   if (id === 'tela-plano-contas') renderResumoPlanoContas();
   if (id === 'tela-conciliacao-bancaria') renderConciliacaoBancaria();
-  if (id === 'tela-fechamento-unificado') renderFechamentoUnificado();
-  if (id === 'tela-pendencias-fechamento') renderPendenciasFechamento();
   if (id === 'tela-importar' && grupoAtivo) {
     document.getElementById('titulo-importar').textContent = 'Importar planilha — ' + grupoAtivo;
   }
@@ -746,11 +667,6 @@ function showMsg(texto, tipo = 'ok') {
   setTimeout(() => el.innerHTML = '', 4000);
 }
 
-function mostrarMsgFechamento(texto, tipo = 'ok') {
-  const el = document.getElementById('msg-fechamento-unificado');
-  if (!el) return;
-  el.innerHTML = `<div class="alert alert-${tipo}">${escapeHtml(texto)}</div>`;
-}
 
 function lerWorkbookArquivo(file, callback, onError = alert) {
   const reader = new FileReader();
@@ -764,6 +680,63 @@ function lerWorkbookArquivo(file, callback, onError = alert) {
     }
   };
   reader.readAsArrayBuffer(file);
+}
+
+function lerWorkbookArquivoAsync(file) {
+  return new Promise((resolve, reject) => {
+    lerWorkbookArquivo(file, (wb) => resolve(wb), reject);
+  });
+}
+
+function chaveDuplicidadePagamento(r) {
+  return [
+    limparTextoECD(r?.[COLS.EMPRESA]),
+    limparTextoECD(r?.[COLS.NUMERO]),
+    limparTextoECD(r?.[COLS.PARCELA]),
+    limparTextoECD(r?.[COLS.FORNECEDOR]),
+    fmtDate(r?.[COLS.LIQUIDACAO]),
+    fmtValor(arredondarMoeda(r?.[COLS.VALOR_LIQ])),
+    limparTextoECD(r?.[COLS.PLANO])
+  ].map(normalizarTexto).join('|');
+}
+
+function chaveDuplicidadeTituloReceber(r) {
+  return [
+    limparTextoECD(r?.[COLS.EMPRESA]),
+    limparTextoECD(r?.[COLS.NUMERO]),
+    limparTextoECD(r?.[COLS.PARCELA]),
+    limparTextoECD(r?.[COLS.FORNECEDOR]),
+    fmtDate(r?.[COLS.LIQUIDACAO]),
+    fmtValor(arredondarMoeda(r?.[COLS.VALOR_LIQ] || r?.[COLS.VALOR_BRUTO])),
+    limparTextoECD(r?.[COLS.PLANO])
+  ].map(normalizarTexto).join('|');
+}
+
+function chaveDuplicidadeMovimento(m) {
+  return [m.conta, fmtDate(m.data), fmtValor(m.valor), m.documento, m.historico, m.complemento, m.tipoConciliacao].map(normalizarTexto).join('|');
+}
+
+function dataBaseCartao(l) {
+  return l?.liquidacao || l?.vencimento || l?.dataVenda || '';
+}
+
+function chaveDuplicidadeCartao(l) {
+  return [l.empresa, l.tipo, l.resumo, l.cvs, l.parcela, fmtDate(dataBaseCartao(l)), l.conta, l.adquirente, l.bandeira, l.modalidade, l.produto, fmtValor(l.bruto), fmtValor(l.taxa), fmtValor(l.taxaAntecipacao), fmtValor(l.liquido)].map(normalizarTexto).join('|');
+}
+
+function deduplicarPorChave(lista, fnChave) {
+  const vistos = new Set();
+  const unicos = [];
+  let duplicados = 0;
+  lista.forEach(item => {
+    const chave = fnChave(item);
+    if (chave && vistos.has(chave)) duplicados += 1;
+    else {
+      if (chave) vistos.add(chave);
+      unicos.push(item);
+    }
+  });
+  return { unicos, duplicados };
 }
 
 function linhasPlanilhaTitulos(wb) {
@@ -804,11 +777,14 @@ function prepararPagamentosImportados(dados, abrirTelaPendencias = true) {
     const acrescimoDesconto = arredondarMoeda(r[COLS.ACRESCIMO]);
     if (acrescimoDesconto !== 0) {
       const tipoAjuste = acrescimoDesconto < 0 ? 'DESCONTO' : 'ACRÉSCIMO';
-      const chaveAjuste = montarChave(forn, plano, tipoAjuste, historico);
-      if (!encontrarCodigoRegra(regrasSalvas, forn, plano, tipoAjuste, historico) && !vistas.has(chaveAjuste)) {
-        vistas.add(chaveAjuste);
-        novas.push({ chave: chaveAjuste, fornecedor: forn, plano, tipoDoc: tipoAjuste, historico, trechoHistorico: '', trechoHistoricoIndices: [], numero, empresa: limparTextoECD(r[COLS.EMPRESA]) });
-      }
+      ['DÉBITO', 'CRÉDITO'].forEach(ponta => {
+        const tipoPonta = tipoAjustePonta(tipoAjuste, ponta);
+        const chaveAjuste = montarChave(forn, plano, tipoPonta, historico);
+        if (!encontrarCodigoRegraAjuste(regrasSalvas, forn, plano, tipoAjuste, ponta, historico) && !vistas.has(chaveAjuste)) {
+          vistas.add(chaveAjuste);
+          novas.push({ chave: chaveAjuste, fornecedor: forn, plano, tipoDoc: tipoPonta, historico, trechoHistorico: '', trechoHistoricoIndices: [], numero, empresa: limparTextoECD(r[COLS.EMPRESA]) });
+        }
+      });
     }
   });
 
@@ -871,553 +847,6 @@ function extratoMovimentosWorkbook(wb) {
   return { movimentos, nomePlanilha };
 }
 
-function onFileChangeFechamentoPagamentos(e) {
-  const file = e.target.files[0];
-  e.target.value = '';
-  if (!file) return;
-  lerWorkbookArquivo(file, (wb) => {
-    const { dados, nomePlanilha } = linhasPlanilhaTitulos(wb);
-    if (dados.length === 0) throw new Error('Nenhum dado encontrado. Verifique se é a planilha de Parcelas de Títulos.');
-    const novas = prepararPagamentosImportados(dados, false);
-    infoFechamentoTemp.pagamentos = { arquivo: file.name, planilha: nomePlanilha };
-    mostrarMsgFechamento(`${dados.length} pagamento${dados.length !== 1 ? 's' : ''} importado${dados.length !== 1 ? 's' : ''}. ${novas.length} pendência${novas.length !== 1 ? 's' : ''} de de-para.`, novas.length ? 'orange' : 'ok');
-    renderFechamentoUnificado();
-  }, err => mostrarMsgFechamento('Erro ao importar pagamentos: ' + err.message, 'warn'));
-}
-
-function onFileChangeFechamentoReceber(e) {
-  const file = e.target.files[0];
-  e.target.value = '';
-  if (!file) return;
-  lerWorkbookArquivo(file, (wb) => {
-    const { dados, nomePlanilha } = linhasPlanilhaTitulos(wb);
-    titulosReceberTemp = dados;
-    infoFechamentoTemp.receber = { arquivo: file.name, planilha: nomePlanilha };
-    mostrarMsgFechamento(`${dados.length} título${dados.length !== 1 ? 's' : ''} a receber importado${dados.length !== 1 ? 's' : ''} para apoio.`, 'ok');
-    renderFechamentoUnificado();
-  }, err => mostrarMsgFechamento('Erro ao importar títulos a receber: ' + err.message, 'warn'));
-}
-
-function onFileChangeFechamentoCartoes(e) {
-  const file = e.target.files[0];
-  e.target.value = '';
-  if (!file) return;
-  lerWorkbookArquivo(file, (wb) => {
-    const parsed = processarCartoesReceberWorkbook(wb);
-    cartoesReceberTemp = parsed.linhas;
-    taxasCartoesTemp = parsed.taxas;
-    infoFechamentoTemp.cartoes = { arquivo: file.name, planilha: parsed.nomePlanilha };
-    mostrarMsgFechamento(`${parsed.linhas.length} parcela${parsed.linhas.length !== 1 ? 's' : ''} de cartões importada${parsed.linhas.length !== 1 ? 's' : ''}; ${parsed.taxas.length} lançamento${parsed.taxas.length !== 1 ? 's' : ''} de taxa apurado${parsed.taxas.length !== 1 ? 's' : ''}.`, 'ok');
-    renderFechamentoUnificado();
-  }, err => mostrarMsgFechamento('Erro ao importar cartões: ' + err.message, 'warn'));
-}
-
-function onFileChangeFechamentoExtrato(e) {
-  const file = e.target.files[0];
-  e.target.value = '';
-  if (!file) return;
-  lerWorkbookArquivo(file, (wb) => {
-    const { movimentos, nomePlanilha } = extratoMovimentosWorkbook(wb);
-    const contasAntes = new Set(contasExtrato(extratoBancarioTemp).map(normalizarTexto));
-    const temContaNova = movimentos.some(m => !contasAntes.has(normalizarTexto(m.conta)));
-    const adicionarAoFechamento = extratoBancarioTemp.length > 0 && temContaNova;
-    extratoBancarioTemp = adicionarAoFechamento ? [...extratoBancarioTemp, ...movimentos] : movimentos;
-    mostrarPreviewExtrato = false;
-    conciliacaoItensTemp = [];
-    codigosConciliacaoTemp = {};
-    vinculosPagamentoConciliacaoTemp = {};
-    trechosRecebimentoConciliacaoTemp = {};
-    conciliacaoAplicadaTemp = false;
-    infoExtratoBancarioTemp = { arquivo: file.name, conta: extratoBancarioTemp[0]?.conta || '', contas: contasExtrato(extratoBancarioTemp), planilha: nomePlanilha };
-    infoFechamentoTemp.extrato = infoExtratoBancarioTemp;
-    mostrarMsgFechamento(`${movimentos.length} movimento${movimentos.length !== 1 ? 's' : ''} do extrato bancário importado${movimentos.length !== 1 ? 's' : ''}${adicionarAoFechamento ? ' e somado aos extratos já carregados' : ''}.`, 'ok');
-    renderFechamentoUnificado();
-    renderConciliacaoBancaria();
-  }, err => mostrarMsgFechamento('Erro ao importar extrato bancário: ' + err.message, 'warn'));
-}
-
-function onFileChangeFechamentoAplicacao(e) {
-  const file = e.target.files[0];
-  e.target.value = '';
-  if (!file) return;
-  lerWorkbookArquivo(file, (wb) => {
-    const { movimentos, nomePlanilha } = extratoMovimentosWorkbook(wb);
-    extratoAplicacaoTemp = movimentos;
-    infoFechamentoTemp.aplicacao = { arquivo: file.name, conta: movimentos[0]?.conta || '', planilha: nomePlanilha };
-    mostrarMsgFechamento(`${movimentos.length} movimento${movimentos.length !== 1 ? 's' : ''} do extrato de aplicação importado${movimentos.length !== 1 ? 's' : ''}.`, 'ok');
-    renderFechamentoUnificado();
-  }, err => mostrarMsgFechamento('Erro ao importar extrato de aplicação: ' + err.message, 'warn'));
-}
-
-function processarCartoesReceberWorkbook(wb) {
-  const nomePlanilha = wb.SheetNames.find(n => normalizarTexto(n).includes('cart')) || wb.SheetNames[0];
-  const ws = wb.Sheets[nomePlanilha];
-  const raw = XLSX.utils.sheet_to_json(ws, { header: 1, defval: null });
-  const headerIdx = raw.findIndex(row => {
-    const cols = (row || []).map(c => normalizarTexto(c));
-    return cols.includes('valor bruto') && cols.includes('taxa') && cols.includes('valor liquido');
-  });
-  if (headerIdx === -1) throw new Error('Não encontrei o cabeçalho de cartões com Valor Bruto / Taxa / Valor Líquido.');
-  const headers = raw[headerIdx].map(c => normalizarTexto(c));
-  const idx = nome => headers.indexOf(normalizarTexto(nome));
-  const col = {
-    tipo: idx('tipo'),
-    empresa: idx('empresa'),
-    adquirente: idx('adquirente'),
-    bandeira: idx('bandeira'),
-    modalidade: idx('modalidade'),
-    produto: idx('produto'),
-    dataVenda: idx('dt. apresentacao'),
-    vencimento: idx('dt. vencimento'),
-    bruto: idx('valor bruto'),
-    taxa: idx('taxa'),
-    taxaAntecipacao: idx('taxa antecipacao'),
-    liquido: idx('valor liquido')
-  };
-  const linhas = raw.slice(headerIdx + 1).map(row => {
-    const taxa = Math.abs(arredondarMoeda(row[col.taxa]));
-    const taxaAntecipacao = Math.abs(arredondarMoeda(row[col.taxaAntecipacao]));
-    return {
-      tipo: limparTextoECD(row[col.tipo]),
-      empresa: limparTextoECD(row[col.empresa]),
-      adquirente: limparTextoECD(row[col.adquirente]),
-      bandeira: limparTextoECD(row[col.bandeira]),
-      modalidade: limparTextoECD(row[col.modalidade]),
-      produto: limparTextoECD(row[col.produto]),
-      dataVenda: row[col.dataVenda] || '',
-      vencimento: row[col.vencimento] || '',
-      bruto: arredondarMoeda(row[col.bruto]),
-      taxa,
-      taxaAntecipacao,
-      liquido: arredondarMoeda(row[col.liquido])
-    };
-  }).filter(l => l.bruto || l.taxa || l.taxaAntecipacao || l.liquido);
-  const taxas = [];
-  linhas.forEach((l, idx) => {
-    if (l.taxa > 0) taxas.push({ idx, tipoTaxa: 'TAXA CARTÃO', data: l.dataVenda, valor: l.taxa, empresa: l.empresa, adquirente: l.adquirente, bandeira: l.bandeira, modalidade: l.modalidade, produto: l.produto });
-    if (l.taxaAntecipacao > 0) taxas.push({ idx, tipoTaxa: 'TAXA ANTECIPAÇÃO CARTÃO', data: l.dataVenda, valor: l.taxaAntecipacao, empresa: l.empresa, adquirente: l.adquirente, bandeira: l.bandeira, modalidade: l.modalidade, produto: l.produto });
-  });
-  return { linhas, taxas: consolidarTaxasCartoes(taxas), nomePlanilha };
-}
-
-function dataCompetenciaTaxa(v) {
-  if (!v) return '';
-  let d = null;
-  if (v instanceof Date) d = v;
-  else if (typeof v === 'number') d = new Date(Math.round((v - 25569) * 86400 * 1000));
-  else {
-    const texto = String(v).trim();
-    const m = texto.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})/);
-    if (m) d = new Date(Number(m[3]), Number(m[2]) - 1, Number(m[1]));
-    else {
-      const parsed = new Date(texto);
-      if (!Number.isNaN(parsed.getTime())) d = parsed;
-    }
-  }
-  if (!d) return '';
-  const fimMes = new Date(d.getFullYear(), d.getMonth() + 1, 0);
-  return fimMes;
-}
-
-function chaveCompetenciaTaxa(data, tipoTaxa, empresa) {
-  const d = dataCompetenciaTaxa(data);
-  const dataKeyTaxa = d ? `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}` : 'sem-data';
-  return [dataKeyTaxa, tipoTaxa, empresa || grupoAtivo || ''].join(' | ');
-}
-
-function consolidarTaxasCartoes(taxas) {
-  const gruposTaxas = new Map();
-  taxas.forEach(t => {
-    const dataLancamento = dataCompetenciaTaxa(t.data);
-    const chave = chaveCompetenciaTaxa(t.data, t.tipoTaxa, t.empresa);
-    const atual = gruposTaxas.get(chave) || {
-      tipoTaxa: t.tipoTaxa,
-      data: dataLancamento || t.data,
-      valor: 0,
-      empresa: t.empresa,
-      qtd: 0,
-      detalhes: new Set()
-    };
-    atual.valor = arredondarMoeda(atual.valor + t.valor);
-    atual.qtd += 1;
-    [t.adquirente, t.bandeira, t.modalidade].filter(Boolean).forEach(v => atual.detalhes.add(v));
-    gruposTaxas.set(chave, atual);
-  });
-  return Array.from(gruposTaxas.values()).map(t => ({
-    ...t,
-    detalhe: Array.from(t.detalhes).slice(0, 6).join(' - ')
-  }));
-}
-
-function renderFechamentoUnificado() {
-  if (!grupoAtivo) return;
-  const titulo = document.getElementById('titulo-fechamento-unificado');
-  if (titulo) titulo.textContent = 'Fechamento unificado — ' + grupoAtivo;
-  atualizarCardFechamento('pagamentos', linhasImportadas.length > 0, linhasImportadas.length > 0 ? `${linhasImportadas.length} pagamentos importados. ${lancamentosGerados.length ? lancamentosGerados.length + ' lançamentos gerados.' : 'Ainda sem lançamentos gerados.'}` : 'Não importado.');
-  atualizarCardFechamento('receber', titulosReceberTemp.length > 0, titulosReceberTemp.length > 0 ? `${titulosReceberTemp.length} títulos a receber importados para apoio.` : 'Opcional para apoio/validação.');
-  atualizarCardFechamento('cartoes', cartoesReceberTemp.length > 0, cartoesReceberTemp.length > 0 ? `${cartoesReceberTemp.length} parcelas. Taxas apuradas: R$ ${fmtValor(totalTaxasCartoes())}.` : 'Usado para taxas por competência.');
-  atualizarCardFechamento('extrato', extratoBancarioTemp.length > 0, extratoBancarioTemp.length > 0 ? `${extratoBancarioTemp.length} movimentos importados. ${resumoContasExtrato(extratoBancarioTemp)}.` : 'Não importado.');
-  atualizarCardFechamento('aplicacao', extratoAplicacaoTemp.length > 0, extratoAplicacaoTemp.length > 0 ? `${extratoAplicacaoTemp.length} movimentos importados. Conta: ${infoFechamentoTemp.aplicacao?.conta || 'não identificada'}.` : 'Opcional para aplicação/resgate.');
-
-  const entradasBanco = extratoBancarioTemp.filter(m => m.valor > 0);
-  const saidasBanco = extratoBancarioTemp.filter(m => m.valor < 0);
-  const aplicacoes = extratoAplicacaoTemp.filter(m => m.valor > 0);
-  const resgates = extratoAplicacaoTemp.filter(m => m.valor < 0);
-  const resumo = document.getElementById('resumo-fechamento-unificado');
-  if (resumo) {
-    resumo.innerHTML = `<div class="conciliacao-grid">
-      <div class="metric"><div class="metric-label">Pagamentos</div><div class="metric-value">${linhasImportadas.length}</div><div class="metric-sub">${lancamentosGerados.length} lançamentos gerados</div></div>
-      <div class="metric"><div class="metric-label">Entradas banco</div><div class="metric-value" style="font-size:16px">R$ ${fmtValor(entradasBanco.reduce((s, m) => s + m.valor, 0))}</div><div class="metric-sub">${entradasBanco.length} movimentos</div></div>
-      <div class="metric"><div class="metric-label">Saídas banco</div><div class="metric-value" style="font-size:16px">R$ ${fmtValor(Math.abs(saidasBanco.reduce((s, m) => s + m.valor, 0)))}</div><div class="metric-sub">${saidasBanco.length} movimentos</div></div>
-      <div class="metric"><div class="metric-label">Taxas cartões</div><div class="metric-value" style="font-size:16px">R$ ${fmtValor(totalTaxasCartoes())}</div><div class="metric-sub">${taxasCartoesTemp.length} lançamentos de taxa</div></div>
-      <div class="metric"><div class="metric-label">Aplicação</div><div class="metric-value" style="font-size:16px">R$ ${fmtValor(aplicacoes.reduce((s, m) => s + m.valor, 0))}</div><div class="metric-sub">${aplicacoes.length} aplicações · ${resgates.length} resgates</div></div>
-    </div>`;
-  }
-  renderResultadoFechamento();
-}
-
-function atualizarCardFechamento(nome, ok, texto) {
-  const card = document.getElementById(`card-fechamento-${nome}`);
-  const status = document.getElementById(`status-fechamento-${nome}`);
-  if (card) card.className = `fechamento-card ${ok ? 'ok' : 'warn'}`;
-  if (status) status.textContent = texto;
-}
-
-function totalTaxasCartoes() {
-  return arredondarMoeda(taxasCartoesTemp.reduce((s, t) => s + t.valor, 0));
-}
-
-function renderResultadoFechamento() {
-  const el = document.getElementById('resultado-fechamento-unificado');
-  if (!el) return;
-  const documentos = [
-    { nome: 'Pagamentos', ok: linhasImportadas.length > 0, required: true, texto: linhasImportadas.length ? `${linhasImportadas.length} linhas importadas` : 'aguardando arquivo' },
-    { nome: 'Extrato bancário', ok: extratoBancarioTemp.length > 0, required: true, texto: extratoBancarioTemp.length ? `${extratoBancarioTemp.length} movimentos` : 'necessário para conciliar banco' },
-    { nome: 'Recebimentos', ok: titulosReceberTemp.length > 0, required: false, texto: titulosReceberTemp.length ? `${titulosReceberTemp.length} títulos` : 'opcional nesta etapa' },
-    { nome: 'Cartões', ok: cartoesReceberTemp.length > 0, required: false, texto: cartoesReceberTemp.length ? `R$ ${fmtValor(totalTaxasCartoes())} em taxas` : 'opcional para taxas' },
-    { nome: 'Aplicação', ok: extratoAplicacaoTemp.length > 0, required: false, texto: extratoAplicacaoTemp.length ? `${extratoAplicacaoTemp.length} movimentos` : 'opcional' }
-  ];
-  el.innerHTML = `<div class="fechamento-checklist">
-    ${documentos.map(d => `<div class="fechamento-check ${d.ok ? 'ok' : (d.required ? 'warn' : '')}">
-      <strong>${escapeHtml(d.nome)}</strong>
-      <span class="conciliacao-note">${escapeHtml(d.texto)}</span>
-    </div>`).join('')}
-  </div>`;
-}
-
-function rodarConciliacaoFechamento() {
-  if (linhasImportadas.length === 0) {
-    mostrarMsgFechamento('Importe os pagamentos antes de rodar a conciliação.', 'warn');
-    return;
-  }
-  if (extratoBancarioTemp.length === 0) {
-    mostrarMsgFechamento('Importe o extrato bancário antes de rodar a conciliação.', 'warn');
-    return;
-  }
-  mostrarTela('tela-conciliacao-bancaria');
-  gerarSugestoesConciliacao();
-}
-
-function gerarConciliacaoParaPendencias() {
-  if (linhasImportadas.length === 0 || extratoBancarioTemp.length === 0) return false;
-  gerarSugestoesConciliacao();
-  return conciliacaoItensTemp.length > 0;
-}
-
-function resumoPendenciasFechamento() {
-  const pendenciasPagamento = novasChavesTemp.filter(item => !codigosTemp[item.chave]).length;
-  const contasSemExtrato = pagamentosSemExtratoBancario();
-  const pagamentosSemExtrato = contasSemExtrato.reduce((s, item) => s + item.qtd, 0);
-  const pendenciasConciliacao = conciliacaoItensTemp.filter(item => {
-    if (item.movimento === 'pagamento-pendente') return !vinculosPagamentoConciliacaoTemp[item.id];
-    if (item.movimento === 'recebimento') return !obterCodigoContaParaDominio(codigosConciliacaoTemp[item.id]);
-    return false;
-  }).length;
-  const saidasPendentes = conciliacaoItensTemp.filter(item => item.movimento === 'saida-pendente').length;
-  const taxasPendentes = taxasCartoesTemp.length > 0 ? 0 : 0;
-  return { pendenciasPagamento, pendenciasConciliacao, saidasPendentes, taxasPendentes, contasSemExtrato, pagamentosSemExtrato, total: pendenciasPagamento + pendenciasConciliacao + pagamentosSemExtrato + taxasPendentes };
-}
-
-function pagamentosSemExtratoBancario() {
-  if (linhasImportadas.length === 0) return [];
-  const contasBanco = new Set(contasExtrato(extratoBancarioTemp).map(normalizarTexto));
-  const gruposConta = new Map();
-  linhasImportadas
-    .map((row, idx) => pagamentoConciliacao(row, idx))
-    .filter(p => p.valor > 0 && p.conta && (extratoBancarioTemp.length === 0 || !contasBanco.has(normalizarTexto(p.conta))) && !codigoContaSemConciliacao(p.conta))
-    .forEach(p => {
-      const atual = gruposConta.get(p.conta) || { conta: p.conta, qtd: 0, total: 0, exemplos: [] };
-      atual.qtd += 1;
-      atual.total = arredondarMoeda(atual.total + p.valor);
-      if (atual.exemplos.length < 4) atual.exemplos.push(`${p.fornecedor} - R$ ${fmtValor(p.valor)}`);
-      gruposConta.set(p.conta, atual);
-    });
-  return Array.from(gruposConta.values());
-}
-
-function chaveContaSemConciliacao(conta) {
-  return normalizarTexto(conta || '');
-}
-
-function regrasContasSemConciliacaoGrupo() {
-  if (!grupoAtivo) return {};
-  contasSemConciliacao[grupoAtivo] = contasSemConciliacao[grupoAtivo] || {};
-  return contasSemConciliacao[grupoAtivo];
-}
-
-function codigoContaSemConciliacao(conta) {
-  const regras = regrasContasSemConciliacaoGrupo();
-  return obterCodigoContaParaDominio(regras[chaveContaSemConciliacao(conta)] || '');
-}
-
-function salvarContaSemConciliacaoInput(input) {
-  if (!input?.dataset?.contaSemConciliacao) return;
-  const conta = input.dataset.contaSemConciliacao;
-  const codigo = obterCodigoContaParaDominio(input.value);
-  input.value = codigo;
-  const regras = regrasContasSemConciliacaoGrupo();
-  const chave = chaveContaSemConciliacao(conta);
-  if (codigo) regras[chave] = codigo;
-  else delete regras[chave];
-  salvarStorage();
-  if (linhasImportadas.length > 0) gerarLancamentos(linhasImportadas, depara[grupoAtivo] || {});
-  renderPendenciasFechamento();
-}
-
-function abrirPendenciasFechamento() {
-  if (linhasImportadas.length === 0) {
-    mostrarMsgFechamento('Importe os pagamentos antes de conferir pendências.', 'warn');
-    return;
-  }
-  if (extratoBancarioTemp.length > 0) {
-    gerarConciliacaoParaPendencias();
-  } else {
-    conciliacaoItensTemp = [];
-    mostrarMsgFechamento('Pagamentos importados. Para conciliar banco, importe pelo menos um extrato bancário.', 'warn');
-  }
-  mostrarTela('tela-pendencias-fechamento');
-}
-
-function atualizarPendenciasFechamento() {
-  salvarCodigosPreenchidosNoGrupo();
-  coletarCodigosConciliacao();
-  salvarRegrasRecebimentoConciliacao();
-  if (extratoBancarioTemp.length > 0) gerarConciliacaoParaPendencias();
-  renderPendenciasFechamento();
-}
-
-function renderPendenciasFechamento() {
-  if (!grupoAtivo) return;
-  const titulo = document.getElementById('titulo-pendencias-fechamento');
-  if (titulo) titulo.textContent = 'Conferência do fechamento — ' + grupoAtivo;
-  const r = resumoPendenciasFechamento();
-  const resumo = document.getElementById('resumo-pendencias-fechamento');
-  if (resumo) {
-    resumo.innerHTML = `<div class="conciliacao-grid">
-      <div class="metric"><div class="metric-label">Itens para revisar</div><div class="metric-value ${r.total ? 'warn' : 'ok'}">${r.total}</div></div>
-      <div class="metric"><div class="metric-label">De-para pagamentos</div><div class="metric-value ${r.pendenciasPagamento ? 'warn' : 'ok'}">${r.pendenciasPagamento}</div></div>
-      <div class="metric"><div class="metric-label">Contas sem extrato</div><div class="metric-value ${r.pagamentosSemExtrato ? 'warn' : 'ok'}">${r.contasSemExtrato.length}</div><div class="metric-sub">${r.pagamentosSemExtrato} pagamentos</div></div>
-      <div class="metric"><div class="metric-label">Conciliação / recebimentos</div><div class="metric-value ${r.pendenciasConciliacao ? 'warn' : 'ok'}">${r.pendenciasConciliacao}</div><div class="metric-sub">${r.saidasPendentes} saídas pendentes no extrato</div></div>
-      <div class="metric"><div class="metric-label">Taxas cartões</div><div class="metric-value ${taxasCartoesTemp.length ? 'ok' : ''}">${taxasCartoesTemp.length}</div><div class="metric-sub">lançamentos consolidados</div></div>
-    </div>`;
-  }
-  const lista = document.getElementById('lista-pendencias-fechamento');
-  if (!lista) return;
-  const blocoPagamento = renderBlocoPendenciaPagamento(r.pendenciasPagamento);
-  const blocoContasSemExtrato = renderBlocoContasSemExtrato(r.contasSemExtrato);
-  const blocoConciliacao = renderBlocoPendenciaConciliacao(r.pendenciasConciliacao, r.saidasPendentes);
-  const blocoTaxas = renderBlocoPendenciaTaxas();
-  lista.innerHTML = `<div class="review-stack">${blocoPagamento}${blocoContasSemExtrato}${blocoConciliacao}${blocoTaxas}</div>`;
-  document.getElementById('preview-final-fechamento').innerHTML = '';
-}
-
-function renderBlocoPendenciaPagamento(qtd) {
-  const preview = novasChavesTemp.filter(item => !codigosTemp[item.chave]).slice(0, 6).map(item => `<tr>
-    <td>${escapeHtml(item.fornecedor || '')}</td>
-    <td>${escapeHtml(item.plano || '')}</td>
-    <td>${escapeHtml(item.tipoDoc || '')}</td>
-    <td>${escapeHtml(item.historico || '')}</td>
-  </tr>`).join('');
-  return `<div class="review-card">
-    <div class="review-head">
-      <div>
-        <div class="review-kicker">Classificação contábil</div>
-        <div class="review-title-row">
-          <h3>De-para de pagamentos</h3>
-          <span class="review-badge ${qtd ? 'warn' : 'ok'}">${qtd ? qtd + ' pendente' + (qtd !== 1 ? 's' : '') : 'ok'}</span>
-        </div>
-        <div class="conciliacao-note">${qtd ? qtd + ' combinação' + (qtd !== 1 ? 'ões' : '') + ' sem código.' : 'Tudo preenchido.'}</div>
-      </div>
-      <button class="btn ${qtd ? 'btn-primary' : ''} review-action" onclick="abrirDeparaPagamentosFechamento()">${qtd ? 'Resolver de-para' : 'Revisar regras'}</button>
-    </div>
-    ${preview ? `<div class="review-body"><div class="table-wrap table-scroll review-table"><table><thead><tr><th>Fornecedor</th><th>Plano</th><th>Tipo</th><th>Histórico</th></tr></thead><tbody>${preview}</tbody></table></div></div>` : '<div class="review-empty">Nenhuma combinação de pagamento pendente.</div>'}
-  </div>`;
-}
-
-function renderBlocoContasSemExtrato(contasSemExtrato) {
-  if (!contasSemExtrato.length) return '';
-  const linhas = contasSemExtrato.map(item => `<tr>
-    <td>${escapeHtml(item.conta)}</td>
-    <td>${item.qtd} pagamento${item.qtd !== 1 ? 's' : ''}</td>
-    <td class="review-value">R$ ${fmtValor(item.total)}</td>
-    <td class="review-examples">${escapeHtml(item.exemplos.join(' | '))}</td>
-    <td style="min-width:210px">
-      <input type="text" class="conta-autocomplete" data-conta-sem-conciliacao="${escapeAttr(item.conta)}" value="${escapeAttr(codigoContaSemConciliacao(item.conta))}" placeholder="Código ou conta caixa" oninput="criarAutocompleteConta(this)" onblur="salvarContaSemConciliacaoInput(this)" onkeydown="if(event.key==='Enter'){this.blur()}" style="width:100%">
-    </td>
-  </tr>`).join('');
-  return `<div class="review-card warning">
-    <div class="review-head">
-      <div>
-        <div class="review-kicker">Conciliação por conta bancária</div>
-        <div class="review-title-row">
-          <h3>Contas sem extrato ou caixa</h3>
-          <span class="review-badge warn">${contasSemExtrato.length} conta${contasSemExtrato.length !== 1 ? 's' : ''}</span>
-        </div>
-        <div class="conciliacao-note">Importe o extrato quando for banco. Quando for caixa ou uma conta sem extrato, informe a conta contábil para fechar a pendência.</div>
-      </div>
-      <button class="btn btn-primary review-action" onclick="document.getElementById('fechamento-extrato-input').click()">Importar outro extrato</button>
-    </div>
-    <div class="review-body">
-    <div class="table-wrap table-scroll review-table">
-      <table>
-        <thead><tr><th>Conta origem</th><th>Quantidade</th><th style="text-align:right">Total</th><th>Exemplos de pagamentos</th><th>Conta contábil quando não houver extrato</th></tr></thead>
-        <tbody>${linhas}</tbody>
-      </table>
-    </div>
-    <div class="review-help">Ao preencher a conta contábil, o sistema entende que esses pagamentos não precisam de conciliação bancária. Use isso para caixa; para banco, prefira importar o extrato.</div>
-    </div>
-  </div>`;
-}
-
-function renderBlocoPendenciaConciliacao(qtd, saidasPendentes) {
-  const itens = conciliacaoItensTemp.filter(item => {
-    if (item.movimento === 'pagamento-pendente') return !vinculosPagamentoConciliacaoTemp[item.id];
-    if (item.movimento === 'recebimento') return !obterCodigoContaParaDominio(codigosConciliacaoTemp[item.id]);
-    return false;
-  }).slice(0, 6);
-  const preview = itens.map(item => `<tr>
-    <td>${escapeHtml(labelMovimentoConciliacao(item))}</td>
-    <td>${escapeHtml(item.data || (item.qtd ? item.qtd + ' movimentos' : ''))}</td>
-    <td><strong>${escapeHtml(item.tipo || '')}</strong><br><span class="review-muted">${escapeHtml(item.historico || item.fornecedor || '')}</span></td>
-    <td class="review-value">R$ ${fmtValor(item.total || item.valor || 0)}</td>
-  </tr>`).join('');
-  const texto = extratoBancarioTemp.length === 0
-    ? 'Extrato bancário ainda não importado.'
-    : (qtd ? `${qtd} item${qtd !== 1 ? 's' : ''} para conciliar/preencher. ${saidasPendentes} saída${saidasPendentes !== 1 ? 's' : ''} pendente${saidasPendentes !== 1 ? 's' : ''} no extrato.` : 'Tudo conciliado/preenchido.');
-  return `<div class="review-card">
-    <div class="review-head">
-      <div>
-        <div class="review-kicker">Banco e entradas</div>
-        <div class="review-title-row">
-          <h3>Conciliação bancária e recebimentos</h3>
-          <span class="review-badge ${qtd ? 'warn' : 'ok'}">${qtd ? qtd + ' pendente' + (qtd !== 1 ? 's' : '') : 'ok'}</span>
-        </div>
-        <div class="conciliacao-note">${texto}</div>
-      </div>
-      <button class="btn ${qtd ? 'btn-primary' : ''} review-action" onclick="abrirModalPendenciasConciliacao()">${qtd ? 'Resolver conciliação' : 'Revisar conciliação'}</button>
-    </div>
-    ${preview ? `<div class="review-body"><div class="table-wrap table-scroll review-table"><table><thead><tr><th>Movimento</th><th>Data / Grupo</th><th>Descrição</th><th style="text-align:right">Valor</th></tr></thead><tbody>${preview}</tbody></table></div></div>` : '<div class="review-empty">Nenhuma pendência de conciliação ou recebimento.</div>'}
-  </div>`;
-}
-
-function renderBlocoPendenciaTaxas() {
-  const preview = taxasCartoesTemp.slice(0, 6).map(t => `<tr>
-    <td>${escapeHtml(fmtDate(t.data))}</td>
-    <td>${escapeHtml(t.tipoTaxa)}</td>
-    <td>${escapeHtml(t.qtd + ' parcela' + (t.qtd !== 1 ? 's' : ''))}</td>
-    <td class="review-value">R$ ${fmtValor(t.valor)}</td>
-  </tr>`).join('');
-  return `<div class="review-card">
-    <div class="review-head">
-      <div>
-        <div class="review-kicker">Competência</div>
-        <div class="review-title-row">
-          <h3>Taxas de cartões</h3>
-          <span class="review-badge ${taxasCartoesTemp.length ? 'info' : ''}">${taxasCartoesTemp.length} lançamento${taxasCartoesTemp.length !== 1 ? 's' : ''}</span>
-        </div>
-        <div class="conciliacao-note">${taxasCartoesTemp.length ? 'Taxas consolidadas no último dia da competência.' : 'Nenhuma taxa de cartões importada/apurada.'}</div>
-      </div>
-    </div>
-    ${preview ? `<div class="review-body"><div class="table-wrap table-scroll review-table"><table><thead><tr><th>Data</th><th>Tipo</th><th>Qtd.</th><th style="text-align:right">Valor</th></tr></thead><tbody>${preview}</tbody></table></div></div>` : '<div class="review-empty">Sem taxas para demonstrar nesta conferência.</div>'}
-  </div>`;
-}
-
-function abrirDeparaPagamentosFechamento() {
-  renderNovasChaves();
-  mostrarTela('tela-novas-chaves');
-}
-
-function confirmarPendenciasFechamento() {
-  atualizarPendenciasFechamento();
-  const r = resumoPendenciasFechamento();
-  const preview = document.getElementById('preview-final-fechamento');
-  if (!preview) return;
-  if (r.total > 0) {
-    preview.innerHTML = `<div class="alert alert-warn">Ainda existem ${r.total} pendência${r.total !== 1 ? 's' : ''}. Resolva os blocos acima e clique em atualizar/conferir novamente.</div>`;
-    return;
-  }
-  preview.innerHTML = renderPreviewFinalFechamento();
-}
-
-function renderPreviewFinalFechamento() {
-  const totalPagamentos = lancamentosGerados.reduce((s, l) => s + arredondarMoeda(l.valorLiq), 0);
-  const totalRecebimentos = conciliacaoItensTemp
-    .filter(item => item.movimento === 'recebimento')
-    .reduce((s, item) => s + arredondarMoeda(item.total), 0);
-  const pagamentosConciliados = conciliacaoItensTemp.filter(item => item.movimento === 'pagamento-conciliado').length;
-  const recebimentos = conciliacaoItensTemp.filter(item => item.movimento === 'recebimento').length;
-  const exportaTaxas = taxasCartoesTemp.length
-    ? `<button class="btn" onclick="exportarTaxasCartoes()">Exportar taxas de cartões</button>`
-    : '';
-  return `<div class="card">
-    <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:14px;flex-wrap:wrap;margin-bottom:14px">
-      <div>
-        <h3 style="margin-bottom:4px">Fechamento conferido</h3>
-        <div class="conciliacao-note">Pendências resolvidas. Confira os totais e exporte os arquivos do Domínio.</div>
-      </div>
-      <span class="conciliacao-status ok">pronto para exportar</span>
-    </div>
-    <div class="conciliacao-grid" style="margin-bottom:0">
-      <div class="metric"><div class="metric-label">Lançamentos pagamentos</div><div class="metric-value">${lancamentosGerados.length}</div><div class="metric-sub">R$ ${fmtValor(totalPagamentos)}</div></div>
-      <div class="metric"><div class="metric-label">Pagamentos conciliados</div><div class="metric-value ok">${pagamentosConciliados}</div><div class="metric-sub">saídas bancárias vinculadas</div></div>
-      <div class="metric"><div class="metric-label">Recebimentos/conciliação</div><div class="metric-value">${recebimentos}</div><div class="metric-sub">R$ ${fmtValor(totalRecebimentos)}</div></div>
-      <div class="metric"><div class="metric-label">Taxas cartões</div><div class="metric-value">${taxasCartoesTemp.length}</div><div class="metric-sub">R$ ${fmtValor(totalTaxasCartoes())}</div></div>
-      <div class="metric"><div class="metric-label">Status</div><div class="metric-value ok" style="font-size:18px">OK</div><div class="metric-sub">sem pendências abertas</div></div>
-    </div>
-    <div class="fechamento-final-actions">
-      <button class="btn btn-blue" onclick="exportarDominioPagamentos()">Exportar Domínio pagamentos</button>
-      <button class="btn btn-blue" onclick="exportarConciliacaoBancaria()">Exportar Domínio conciliação</button>
-      ${exportaTaxas}
-    </div>
-  </div>`;
-}
-
-function exportarTaxasCartoes() {
-  if (taxasCartoesTemp.length === 0) {
-    alert('Importe Parcelas de Cartões a Receber antes de exportar as taxas.');
-    return;
-  }
-  const cabecalho = ['Data','Cód. Conta Débito','Cód. Conta Crédito','Valor','Cód. Histórico','Complemento Histórico','Inicia Lote','Código Matriz/Filial','Plano de Contas Financeiro','Centro de Custo Débito','Centro de Custo Crédito'];
-  const linhas = taxasCartoesTemp.map((t, i) => [
-    fmtDate(t.data),
-    '',
-    '',
-    arredondarMoeda(t.valor),
-    '',
-    limparTextoExportacaoDominio(`${t.tipoTaxa} COMPETÊNCIA - ${fmtDate(t.data)} - ${t.qtd || 0} parcela${t.qtd !== 1 ? 's' : ''}${t.detalhe ? ' - ' + t.detalhe : ''}`),
-    i === 0 ? 1 : '',
-    limparTextoExportacaoDominio(t.empresa || grupoAtivo || ''),
-    limparTextoExportacaoDominio(t.tipoTaxa),
-    '',
-    ''
-  ]);
-  const ws = XLSX.utils.aoa_to_sheet([cabecalho, ...linhas]);
-  const wb = XLSX.utils.book_new();
-  XLSX.utils.book_append_sheet(wb, ws, 'Taxas Cartões');
-  const data = new Date().toLocaleDateString('pt-BR').replace(/\//g,'-');
-  XLSX.writeFile(wb, `Dominio_Taxas_Cartoes_${grupoAtivo}_${data}.xlsx`);
-}
-
 function renderConciliacaoBancaria() {
   const el = document.getElementById('resumo-conciliacao-bancaria');
   if (!el) return;
@@ -1435,12 +864,13 @@ function renderConciliacaoBancaria() {
   const diferencaConferencia = arredondarMoeda(totalPagamentos - totalSaidasPagamentos);
   const valoresBatem = Math.abs(diferencaConferencia) < 0.01;
   el.innerHTML = `
-    <div class="conciliacao-grid">
-      <div class="metric"><div class="metric-label">Grupo ativo</div><div class="metric-value" style="font-size:16px">${escapeHtml(grupoAtivo || 'Nenhum')}</div></div>
-      <div class="metric"><div class="metric-label">Pagamentos carregados</div><div class="metric-value">${qtdPagamentos}</div></div>
-      <div class="metric"><div class="metric-label">Extrato bancário</div><div class="metric-value">${extratoBancarioTemp.length}</div><div class="metric-sub">${infoExtratoBancarioTemp ? escapeHtml(resumoContasExtrato(extratoBancarioTemp)) : 'Não importado'}</div></div>
-      <div class="metric"><div class="metric-label">Entradas</div><div class="metric-value" style="font-size:16px">R$ ${fmtValor(entradas.reduce((s, m) => s + m.valor, 0))}</div><div class="metric-sub">${entradas.length} movimentos</div></div>
-      <div class="metric"><div class="metric-label">Saídas</div><div class="metric-value" style="font-size:16px">R$ ${fmtValor(Math.abs(saidas.reduce((s, m) => s + m.valor, 0)))}</div><div class="metric-sub">${saidas.length} movimentos</div></div>
+    <div class="conciliacao-grid conciliacao-summary-grid">
+      <div class="metric metric-muted"><div class="metric-label">Grupo ativo</div><div class="metric-value metric-text">${escapeHtml(grupoAtivo || 'Nenhum')}</div></div>
+      <div class="metric metric-muted"><div class="metric-label">Pagamentos carregados</div><div class="metric-value">${qtdPagamentos}</div></div>
+      <div class="metric ${valoresBatem ? 'metric-focus-ok' : 'metric-focus-warn'}"><div class="metric-label">Conferência</div><div class="metric-value ${valoresBatem ? 'ok' : 'warn'}">${valoresBatem ? 'Bate' : 'Diferença'}</div><div class="metric-sub">R$ ${fmtValor(Math.abs(diferencaConferencia))}</div></div>
+      <div class="metric metric-muted"><div class="metric-label">Extrato bancário</div><div class="metric-value metric-text">${extratoBancarioTemp.length}</div><div class="metric-sub">${infoExtratoBancarioTemp ? escapeHtml(resumoContasExtrato(extratoBancarioTemp)) : 'Não importado'}</div></div>
+      <div class="metric metric-muted"><div class="metric-label">Entradas</div><div class="metric-value metric-text">R$ ${fmtValor(entradas.reduce((s, m) => s + m.valor, 0))}</div><div class="metric-sub">${entradas.length} movimentos</div></div>
+      <div class="metric metric-muted"><div class="metric-label">Saídas</div><div class="metric-value metric-text">R$ ${fmtValor(Math.abs(saidas.reduce((s, m) => s + m.valor, 0)))}</div><div class="metric-sub">${saidas.length} movimentos</div></div>
     </div>
     <div class="alert ${valoresBatem ? 'alert-ok' : 'alert-warn'}">
       <div>
@@ -1448,9 +878,6 @@ function renderConciliacaoBancaria() {
         pagamentos totais R$ ${fmtValor(totalPagamentos)} · pagamentos bancários R$ ${fmtValor(totalSaidasPagamentos)}
         · ${valoresBatem ? 'valores batem' : 'diferença de R$ ' + fmtValor(Math.abs(diferencaConferencia))}
       </div>
-    </div>
-    <div class="alert alert-orange">
-      ⚠️ Marco de desenvolvimento: aba criada como módulo isolado. O fluxo atual de de-para, geração e exportação permanece preservado.
     </div>`;
   renderPreviewExtratoBancario();
 }
@@ -1789,21 +1216,22 @@ function renderSugestoesConciliacao(sugestoes, qtdPagamentos, qtdMovimentos, ent
     atual.movimentos.push(m);
     entradasAgrupadas.set(chave, atual);
   });
+  const descTruncada = (texto, classe = '') => `<span class="desc-truncate ${classe}" title="${escapeAttr(texto || '')}">${escapeHtml(texto || '')}</span>`;
   const renderLinhaPagamento = s => {
     const temSugestao = !!s.mov;
     const classeLinha = temSugestao ? 'conciliacao-row-ok' : 'conciliacao-row-warn';
     const classeStatus = temSugestao ? (s.status === 'conciliado' ? 'ok' : 'mid') : 'warn';
     const extratoTxt = s.mov
-      ? `${escapeHtml(descricaoMovimentoExtrato(s.mov))}<br><span style="color:var(--text2)">R$ ${fmtValor(Math.abs(s.mov.valor))} - Doc. ${escapeHtml(s.mov.documento || 's/n')}</span>`
+      ? `${descTruncada(descricaoMovimentoExtrato(s.mov))}<br><span class="muted-line">R$ ${fmtValor(Math.abs(s.mov.valor))} - Doc. ${escapeHtml(s.mov.documento || 's/n')}</span>`
       : '<span style="color:#991b1b;font-weight:600">Não encontrado no extrato. Precisa preencher na janela de pendências.</span>';
     return `<tr class="${classeLinha}">
       <td><span class="badge ${temSugestao ? 'badge-blue' : ''}">Pagamento</span></td>
-      <td style="white-space:nowrap">${escapeHtml(fmtDate(s.pag.data))}</td>
-      <td>${escapeHtml(s.pag.fornecedor || 'Sem fornecedor')}</td>
-      <td style="text-align:right;white-space:nowrap">R$ ${fmtValor(s.pag.valor)}</td>
+      <td class="col-secondary" style="white-space:nowrap">${escapeHtml(fmtDate(s.pag.data))}</td>
+      <td>${descTruncada(s.pag.fornecedor || 'Sem fornecedor')}</td>
+      <td class="col-value">R$ ${fmtValor(s.pag.valor)}</td>
       <td>${extratoTxt}</td>
       <td><span class="conciliacao-status ${classeStatus}">${escapeHtml(s.status)}</span></td>
-      <td>${escapeHtml(s.regra)}</td>
+      <td class="col-secondary">${escapeHtml(s.regra)}</td>
     </tr>`;
   };
   const linhasConciliadas = conciliadas.slice(0, 160).map(renderLinhaPagamento).join('');
@@ -1842,23 +1270,45 @@ function renderSugestoesConciliacao(sugestoes, qtdPagamentos, qtdMovimentos, ent
       codigosConciliacaoTemp[item.id] = obterCodigoContaParaDominio(encontrarCodigoRegraRecebimentoConciliacao(regrasRecebimentos, item.tipo, item.historico));
     }
   });
-  const linhasEntradas = itensRecebimento.map(r => `<tr>
-    <td><span class="badge badge-blue">Recebimento</span></td>
-    <td>${r.qtd} movimento${r.qtd !== 1 ? 's' : ''}</td>
-    <td><strong>${escapeHtml(r.tipo)}</strong><br><span style="color:var(--text2)">${escapeHtml(r.historico)}</span></td>
-    <td style="text-align:right;white-space:nowrap">R$ ${fmtValor(r.total)}</td>
-    <td>${codigosConciliacaoTemp[r.id] ? `<span class="mono">${escapeHtml(codigosConciliacaoTemp[r.id])}</span>` : '<span style="color:#1d4ed8;font-weight:600">Preencher na janela de pendências</span>'}</td>
-    <td><span class="conciliacao-status ${codigosConciliacaoTemp[r.id] ? 'ok' : 'mid'}">${codigosConciliacaoTemp[r.id] ? 'preenchido' : 'de-para'}</span></td>
-    <td>${escapeHtml(r.tipo)}</td>
-  </tr>`).join('');
+  const entradasPreenchidas = itensRecebimento.filter(r => !!codigosConciliacaoTemp[r.id]);
+  const entradasPendentes = itensRecebimento.filter(r => !codigosConciliacaoTemp[r.id]);
+  const renderLinhaRecebimento = (r, compacta) => {
+    const preenchido = !!codigosConciliacaoTemp[r.id];
+    const status = preenchido ? 'preenchido' : 'de-para';
+    const statusClasse = preenchido ? 'ok' : 'mid';
+    if (compacta) {
+      return `<tr class="conciliacao-row-compact">
+        <td><span class="badge badge-blue">Recebimento</span></td>
+        <td class="col-secondary">${r.qtd} movimento${r.qtd !== 1 ? 's' : ''}</td>
+        <td>${descTruncada(`${r.tipo} - ${r.historico}`)}</td>
+        <td class="col-value">R$ ${fmtValor(r.total)}</td>
+        <td><span class="mono">${escapeHtml(codigosConciliacaoTemp[r.id])}</span></td>
+        <td><span class="conciliacao-status ${statusClasse}">${status}</span></td>
+        <td class="col-secondary">${descTruncada(r.tipo, 'desc-rule')}</td>
+      </tr>`;
+    }
+    return `<tr class="${preenchido ? 'conciliacao-row-filled' : ''}">
+      <td><span class="badge badge-blue">Recebimento</span></td>
+      <td class="col-secondary">${r.qtd} movimento${r.qtd !== 1 ? 's' : ''}</td>
+      <td><strong>${escapeHtml(r.tipo)}</strong><br>${descTruncada(r.historico, 'muted-line')}</td>
+      <td class="col-value">R$ ${fmtValor(r.total)}</td>
+      <td>${preenchido ? `<span class="mono">${escapeHtml(codigosConciliacaoTemp[r.id])}</span>` : '<span style="color:#1d4ed8;font-weight:600">Preencher na janela de pendências</span>'}</td>
+      <td><span class="conciliacao-status ${statusClasse}">${status}</span></td>
+      <td class="col-secondary">${descTruncada(r.tipo, 'desc-rule')}</td>
+    </tr>`;
+  };
+  const linhasEntradasPendentes = entradasPendentes.map(r => renderLinhaRecebimento(r, false)).join('');
+  const linhasEntradasPreenchidas = mostrarPendenciasPreenchidas
+    ? entradasPreenchidas.map(r => renderLinhaRecebimento(r, false)).join('')
+    : '';
   const linhasSaidasExtras = itensSaidaExtra.map(r => `<tr class="conciliacao-row-warn">
     <td><span class="badge">Saída pendente</span></td>
-    <td>${escapeHtml(r.data || '')}</td>
-    <td><strong>${escapeHtml(r.tipo)}</strong><br><span style="color:var(--text2)">${escapeHtml(r.historico)}</span></td>
-    <td style="text-align:right;white-space:nowrap">R$ ${fmtValor(r.total)}</td>
+    <td class="col-secondary">${escapeHtml(r.data || '')}</td>
+    <td><strong>${escapeHtml(r.tipo)}</strong><br>${descTruncada(r.historico, 'muted-line')}</td>
+    <td class="col-value">R$ ${fmtValor(r.total)}</td>
     <td><span style="color:#991b1b;font-weight:600">Escolha esta saída em um pagamento pendente</span></td>
     <td><span class="conciliacao-status warn">conciliar</span></td>
-    <td>Conciliar manualmente</td>
+    <td class="col-secondary">Conciliar manualmente</td>
   </tr>`).join('');
   const textoBotaoConciliados = mostrarLancamentosConciliados ? 'Recolher lançamentos conciliados' : 'Expandir lançamentos conciliados';
   const secaoConciliados = `<tr>
@@ -1870,32 +1320,39 @@ function renderSugestoesConciliacao(sugestoes, qtdPagamentos, qtdMovimentos, ent
     </td>
   </tr>${mostrarLancamentosConciliados ? linhasConciliadas : ''}`;
   const qtdPendencias = pendentesPagamento.length + itensSaidaExtra.length + itensRecebimento.length;
+  const qtdParaResolver = pendentesPagamento.length + itensSaidaExtra.length + entradasPendentes.length;
+  const textoBotaoPreenchidas = mostrarPendenciasPreenchidas ? 'Recolher pendências preenchidas' : 'Expandir pendências preenchidas';
+  const pendenciasOk = qtdParaResolver === 0;
   const secaoPendencias = `<tr>
-    <td colspan="7" style="background:#fff7ed;border-bottom:1px solid #fed7aa;padding:10px 14px">
-      <strong>${qtdPendencias} pendência${qtdPendencias !== 1 ? 's' : ''} para revisar/preencher</strong>
+    <td colspan="7" class="conciliation-section-row ${pendenciasOk ? 'ok' : 'pending'}">
+      <div class="conciliation-section-title">
+        <div>
+          <strong>${pendenciasOk ? '✓ Pendências preenchidas - OK' : `${qtdParaResolver} pendência${qtdParaResolver !== 1 ? 's' : ''} para revisar/preencher`}</strong>
+          <span>${pendenciasOk ? `${entradasPreenchidas.length} regra${entradasPreenchidas.length !== 1 ? 's' : ''} já preenchida${entradasPreenchidas.length !== 1 ? 's' : ''}` : `${qtdParaResolver} ainda precisam de ação · ${entradasPreenchidas.length} preenchida${entradasPreenchidas.length !== 1 ? 's' : ''}`}</span>
+        </div>
+        ${entradasPreenchidas.length ? `<button class="btn btn-sm" onclick="alternarPendenciasPreenchidas()">${textoBotaoPreenchidas}</button>` : ''}
+      </div>
     </td>
   </tr>`;
-  const linhas = secaoConciliados + secaoPendencias + linhasPagamentosPendentes + linhasSaidasExtras + linhasEntradas;
+  const linhas = secaoConciliados + secaoPendencias + linhasPagamentosPendentes + linhasSaidasExtras + linhasEntradasPendentes + linhasEntradasPreenchidas;
 
-  el.innerHTML = `<div class="card">
+  el.innerHTML = `<div class="card conciliacao-panel">
     <h3>Conciliação e de-para</h3>
-    <div class="conciliacao-grid">
-      <div class="metric"><div class="metric-label">Pagamentos analisados</div><div class="metric-value">${qtdPagamentos}</div></div>
-      <div class="metric"><div class="metric-label">Saídas do extrato</div><div class="metric-value">${qtdMovimentos}</div></div>
-      <div class="metric"><div class="metric-label">Pagamentos conciliados</div><div class="metric-value ok">${conciliadas.length}</div></div>
-      <div class="metric"><div class="metric-label">Pagamentos pendentes</div><div class="metric-value ${semSugestao > 0 ? 'warn' : 'ok'}">${semSugestao}</div></div>
-      <div class="metric"><div class="metric-label">Saídas pendentes</div><div class="metric-value ${saidasExtras.length > 0 ? 'warn' : 'ok'}">${saidasExtras.length}</div></div>
-      <div class="metric"><div class="metric-label">Recebimentos</div><div class="metric-value">${entradas.length}</div><div class="metric-sub">R$ ${fmtValor(totalEntradas)}</div></div>
-      <div class="metric"><div class="metric-label">De-para recebimentos</div><div class="metric-value">${entradasAgrupadas.size}</div></div>
+    <div class="conciliacao-grid conciliacao-summary-grid">
+      <div class="metric metric-muted"><div class="metric-label">Pagamentos analisados</div><div class="metric-value">${qtdPagamentos}</div></div>
+      <div class="metric metric-muted"><div class="metric-label">Saídas do extrato</div><div class="metric-value">${qtdMovimentos}</div></div>
+      <div class="metric metric-focus-ok"><div class="metric-label">Pagamentos conciliados</div><div class="metric-value ok">${conciliadas.length}</div></div>
+      <div class="metric ${semSugestao > 0 ? 'metric-focus-warn' : 'metric-muted'}"><div class="metric-label">Pagamentos pendentes</div><div class="metric-value ${semSugestao > 0 ? 'warn' : 'ok'}">${semSugestao}</div></div>
+      <div class="metric ${saidasExtras.length > 0 ? 'metric-focus-warn' : 'metric-muted'}"><div class="metric-label">Saídas pendentes</div><div class="metric-value ${saidasExtras.length > 0 ? 'warn' : 'ok'}">${saidasExtras.length}</div></div>
     </div>
-    <p class="conciliacao-note" style="margin-bottom:10px">Pagamentos são validados contra as saídas do extrato. Recebimentos aparecem no mesmo quadro para montar o de-para, sem salvar dados da planilha na base compartilhada.</p>
-    <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-bottom:12px">
-      <button class="btn btn-primary" onclick="abrirModalPendenciasConciliacao()">Preencher pendências</button>
-      <button class="btn btn-blue" onclick="exportarConciliacaoBancaria()">Exportar Domínio conciliação (.xlsx)</button>
-      <span class="conciliacao-note">Exporta só recebimentos novos. Saídas pendentes devem ser conciliadas com pagamentos.</span>
+    <p class="conciliacao-note" style="margin-bottom:10px">Pagamentos são validados contra as saídas do extrato. As pendências devem ser conciliadas manualmente quando não houver sugestão automática.</p>
+    <div class="conciliation-actions">
+      ${qtdParaResolver > 0 ? '<button class="btn btn-primary" onclick="abrirModalPendenciasConciliacao()">Preencher pendências</button>' : ''}
+      <button class="btn" onclick="mostrarTela('tela-resultado')">Voltar aos lançamentos</button>
+      <span class="conciliacao-note">${qtdParaResolver > 0 ? 'Saídas pendentes devem ser conciliadas com pagamentos antes da exportação final.' : 'Tudo preenchido para esta conciliação. A exportação fica no arquivo final.'}</span>
     </div>
-    <div class="table-wrap table-scroll">
-      <table>
+    <div class="table-wrap table-scroll conciliacao-table-wrap">
+      <table class="conciliation-table">
         <thead><tr><th>Movimento</th><th>Data / Grupo</th><th>Descrição</th><th style="text-align:right">Valor</th><th>Extrato / De-para</th><th>Status</th><th>Regra</th></tr></thead>
         <tbody>${linhas || '<tr><td colspan="7" style="text-align:center;color:var(--text2);padding:24px">Nenhum movimento para exibir.</td></tr>'}</tbody>
       </table>
@@ -1910,6 +1367,11 @@ function atualizarCodigoConciliacao(input) {
 
 function alternarLancamentosConciliados() {
   mostrarLancamentosConciliados = !mostrarLancamentosConciliados;
+  gerarSugestoesConciliacao();
+}
+
+function alternarPendenciasPreenchidas() {
+  mostrarPendenciasPreenchidas = !mostrarPendenciasPreenchidas;
   gerarSugestoesConciliacao();
 }
 
@@ -2153,24 +1615,23 @@ function salvarModalPendenciasConciliacao() {
   gerarSugestoesConciliacao();
 }
 
-function exportarConciliacaoBancaria() {
+const CABECALHO_DOMINIO = ['Data','Cód. Conta Débito','Cód. Conta Crédito','Valor','Cód. Histórico','Complemento Histórico','Inicia Lote','Código Matriz/Filial','Centro de Custo Débito','Centro de Custo Crédito'];
+
+function montarLinhasDominioConciliacao({ validarPendencias = true } = {}) {
   coletarCodigosConciliacao();
   if (conciliacaoItensTemp.length === 0) {
-    alert('Gere as sugestões de conciliação antes de exportar.');
-    return;
+    return [];
   }
   const itensNovos = conciliacaoItensTemp.filter(item => item.movimento === 'recebimento');
   if (itensNovos.length === 0) {
-    alert('Não há movimentos novos para exportar na conciliação. Os pagamentos já ficam no arquivo de pagamentos.');
-    return;
+    return [];
   }
   const pendentes = itensNovos.filter(item => !obterCodigoContaParaDominio(codigosConciliacaoTemp[item.id]));
-  if (pendentes.length > 0) {
+  if (pendentes.length > 0 && validarPendencias) {
     abrirModalPendenciasConciliacao();
-    return;
+    return null;
   }
   salvarRegrasRecebimentoConciliacao();
-  const cabecalho = ['Data','Cód. Conta Débito','Cód. Conta Crédito','Valor','Cód. Histórico','Complemento Histórico','Inicia Lote','Código Matriz/Filial','Plano de Contas Financeiro','Centro de Custo Débito','Centro de Custo Crédito'];
   const linhas = [];
   itensNovos.forEach(item => {
     const codigo = obterCodigoContaParaDominio(codigosConciliacaoTemp[item.id]);
@@ -2184,9 +1645,8 @@ function exportarConciliacaoBancaria() {
           arredondarMoeda(Math.abs(mov.valor || item.total)),
           '',
           limparTextoExportacaoDominio(descricaoMovimentoExtrato(mov) || item.historico),
-          linhas.length === 0 ? 1 : '',
+          '',
           limparTextoExportacaoDominio(mov.empresa || item.empresa || grupoAtivo || ''),
-          limparTextoExportacaoDominio(item.tipo || ''),
           '',
           ''
         ]);
@@ -2200,14 +1660,24 @@ function exportarConciliacaoBancaria() {
       arredondarMoeda(item.total),
       '',
       limparTextoExportacaoDominio(item.historico),
-      linhas.length === 0 ? 1 : '',
+      '',
       limparTextoExportacaoDominio(item.empresa || grupoAtivo || ''),
-      limparTextoExportacaoDominio(item.tipo || ''),
       '',
       ''
     ]);
   });
-  const ws = XLSX.utils.aoa_to_sheet([cabecalho, ...linhas]);
+  return linhas;
+}
+
+function exportarConciliacaoBancaria() {
+  const linhas = montarLinhasDominioConciliacao();
+  if (linhas === null) return;
+  if (linhas.length === 0) {
+    alert('Não há movimentos novos para exportar na conciliação. Os pagamentos já ficam no arquivo final.');
+    return;
+  }
+  linhas[0][6] = 1;
+  const ws = XLSX.utils.aoa_to_sheet([CABECALHO_DOMINIO, ...linhas]);
   const wb = XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(wb, ws, 'Domínio Conciliação');
   const data = new Date().toLocaleDateString('pt-BR').replace(/\//g,'-');
@@ -2233,7 +1703,6 @@ function renderGrupos() {
       <div style="display:flex;gap:8px;flex-wrap:wrap">
         ${!isAtivo ? `<button class="btn btn-sm" onclick="selecionarGrupo('${g}')">Selecionar</button>` : ''}
         ${isAtivo ? `
-          <button class="btn btn-sm btn-primary" onclick="mostrarTela('tela-fechamento-unificado')">Fechamento unificado</button>
           <button class="btn btn-sm" onclick="mostrarTela('tela-regras')">📋 Regras</button>
           <button class="btn btn-sm" onclick="mostrarTela('tela-plano-contas')">📑 Plano de Contas</button>
           <button class="btn btn-sm" onclick="mostrarTela('tela-conciliacao-bancaria')">🏦 Conciliação</button>
@@ -2442,6 +1911,30 @@ function obterCodigoContaParaDominio(valor) {
   return conta ? String(conta.codigo || '').trim() : texto;
 }
 
+function codigoContaSemConciliacao(conta) {
+  const texto = limparTextoECD(conta);
+  if (!texto || !grupoAtivo) return '';
+  const chaveNormalizada = normalizarTexto(texto);
+  const regrasGrupo = contasSemConciliacao[grupoAtivo] || {};
+  const valor = regrasGrupo[texto]
+    || regrasGrupo[chaveNormalizada]
+    || contasSemConciliacao[texto]
+    || contasSemConciliacao[chaveNormalizada]
+    || '';
+  return obterCodigoContaParaDominio(valor);
+}
+
+function salvarContaSemConciliacaoInput(input) {
+  if (!input?.dataset?.contaSemConciliacao || !grupoAtivo) return;
+  const conta = limparTextoECD(input.dataset.contaSemConciliacao);
+  const codigo = obterCodigoContaParaDominio(input.value);
+  contasSemConciliacao[grupoAtivo] = contasSemConciliacao[grupoAtivo] || {};
+  contasSemConciliacao[grupoAtivo][conta] = codigo;
+  contasSemConciliacao[grupoAtivo][normalizarTexto(conta)] = codigo;
+  input.value = codigo;
+  salvarStorage();
+}
+
 function criarAutocompleteConta(input) {
   if (!grupoAtivo || !planoContas[grupoAtivo] || planoContas[grupoAtivo].length === 0) return;
   fecharAutocomplete();
@@ -2536,7 +2029,7 @@ function renderNovasChaves() {
   tbody.innerHTML = visiveis.map(({ chave, fornecedor, plano, tipoDoc, historico, trechoHistorico, numero, empresa }) => {
     const infoDoc = separarNumeroDoHistorico(tipoDoc, numero, historico);
     const historicoExibido = infoDoc.historico;
-    const isAjuste = tipoDoc === 'DESCONTO' || tipoDoc === 'ACRÉSCIMO';
+    const isAjuste = tipoDoc === 'DESCONTO' || tipoDoc === 'ACRÉSCIMO' || tipoDoc.startsWith('DESCONTO -') || tipoDoc.startsWith('ACRÉSCIMO -');
     const historicoVisual = isAjuste ? `${tipoDoc} - ${historicoExibido}` : historicoExibido;
     const numeroExibido = tipoUsaNumero(tipoDoc) ? infoDoc.numero : '';
     const palavrasHistorico = renderPalavrasHistorico(chave, historicoExibido, trechoHistorico);
@@ -2781,17 +2274,6 @@ function salvarNovasChavesEGerar() {
   gerarLancamentos(linhasImportadas, regrasSalvas);
 }
 
-function salvarNovasChavesEVoltarPendencias() {
-  document.querySelectorAll('#tbody-novas-chaves input[type=text][data-chave]').forEach(inp => {
-    codigosTemp[inp.dataset.chave] = obterCodigoContaParaDominio(inp.value);
-    inp.value = codigosTemp[inp.dataset.chave];
-  });
-  salvarCodigosPreenchidosNoGrupo();
-  const regrasSalvas = Object.assign({}, depara[grupoAtivo] || {});
-  gerarLancamentos(linhasImportadas, regrasSalvas);
-  mostrarTela('tela-pendencias-fechamento');
-}
-
 function fmtDate(v) {
   if (!v) return '';
   if (v instanceof Date) return v.toLocaleDateString('pt-BR');
@@ -2836,6 +2318,7 @@ function gerarLancamentos(dados, regras) {
     const tipoDoc = limparTextoECD(r[COLS.TIPO_DOC]);
     const infoDoc = separarNumeroDoHistorico(tipoDoc, r[COLS.NUMERO], r[COLS.HISTORICO]);
     const historico = infoDoc.historico;
+    if (!forn && !plano && !tipoDoc && !historico) return;
     const chave = montarChave(forn, plano, tipoDoc, historico);
     const codDebito = obterCodigoContaParaDominio(encontrarCodigoRegra(regras, forn, plano, tipoDoc, historico));
     const banco = limparTextoECD(r[COLS.CONTA]);
@@ -2862,14 +2345,17 @@ function gerarLancamentos(dados, regras) {
       const tipoAjuste = acrescimoDesconto < 0 ? 'DESCONTO' : 'ACRÉSCIMO';
       const valorAjuste = Math.abs(acrescimoDesconto);
       const complementoAjuste = `${tipoAjuste} - ${complemento}`;
-      const chaveAjuste = montarChave(forn, plano, tipoAjuste, historico);
-      const codDebitoAjuste = obterCodigoContaParaDominio(encontrarCodigoRegra(regras, forn, plano, tipoAjuste, historico));
-      if (!codDebitoAjuste) pendentes.add(chaveAjuste);
+      const chaveDebitoAjuste = montarChave(forn, plano, tipoAjustePonta(tipoAjuste, 'DÉBITO'), historico);
+      const chaveCreditoAjuste = montarChave(forn, plano, tipoAjustePonta(tipoAjuste, 'CRÉDITO'), historico);
+      const codDebitoAjuste = obterCodigoContaParaDominio(encontrarCodigoRegraAjuste(regras, forn, plano, tipoAjuste, 'DÉBITO', historico));
+      const codCreditoAjuste = obterCodigoContaParaDominio(encontrarCodigoRegraAjuste(regras, forn, plano, tipoAjuste, 'CRÉDITO', historico));
+      if (!codDebitoAjuste) pendentes.add(chaveDebitoAjuste);
+      if (!codCreditoAjuste) pendentes.add(chaveCreditoAjuste);
       lancamentosGerados.push({
         idx,
         data: dataLiq,
         codDebito: codDebitoAjuste,
-        codCredito,
+        codCredito: codCreditoAjuste,
         valorLiq: valorAjuste,
         valorFmt: fmtValor(valorAjuste),
         complemento: complementoAjuste,
@@ -2877,7 +2363,7 @@ function gerarLancamentos(dados, regras) {
         plano,
         acrescimoDesconto,
         tipoAjuste,
-        semCodigo: !codDebitoAjuste
+        semCodigo: !codDebitoAjuste || !codCreditoAjuste
       });
     }
   });
@@ -2898,14 +2384,15 @@ function gerarLancamentos(dados, regras) {
 
   // Alerta pendentes
   const ap = document.getElementById('alert-pendentes');
-  if (pendentes.size > 0) {
-    const listaPendentes = [...pendentes].map(chave => `<div>${escapeHtml(chave)}</div>`).join('');
+  const pendentesValidos = [...pendentes].filter(chave => normalizarTexto(String(chave || '').replace(/\|/g, '')));
+  if (pendentesValidos.length > 0) {
+    const listaPendentes = pendentesValidos.map(chave => `<div>${escapeHtml(chave)}</div>`).join('');
     ap.innerHTML = `<div class="alert alert-warn alert-pendentes" style="margin-bottom:12px">
       <div class="alert-pendentes-top">
         <div class="alert-pendentes-main">
           <span class="alert-pendentes-icon">⚠️</span>
           <div>
-            <span class="alert-pendentes-title">${pendentes.size} ${pendentes.size === 1 ? 'combinação' : 'combinações'} sem código</span>
+            <span class="alert-pendentes-title">${pendentesValidos.length} ${pendentesValidos.length === 1 ? 'combinação' : 'combinações'} sem código</span>
             <span class="alert-pendentes-sub">lançamentos marcados para revisão.</span>
           </div>
         </div>
@@ -2929,7 +2416,7 @@ function gerarLancamentos(dados, regras) {
           <span class="alert-pendentes-icon">⚠️</span>
           <div>
             <span class="alert-pendentes-title">${ajustes.length} linha${ajustes.length > 1 ? 's' : ''} extra${ajustes.length > 1 ? 's' : ''} de acréscimo/desconto</span>
-            <span class="alert-pendentes-sub">geradas além do lançamento líquido.</span>
+            <span class="alert-pendentes-sub">geradas sem passar pelo banco: desconto credita a conta do de-para; acréscimo debita a conta do de-para.</span>
           </div>
         </div>
         <button class="btn btn-sm" onclick="alternarListaPendentes(this)">Expandir</button>
@@ -2956,18 +2443,46 @@ function gerarLancamentos(dados, regras) {
   mostrarTela('tela-resultado');
 }
 
-function exportarDominioPagamentos() {
-  const cabecalho = ['Data','Cód. Conta Débito','Cód. Conta Crédito','Valor','Cód. Histórico','Complemento Histórico','Inicia Lote','Código Matriz/Filial','Plano de Contas Financeiro','Centro de Custo Débito','Centro de Custo Crédito'];
+function montarLinhasDominioPagamentos() {
   const lancamentosPagamentos = lancamentosGerados.filter(l => !l.origemConciliacao);
-  const linhas = lancamentosPagamentos.map((l, i) => [
+  return lancamentosPagamentos.map(l => [
     l.data, l.codDebito, limparTextoExportacaoDominio(l.codCredito), l.valorLiq, '', limparTextoExportacaoDominio(l.complemento),
-    i === 0 ? 1 : '', limparTextoExportacaoDominio(l.empresa), limparTextoExportacaoDominio(l.plano), '', ''
+    '', limparTextoExportacaoDominio(l.empresa), '', ''
   ]);
-  const ws = XLSX.utils.aoa_to_sheet([cabecalho, ...linhas]);
+}
+
+function exportarDominioPagamentos() {
+  const linhas = montarLinhasDominioPagamentos();
+  if (linhas.length === 0) {
+    alert('Gere os lançamentos antes de exportar.');
+    return;
+  }
+  linhas[0][6] = 1;
+  const ws = XLSX.utils.aoa_to_sheet([CABECALHO_DOMINIO, ...linhas]);
   const wb = XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(wb, ws, 'Lançamentos Domínio');
   const data = new Date().toLocaleDateString('pt-BR').replace(/\//g,'-');
   XLSX.writeFile(wb, `Dominio_Pagamentos_${grupoAtivo}_${data}.xlsx`);
+}
+
+function exportarDominioFinal() {
+  const linhasPagamentos = montarLinhasDominioPagamentos();
+  if (linhasPagamentos.length === 0) {
+    alert('Gere os lançamentos de pagamentos antes de exportar.');
+    return;
+  }
+  const linhasConciliacao = montarLinhasDominioConciliacao();
+  if (linhasConciliacao === null) return;
+
+  const linhas = [...linhasPagamentos, ...linhasConciliacao];
+  linhas.forEach(l => { l[6] = ''; });
+  if (linhas.length > 0) linhas[0][6] = 1;
+
+  const ws = XLSX.utils.aoa_to_sheet([CABECALHO_DOMINIO, ...linhas]);
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, 'Lançamentos Domínio');
+  const data = new Date().toLocaleDateString('pt-BR').replace(/\//g,'-');
+  XLSX.writeFile(wb, `Dominio_Final_${grupoAtivo}_${data}.xlsx`);
 }
 
 // ---------- REGRAS ----------
@@ -3135,3 +2650,8 @@ iniciarSincronizacaoAutomatica();
 </script>
 </body>
 </html>
+
+
+
+
+
