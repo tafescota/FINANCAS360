@@ -1089,7 +1089,8 @@ function pagamentoEhTarifaBancaria(pag) {
     || texto.includes('cesta bancaria');
 }
 
-function gerarSugestoesConciliacao() {
+function gerarSugestoesConciliacao(opcoes = {}) {
+  const { redirecionarSeOk = true } = opcoes;
   const el = document.getElementById('resultado-conciliacao-bancaria');
   if (!el) return;
   if (linhasImportadas.length === 0) {
@@ -1198,7 +1199,10 @@ function gerarSugestoesConciliacao() {
     .map((mov, idxMov) => ({ mov, idxMov }))
     .filter(item => !usadosMov.has(item.idxMov));
 
-  renderSugestoesConciliacao(sugestoes, pagamentos.length, movimentos.length, entradas, saidasExtras);
+  const resultado = renderSugestoesConciliacao(sugestoes, pagamentos.length, movimentos.length, entradas, saidasExtras);
+  if (redirecionarSeOk && resultado?.qtdParaResolver === 0) {
+    setTimeout(() => mostrarTela('tela-resultado'), 0);
+  }
 }
 
 function renderSugestoesConciliacao(sugestoes, qtdPagamentos, qtdMovimentos, entradas = [], saidasExtras = []) {
@@ -1358,6 +1362,8 @@ function renderSugestoesConciliacao(sugestoes, qtdPagamentos, qtdMovimentos, ent
       </table>
     </div>
   </div>`;
+
+  return { qtdParaResolver, qtdPendencias, pagamentosPendentes: pendentesPagamento.length, saidasPendentes: itensSaidaExtra.length, recebimentosPendentes: entradasPendentes.length };
 }
 
 function atualizarCodigoConciliacao(input) {
@@ -1367,12 +1373,12 @@ function atualizarCodigoConciliacao(input) {
 
 function alternarLancamentosConciliados() {
   mostrarLancamentosConciliados = !mostrarLancamentosConciliados;
-  gerarSugestoesConciliacao();
+  gerarSugestoesConciliacao({ redirecionarSeOk: false });
 }
 
 function alternarPendenciasPreenchidas() {
   mostrarPendenciasPreenchidas = !mostrarPendenciasPreenchidas;
-  gerarSugestoesConciliacao();
+  gerarSugestoesConciliacao({ redirecionarSeOk: false });
 }
 
 function coletarCodigosConciliacao() {
