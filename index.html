@@ -1803,11 +1803,122 @@ function processarPlanoContas(file) {
   reader.onload = function(e) {
     try {
       const data = new Uint8Array(e.target.result);
-      const wb = XLSX.read(data, { type: 'array', cellDates: false });
-      const ws = wb.Sheets[wb.SheetNames[0]];
-      const raw = XLSX.utils.sheet_to_json(ws, { header: 1, defval: null });
+      const wb = XLSX.read(data, { type: 'array', cellDates: false, bookFiles: true });
 
       const contas = [];
+      const textoCelulaPlano = v => String(v ?? '').replace(/\u00a0/g, ' ').replace(/\s+/g, ' ').trim();
+      const normalizarClassificacaoPlano = v => textoCelulaPlano(v).replace(/\s+/g, '');
+      const ehCodigoPlano = v => /^\d+$/.test(textoCelulaPlano(v));
+      const ehClassificacaoPlano = v => /^\d+(?:\.\d+)+$/.test(normalizarClassificacaoPlano(v));
+      const ehTipoSinteticoPlano = v => textoCelulaPlano(v).toUpperCase() === 'S';
+      const ehTextoNomePlano = v => {
+        const txt = textoCelulaPlano(v);
+        return !!txt && !ehTipoSinteticoPlano(txt) && !ehCodigoPlano(txt) && !ehClassificacaoPlano(txt);
+      };
+      const adicionarContaPlano = (codigo, classificacao, nome) => {
+        codigo = textoCelulaPlano(codigo);
+        classificacao = normalizarClassificacaoPlano(classificacao);
+        nome = textoCelulaPlano(nome);
+        if (!codigo || !classificacao || !nome) return;
+        const chaveConta = `${codigo}|${classificacao}`;
+        if (contas.some(c => `${c.codigo}|${c.classificacao}` === chaveConta)) return;
+        contas.push({ codigo, classificacao, nome });
+      };
+      const extrairContaPlanoLinha = row => {
+        const valores = (row || []).map(textoCelulaPlano);
+        const idxClassificacao = valores.findIndex(v => ehClassificacaoPlano(v));
+        if (idxClassificacao < 0) return null;
+        if (valores.slice(0, idxClassificacao).some(ehTipoSinteticoPlano)) return null;
+
+        const codigoAntes = valores
+          .slice(0, idxClassificacao)
+          .filter(ehCodigoPlano)
+          .pop();
+        const codigoDepois = valores.find((v, idx) => idx !== idxClassificacao && ehCodigoPlano(v));
+        const codigo = codigoAntes || codigoDepois || '';
+
+        const nome = valores
+          .slice(idxClassificacao + 1)
+          .find(v => ehTextoNomePlano(v) && !['GRAU', 'FOLHA', 'EMPRESA', 'CNPJ', 'C.N.P.J.', 'HORA'].includes(v.toUpperCase()));
+
+        return codigo && nome ? { codigo, classificacao: valores[idxClassificacao], nome } : null;
+      };
+      const numeroRkPlano = rk => {
+        const divididoPor100 = rk & 1;
+        const inteiro = rk & 2;
+        let valor;
+        if (inteiro) {
+          valor = rk >> 2;
+        } else {
+          const buffer = new ArrayBuffer(8);
+          const view = new DataView(buffer);
+          view.setUint32(0, 0, true);
+          view.setUint32(4, rk & 0xFFFFFFFC, true);
+          valor = view.getFloat64(0, true);
+        }
+        return divididoPor100 ? valor / 100 : valor;
+      };
+      const textoNumeroPlano = valor => {
+        if (!Number.isFinite(valor)) return '';
+        const arredondado = Math.round(valor * 100000000) / 100000000;
+        return Number.isInteger(arredondado) ? String(arredondado) : String(arredondado);
+      };
+      const extrairLinhasBiffPlano = workbook => {
+        const arquivo = (workbook.cfb?.FileIndex || []).find(f => f.name === 'Workbook' && f.content);
+        if (!arquivo?.content) return [];
+
+        const bytes = arquivo.content instanceof Uint8Array ? arquivo.content : new Uint8Array(arquivo.content);
+        if (!bytes.byteLength) return [];
+
+        const strings = (workbook.Strings || []).map(s => textoCelulaPlano(s.t || s.r || ''));
+        const linhas = new Map();
+        const colocar = (linha, coluna, valor) => {
+          const texto = textoCelulaPlano(valor);
+          if (!texto) return;
+          if (!linhas.has(linha)) linhas.set(linha, []);
+          linhas.get(linha)[coluna] = texto;
+        };
+        const view = new DataView(bytes.buffer, bytes.byteOffset || 0, bytes.byteLength);
+
+        for (let offset = 0; offset + 4 <= bytes.byteLength;) {
+          const tipo = view.getUint16(offset, true);
+          const tamanho = view.getUint16(offset + 2, true);
+          const inicio = offset + 4;
+          if (inicio + tamanho > bytes.byteLength) break;
+
+          if (tipo === 0x00FD && tamanho >= 10) {
+            const linha = view.getUint16(inicio, true);
+            const coluna = view.getUint16(inicio + 2, true);
+            const indiceTexto = view.getUint32(inicio + 6, true);
+            colocar(linha, coluna, strings[indiceTexto] || '');
+          } else if (tipo === 0x0203 && tamanho >= 14) {
+            const linha = view.getUint16(inicio, true);
+            const coluna = view.getUint16(inicio + 2, true);
+            colocar(linha, coluna, textoNumeroPlano(view.getFloat64(inicio + 6, true)));
+          } else if (tipo === 0x027E && tamanho >= 10) {
+            const linha = view.getUint16(inicio, true);
+            const coluna = view.getUint16(inicio + 2, true);
+            colocar(linha, coluna, textoNumeroPlano(numeroRkPlano(view.getInt32(inicio + 6, true))));
+          } else if (tipo === 0x00BD && tamanho >= 6) {
+            const linha = view.getUint16(inicio, true);
+            const primeiraColuna = view.getUint16(inicio + 2, true);
+            const ultimaColuna = view.getUint16(inicio + tamanho - 2, true);
+            let posicao = inicio + 4;
+            for (let coluna = primeiraColuna; coluna <= ultimaColuna && posicao + 6 <= inicio + tamanho - 2; coluna++, posicao += 6) {
+              colocar(linha, coluna, textoNumeroPlano(numeroRkPlano(view.getInt32(posicao + 2, true))));
+            }
+          }
+
+          offset = inicio + tamanho;
+        }
+
+        return [...linhas.keys()].sort((a, b) => a - b).map(chave => linhas.get(chave));
+      };
+
+      wb.SheetNames.forEach(nomeAba => {
+      const ws = wb.Sheets[nomeAba];
+      if (!ws) return;
+      const raw = XLSX.utils.sheet_to_json(ws, { header: 1, defval: null, raw: false });
       const headerIdx = raw.findIndex(row => {
         const cols = (row || []).map(c => normalizarTexto(c));
         return cols.some(c => c === 'codigo' || c === 'cod' || c === 'cod conta')
@@ -1827,47 +1938,61 @@ function processarPlanoContas(file) {
         if (!row) return;
 
         if (colunas) {
-          const classificacao = String(row[colunas.classificacao] ?? '').trim();
-          const codigoReal = String(row[colunas.codigo] ?? '').trim();
-          const nome = String(row[colunas.nome] ?? '').trim();
-          const tipo = colunas.tipo >= 0 ? String(row[colunas.tipo] ?? '').trim().toUpperCase() : '';
+          const classificacao = normalizarClassificacaoPlano(row[colunas.classificacao]);
+          const codigoReal = textoCelulaPlano(row[colunas.codigo]);
+          const nome = textoCelulaPlano(row[colunas.nome]);
+          const tipo = colunas.tipo >= 0 ? textoCelulaPlano(row[colunas.tipo]).toUpperCase() : '';
 
           if (codigoReal && classificacao && nome) {
             if (tipo === 'S') return;
-            contas.push({ codigo: codigoReal, classificacao, nome });
+            adicionarContaPlano(codigoReal, classificacao, nome);
             return;
           }
         }
 
-        const idxClassificacaoComPontos = row.findIndex(v => /^\d+\.\d+(?:\.\d+)*$/.test(String(v || '').trim()));
+        const contaExtraida = extrairContaPlanoLinha(row);
+        if (contaExtraida) {
+          adicionarContaPlano(contaExtraida.codigo, contaExtraida.classificacao, contaExtraida.nome);
+          return;
+        }
+
+        const idxClassificacaoComPontos = row.findIndex(v => ehClassificacaoPlano(v));
         const idxClassificacao = idxClassificacaoComPontos >= 0
           ? idxClassificacaoComPontos
-          : row.findIndex(v => /^\d+(?:\.\d+)*$/.test(String(v || '').trim()));
+          : row.findIndex(v => /^\d+(?:\.\d+)*$/.test(normalizarClassificacaoPlano(v)));
         if (idxClassificacao < 0) return;
 
         const temTipoSintetico = row
           .slice(0, idxClassificacao)
-          .some(v => String(v || '').trim().toUpperCase() === 'S');
+          .some(v => ehTipoSinteticoPlano(v));
         if (temTipoSintetico) return;
 
         let codigoReal = null;
         for (let idx = 0; idx < row.length; idx++) {
           if (idx === idxClassificacao) continue;
-          const valor = String(row[idx] ?? '').trim();
-          if (/^\d+$/.test(valor)) { codigoReal = valor; break; }
+          const valor = textoCelulaPlano(row[idx]);
+          if (ehCodigoPlano(valor)) { codigoReal = valor; break; }
         }
         if (!codigoReal) return;
 
-        const classificacao = String(row[idxClassificacao]).trim();
+        const classificacao = normalizarClassificacaoPlano(row[idxClassificacao]);
         let nome = null;
         for (let idx = idxClassificacao + 1; idx < row.length; idx++) {
-          if (/^[SA]$/i.test(String(row[idx] || '').trim())) continue;
-          if (/^\d+$/.test(String(row[idx] || '').trim())) continue;
-          if (row[idx]) { nome = row[idx]; break; }
+          if (ehTextoNomePlano(row[idx])) { nome = textoCelulaPlano(row[idx]); break; }
         }
         if (!nome) return;
-        contas.push({ codigo: String(codigoReal).trim(), classificacao, nome: String(nome).trim() });
+        adicionarContaPlano(codigoReal, classificacao, nome);
       });
+      });
+
+      if (contas.length === 0) {
+        extrairLinhasBiffPlano(wb).forEach(row => {
+          const contaExtraida = extrairContaPlanoLinha(row);
+          if (contaExtraida) {
+            adicionarContaPlano(contaExtraida.codigo, contaExtraida.classificacao, contaExtraida.nome);
+          }
+        });
+      }
 
       if (contas.length === 0) {
         showMsgPlanoContas('Não encontrei contas analíticas nesse arquivo. Verifique se é um export de plano de contas no formato esperado.', 'warn');
