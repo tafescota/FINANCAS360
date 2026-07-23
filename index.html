@@ -1832,17 +1832,22 @@ function processarPlanoContas(file) {
           const nome = String(row[colunas.nome] ?? '').trim();
           const tipo = colunas.tipo >= 0 ? String(row[colunas.tipo] ?? '').trim().toUpperCase() : '';
 
-          if (!codigoReal || !classificacao || !nome) return;
-          if (tipo === 'S') return;
-          contas.push({ codigo: codigoReal, classificacao, nome });
-          return;
+          if (codigoReal && classificacao && nome) {
+            if (tipo === 'S') return;
+            contas.push({ codigo: codigoReal, classificacao, nome });
+            return;
+          }
         }
 
-        const idxClassificacao = row.findIndex(v => /^\d+(?:\.\d+)*$/.test(String(v || '').trim()));
+        const idxClassificacaoComPontos = row.findIndex(v => /^\d+\.\d+(?:\.\d+)*$/.test(String(v || '').trim()));
+        const idxClassificacao = idxClassificacaoComPontos >= 0
+          ? idxClassificacaoComPontos
+          : row.findIndex(v => /^\d+(?:\.\d+)*$/.test(String(v || '').trim()));
         if (idxClassificacao < 0) return;
 
-        const valoresPerto = row.slice(Math.max(0, idxClassificacao - 2), idxClassificacao + 3);
-        const temTipoSintetico = valoresPerto.some(v => String(v || '').trim().toUpperCase() === 'S');
+        const temTipoSintetico = row
+          .slice(0, idxClassificacao)
+          .some(v => String(v || '').trim().toUpperCase() === 'S');
         if (temTipoSintetico) return;
 
         let codigoReal = null;
