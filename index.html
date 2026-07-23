@@ -2105,9 +2105,20 @@ function criarAutocompleteConta(input) {
   if (resultados.length === 0) return;
 
   const rect = input.getBoundingClientRect();
+  const margemTela = 12;
+  const larguraLista = Math.max(rect.width, 280);
+  const alturaItem = 54;
+  const alturaDesejada = Math.min(260, resultados.length * alturaItem);
+  const espacoAbaixo = window.innerHeight - rect.bottom - margemTela;
+  const espacoAcima = rect.top - margemTela;
+  const abrirAcima = espacoAbaixo < Math.min(alturaDesejada, 140) && espacoAcima > espacoAbaixo;
+  const alturaMaxima = Math.max(96, Math.min(alturaDesejada, abrirAcima ? espacoAcima : espacoAbaixo));
+  const topoLista = abrirAcima
+    ? Math.max(margemTela, rect.top - alturaMaxima - 2)
+    : Math.min(rect.bottom + 2, window.innerHeight - alturaMaxima - margemTela);
   const lista = document.createElement('div');
   lista.className = 'autocomplete-lista';
-  lista.style.cssText = `position:fixed;top:${rect.bottom + 2}px;left:${rect.left}px;width:${Math.max(rect.width, 280)}px;z-index:10000;background:var(--bg);border:1px solid var(--border2);border-radius:6px;box-shadow:0 4px 16px rgba(0,0,0,0.15);max-height:220px;overflow-y:auto`;
+  lista.style.cssText = `position:fixed;top:${topoLista}px;left:${Math.max(margemTela, Math.min(rect.left, window.innerWidth - larguraLista - margemTela))}px;width:${larguraLista}px;z-index:10000;background:var(--bg);border:1px solid var(--border2);border-radius:6px;box-shadow:0 4px 16px rgba(0,0,0,0.15);max-height:${alturaMaxima}px;overflow-y:auto;overscroll-behavior:contain`;
   lista.innerHTML = resultados.map(c => `
     <div class="autocomplete-item" data-codigo="${escapeAttr(c.codigo)}" style="padding:8px 12px;cursor:pointer;font-size:12.5px;border-bottom:1px solid var(--border)">
       <div style="font-weight:600">${escapeHtml(c.nome)}</div>
