@@ -2049,6 +2049,38 @@ function filtrarResumoPlanoContas(termo) {
 
 // ---------- AUTOCOMPLETE DE CONTAS ----------
 let autocompleteAtivo = null;
+let autocompleteInputAtivo = null;
+
+function posicionarAutocompleteConta() {
+  if (!autocompleteAtivo || !autocompleteInputAtivo || !document.body.contains(autocompleteInputAtivo)) {
+    fecharAutocomplete();
+    return;
+  }
+
+  const input = autocompleteInputAtivo;
+  const rect = input.getBoundingClientRect();
+  const margemTela = 12;
+
+  if (rect.bottom < margemTela || rect.top > window.innerHeight - margemTela || rect.right < margemTela || rect.left > window.innerWidth - margemTela) {
+    fecharAutocomplete();
+    return;
+  }
+
+  const larguraLista = Number(autocompleteAtivo.dataset.larguraLista || Math.max(rect.width, 280));
+  const alturaDesejada = Number(autocompleteAtivo.dataset.alturaDesejada || 220);
+  const espacoAbaixo = window.innerHeight - rect.bottom - margemTela;
+  const espacoAcima = rect.top - margemTela;
+  const abrirAcima = espacoAbaixo < Math.min(alturaDesejada, 140) && espacoAcima > espacoAbaixo;
+  const alturaMaxima = Math.max(96, Math.min(alturaDesejada, abrirAcima ? espacoAcima : espacoAbaixo));
+  const topoLista = abrirAcima
+    ? Math.max(margemTela, rect.top - alturaMaxima - 2)
+    : Math.min(rect.bottom + 2, window.innerHeight - alturaMaxima - margemTela);
+
+  autocompleteAtivo.style.top = `${topoLista}px`;
+  autocompleteAtivo.style.left = `${Math.max(margemTela, Math.min(rect.left, window.innerWidth - larguraLista - margemTela))}px`;
+  autocompleteAtivo.style.width = `${larguraLista}px`;
+  autocompleteAtivo.style.maxHeight = `${alturaMaxima}px`;
+}
 
 function textoBuscaConta(conta) {
   return normalizarTexto([conta.codigo, conta.classificacao, conta.nome].filter(Boolean).join(' '));
@@ -2118,6 +2150,8 @@ function criarAutocompleteConta(input) {
     : Math.min(rect.bottom + 2, window.innerHeight - alturaMaxima - margemTela);
   const lista = document.createElement('div');
   lista.className = 'autocomplete-lista';
+  lista.dataset.larguraLista = String(larguraLista);
+  lista.dataset.alturaDesejada = String(alturaDesejada);
   lista.style.cssText = `position:fixed;top:${topoLista}px;left:${Math.max(margemTela, Math.min(rect.left, window.innerWidth - larguraLista - margemTela))}px;width:${larguraLista}px;z-index:10000;background:var(--bg);border:1px solid var(--border2);border-radius:6px;box-shadow:0 4px 16px rgba(0,0,0,0.15);max-height:${alturaMaxima}px;overflow-y:auto;overscroll-behavior:contain`;
   lista.innerHTML = resultados.map(c => `
     <div class="autocomplete-item" data-codigo="${escapeAttr(c.codigo)}" style="padding:8px 12px;cursor:pointer;font-size:12.5px;border-bottom:1px solid var(--border)">
@@ -2137,10 +2171,14 @@ function criarAutocompleteConta(input) {
     item.addEventListener('mouseleave', () => { item.style.background = ''; });
   });
   autocompleteAtivo = lista;
+  autocompleteInputAtivo = input;
+  posicionarAutocompleteConta();
 }
 
 function fecharAutocomplete() {
-  if (autocompleteAtivo) { autocompleteAtivo.remove(); autocompleteAtivo = null; }
+  if (autocompleteAtivo) autocompleteAtivo.remove();
+  autocompleteAtivo = null;
+  autocompleteInputAtivo = null;
 }
 
 document.addEventListener('click', e => {
@@ -2148,6 +2186,8 @@ document.addEventListener('click', e => {
     fecharAutocomplete();
   }
 });
+window.addEventListener('scroll', posicionarAutocompleteConta, true);
+window.addEventListener('resize', posicionarAutocompleteConta);
 
 function processarArquivo(file) {
   if (!grupoAtivo) { alert('Selecione um grupo antes de importar.'); return; }
