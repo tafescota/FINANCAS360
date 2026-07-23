@@ -1808,18 +1808,46 @@ function processarPlanoContas(file) {
       const raw = XLSX.utils.sheet_to_json(ws, { header: 1, defval: null });
 
       const contas = [];
-      raw.forEach(row => {
+      const headerIdx = raw.findIndex(row => {
+        const cols = (row || []).map(c => normalizarTexto(c));
+        return cols.some(c => c === 'codigo' || c === 'cod' || c === 'cod conta')
+          && cols.some(c => c === 'classificacao')
+          && cols.some(c => c === 'nome');
+      });
+      const headers = headerIdx >= 0 ? raw[headerIdx].map(c => normalizarTexto(c)) : [];
+      const colunas = headerIdx >= 0 ? {
+        codigo: headers.findIndex(c => c === 'codigo' || c === 'cod' || c === 'cod conta'),
+        tipo: headers.findIndex(c => c === 't' || c === 'tipo'),
+        classificacao: headers.findIndex(c => c === 'classificacao'),
+        nome: headers.findIndex(c => c === 'nome')
+      } : null;
+
+      const linhasContas = headerIdx >= 0 ? raw.slice(headerIdx + 1) : raw;
+      linhasContas.forEach(row => {
         if (!row) return;
-        const idxClassificacao = row.findIndex(v => /^\d+(?:\.\d+)+$/.test(String(v || '').trim()));
+
+        if (colunas) {
+          const classificacao = String(row[colunas.classificacao] ?? '').trim();
+          const codigoReal = String(row[colunas.codigo] ?? '').trim();
+          const nome = String(row[colunas.nome] ?? '').trim();
+          const tipo = colunas.tipo >= 0 ? String(row[colunas.tipo] ?? '').trim().toUpperCase() : '';
+
+          if (!codigoReal || !classificacao || !nome) return;
+          if (tipo === 'S') return;
+          contas.push({ codigo: codigoReal, classificacao, nome });
+          return;
+        }
+
+        const idxClassificacao = row.findIndex(v => /^\d+(?:\.\d+)*$/.test(String(v || '').trim()));
         if (idxClassificacao < 0) return;
 
-        const temTipoSintetico = row
-          .slice(0, idxClassificacao)
-          .some(v => String(v || '').trim().toUpperCase() === 'S');
+        const valoresPerto = row.slice(Math.max(0, idxClassificacao - 2), idxClassificacao + 3);
+        const temTipoSintetico = valoresPerto.some(v => String(v || '').trim().toUpperCase() === 'S');
         if (temTipoSintetico) return;
 
         let codigoReal = null;
-        for (let idx = 0; idx < idxClassificacao; idx++) {
+        for (let idx = 0; idx < row.length; idx++) {
+          if (idx === idxClassificacao) continue;
           const valor = String(row[idx] ?? '').trim();
           if (/^\d+$/.test(valor)) { codigoReal = valor; break; }
         }
@@ -1828,6 +1856,8 @@ function processarPlanoContas(file) {
         const classificacao = String(row[idxClassificacao]).trim();
         let nome = null;
         for (let idx = idxClassificacao + 1; idx < row.length; idx++) {
+          if (/^[SA]$/i.test(String(row[idx] || '').trim())) continue;
+          if (/^\d+$/.test(String(row[idx] || '').trim())) continue;
           if (row[idx]) { nome = row[idx]; break; }
         }
         if (!nome) return;
