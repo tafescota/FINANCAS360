@@ -354,8 +354,8 @@
       <button class="btn btn-blue" onclick="document.getElementById('extrato-bancario-input').click()">Importar extrato bancário</button>
       <button class="btn" onclick="limparExtratoBancario()">Limpar extrato</button>
       <button class="btn btn-primary" onclick="gerarSugestoesConciliacao()">Gerar sugestões</button>
-      <span style="font-size:12px;color:var(--text2);margin-left:10px">Aceita o relatório analítico de extrato em .xlsx.</span>
-      <input type="file" id="extrato-bancario-input" accept=".xlsx,.xls" style="display:none" onchange="onFileChangeExtratoBancario(event)">
+      <span style="font-size:12px;color:var(--text2);margin-left:10px">Aceita um ou mais relatórios analíticos de extrato em .xlsx.</span>
+      <input type="file" id="extrato-bancario-input" accept=".xlsx,.xls" multiple style="display:none" onchange="onFileChangeExtratoBancario(event)">
       <div id="msg-conciliacao-bancaria" style="margin-top:14px"></div>
     </div>
     <div id="preview-conciliacao-bancaria" class="conciliacao-preview"></div>
@@ -853,6 +853,7 @@ function renderConciliacaoBancaria() {
   const qtdPagamentos = linhasImportadas.length;
   const entradas = extratoBancarioTemp.filter(m => m.valor > 0);
   const saidas = extratoBancarioTemp.filter(m => m.valor < 0);
+  const transferenciasPareadas = indicesTransferenciasPareadas(extratoBancarioTemp);
   const contasBanco = new Set(contasExtrato(extratoBancarioTemp).map(normalizarTexto));
   const pagamentosConciliaveis = linhasImportadas
     .map((row, idx) => pagamentoConciliacao(row, idx))
@@ -883,77 +884,109 @@ function renderConciliacaoBancaria() {
 }
 
 function onFileChangeExtratoBancario(e) {
-  if (e.target.files[0]) processarExtratoBancario(e.target.files[0]);
+  const files = Array.from(e.target.files || []);
+  if (files.length > 0) processarExtratosBancarios(files);
   e.target.value = '';
 }
 
-function processarExtratoBancario(file) {
-  const reader = new FileReader();
-  reader.onload = function(e) {
-    try {
-      const data = new Uint8Array(e.target.result);
-      const wb = XLSX.read(data, { type: 'array', cellDates: true });
-      const nomePlanilha = wb.SheetNames.find(n => normalizarTexto(n).includes('extrato')) || wb.SheetNames[0];
-      const ws = wb.Sheets[nomePlanilha];
-      const raw = XLSX.utils.sheet_to_json(ws, { header: 1, defval: null });
-      const headerIdx = raw.findIndex(row => {
-        const cols = (row || []).map(c => normalizarTexto(c));
-        return cols.includes('data') && cols.includes('conta') && cols.includes('valor');
-      });
-      if (headerIdx === -1) throw new Error('Não encontrei o cabeçalho Data / Conta / Valor no extrato.');
+function lerMovimentosExtratoArquivo(file) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = function(e) {
+      try {
+        const data = new Uint8Array(e.target.result);
+        const wb = XLSX.read(data, { type: 'array', cellDates: true });
+        const nomePlanilha = wb.SheetNames.find(n => normalizarTexto(n).includes('extrato')) || wb.SheetNames[0];
+        const ws = wb.Sheets[nomePlanilha];
+        const raw = XLSX.utils.sheet_to_json(ws, { header: 1, defval: null });
+        const headerIdx = raw.findIndex(row => {
+          const cols = (row || []).map(c => normalizarTexto(c));
+          return cols.includes('data') && cols.includes('conta') && cols.includes('valor');
+        });
+        if (headerIdx === -1) throw new Error('Não encontrei o cabeçalho Data / Conta / Valor no extrato.');
 
-      const headers = raw[headerIdx].map(c => normalizarTexto(c));
-      const idx = nome => headers.indexOf(normalizarTexto(nome));
-      const col = {
-        data: idx('data'),
-        conta: idx('conta'),
-        valor: idx('valor'),
-        historico: idx('historico'),
-        complemento: idx('complemento'),
-        documento: idx('documento'),
-        empresa: idx('empresa'),
-        origem: idx('origem'),
-        saldo: idx('saldo'),
-        tipoConciliacao: idx('tipo de conciliacao')
-      };
-
-      const movimentos = raw.slice(headerIdx + 1).map(row => {
-        const valor = arredondarMoeda(row[col.valor]);
-        return {
-          data: row[col.data] || '',
-          conta: limparTextoECD(row[col.conta]),
-          valor,
-          historico: limparTextoECD(col.historico >= 0 ? row[col.historico] : ''),
-          complemento: limparTextoECD(col.complemento >= 0 ? row[col.complemento] : ''),
-          documento: limparTextoECD(col.documento >= 0 ? row[col.documento] : ''),
-          empresa: limparTextoECD(col.empresa >= 0 ? row[col.empresa] : ''),
-          origem: limparTextoECD(col.origem >= 0 ? row[col.origem] : ''),
-          saldo: col.saldo >= 0 ? arredondarMoeda(row[col.saldo]) : 0,
-          tipoConciliacao: limparTextoECD(col.tipoConciliacao >= 0 ? row[col.tipoConciliacao] : '')
+        const headers = raw[headerIdx].map(c => normalizarTexto(c));
+        const idx = nome => headers.indexOf(normalizarTexto(nome));
+        const col = {
+          data: idx('data'),
+          conta: idx('conta'),
+          valor: idx('valor'),
+          historico: idx('historico'),
+          complemento: idx('complemento'),
+          documento: idx('documento'),
+          empresa: idx('empresa'),
+          origem: idx('origem'),
+          saldo: idx('saldo'),
+          tipoConciliacao: idx('tipo de conciliacao')
         };
-      }).filter(m => m.data && m.conta && m.valor !== 0);
 
-      if (movimentos.length === 0) throw new Error('Nenhum movimento com valor foi encontrado no extrato.');
-      extratoBancarioTemp = movimentos;
-      mostrarPreviewExtrato = false;
-      conciliacaoItensTemp = [];
-      codigosConciliacaoTemp = {};
-      vinculosPagamentoConciliacaoTemp = {};
-      trechosRecebimentoConciliacaoTemp = {};
-      conciliacaoAplicadaTemp = false;
-      infoExtratoBancarioTemp = {
-        arquivo: file.name,
-        conta: movimentos[0]?.conta || '',
-        contas: contasExtrato(movimentos),
-        planilha: nomePlanilha
-      };
-      mostrarMsgConciliacao(`${movimentos.length} movimento${movimentos.length !== 1 ? 's' : ''} importado${movimentos.length !== 1 ? 's' : ''} do extrato.`, 'ok');
-      renderConciliacaoBancaria();
-    } catch (err) {
-      mostrarMsgConciliacao('Erro ao importar extrato: ' + err.message, 'warn');
-    }
-  };
-  reader.readAsArrayBuffer(file);
+        const movimentos = raw.slice(headerIdx + 1).map((row, rowIdx) => {
+          const valor = arredondarMoeda(row[col.valor]);
+          return {
+            data: row[col.data] || '',
+            conta: limparTextoECD(row[col.conta]),
+            valor,
+            historico: limparTextoECD(col.historico >= 0 ? row[col.historico] : ''),
+            complemento: limparTextoECD(col.complemento >= 0 ? row[col.complemento] : ''),
+            documento: limparTextoECD(col.documento >= 0 ? row[col.documento] : ''),
+            empresa: limparTextoECD(col.empresa >= 0 ? row[col.empresa] : ''),
+            origem: limparTextoECD(col.origem >= 0 ? row[col.origem] : ''),
+            saldo: col.saldo >= 0 ? arredondarMoeda(row[col.saldo]) : 0,
+            tipoConciliacao: limparTextoECD(col.tipoConciliacao >= 0 ? row[col.tipoConciliacao] : ''),
+            arquivoOrigem: file.name,
+            linhaOrigem: headerIdx + rowIdx + 2
+          };
+        }).filter(m => m.data && m.conta && m.valor !== 0);
+
+        if (movimentos.length === 0) throw new Error('Nenhum movimento com valor foi encontrado no extrato.');
+        resolve({ arquivo: file.name, planilha: nomePlanilha, movimentos });
+      } catch (err) {
+        reject(new Error(`${file.name}: ${err.message}`));
+      }
+    };
+    reader.onerror = () => reject(new Error(`${file.name}: erro ao ler o arquivo.`));
+    reader.readAsArrayBuffer(file);
+  });
+}
+
+async function processarExtratosBancarios(files) {
+  try {
+    const resultados = await Promise.all(files.map(lerMovimentosExtratoArquivo));
+    const novosMovimentos = resultados.flatMap(r => r.movimentos);
+    const totalAntes = extratoBancarioTemp.length;
+    const combinado = deduplicarMovimentosExtrato([...extratoBancarioTemp, ...novosMovimentos]);
+    const duplicados = totalAntes + novosMovimentos.length - combinado.length;
+    extratoBancarioTemp = combinado;
+    mostrarPreviewExtrato = false;
+    conciliacaoItensTemp = [];
+    codigosConciliacaoTemp = {};
+    vinculosPagamentoConciliacaoTemp = {};
+    trechosRecebimentoConciliacaoTemp = {};
+    conciliacaoAplicadaTemp = false;
+    const arquivos = [...new Set([...(infoExtratoBancarioTemp?.arquivos || []), ...resultados.map(r => r.arquivo)])];
+    infoExtratoBancarioTemp = {
+      arquivo: arquivos.length === 1 ? arquivos[0] : `${arquivos.length} arquivos`,
+      arquivos,
+      conta: extratoBancarioTemp[0]?.conta || '',
+      contas: contasExtrato(extratoBancarioTemp),
+      planilha: [...new Set(resultados.map(r => r.planilha).filter(Boolean))].join(', ')
+    };
+    const paresTransferencia = contarTransferenciasPareadas(extratoBancarioTemp);
+    const partesMsg = [
+      `${novosMovimentos.length} movimento${novosMovimentos.length !== 1 ? 's' : ''} importado${novosMovimentos.length !== 1 ? 's' : ''}`,
+      `${extratoBancarioTemp.length} movimento${extratoBancarioTemp.length !== 1 ? 's' : ''} na sessão`
+    ];
+    if (duplicados > 0) partesMsg.push(`${duplicados} duplicado${duplicados !== 1 ? 's' : ''} ignorado${duplicados !== 1 ? 's' : ''}`);
+    if (paresTransferencia > 0) partesMsg.push(`${paresTransferencia} transferência${paresTransferencia !== 1 ? 's' : ''} entre contas identificada${paresTransferencia !== 1 ? 's' : ''}`);
+    mostrarMsgConciliacao(partesMsg.join('. ') + '.', 'ok');
+    renderConciliacaoBancaria();
+  } catch (err) {
+    mostrarMsgConciliacao('Erro ao importar extrato: ' + err.message, 'warn');
+  }
+}
+
+function processarExtratoBancario(file) {
+  processarExtratosBancarios([file]);
 }
 
 function mostrarMsgConciliacao(texto, tipo = 'ok') {
@@ -1047,6 +1080,64 @@ function resumoContasExtrato(movimentos = extratoBancarioTemp) {
   return `${contas.length} contas: ${contas.slice(0, 3).join(', ')}${contas.length > 3 ? '...' : ''}`;
 }
 
+function chaveMovimentoExtrato(m) {
+  return [
+    dataKey(m?.data),
+    normalizarTexto(m?.conta),
+    arredondarMoeda(m?.valor).toFixed(2),
+    normalizarTexto(m?.documento),
+    normalizarTexto(m?.historico),
+    normalizarTexto(m?.complemento),
+    normalizarTexto(m?.tipoConciliacao)
+  ].join('|');
+}
+
+function deduplicarMovimentosExtrato(movimentos) {
+  const vistos = new Set();
+  const unicos = [];
+  movimentos.forEach(m => {
+    const chave = chaveMovimentoExtrato(m);
+    if (vistos.has(chave)) return;
+    vistos.add(chave);
+    unicos.push(m);
+  });
+  return unicos;
+}
+
+function movimentoEhTransferenciaEntreContas(m) {
+  return normalizarTexto(m?.tipoConciliacao).includes('transferencia entre contas');
+}
+
+function chaveTransferenciaExtrato(m) {
+  return [dataKey(m?.data), Math.abs(arredondarMoeda(m?.valor)).toFixed(2)].join('|');
+}
+
+function indicesTransferenciasPareadas(movimentos = extratoBancarioTemp) {
+  const entradas = new Map();
+  const saidas = new Map();
+  movimentos.forEach((m, idx) => {
+    if (!movimentoEhTransferenciaEntreContas(m) || !m.valor) return;
+    const chave = chaveTransferenciaExtrato(m);
+    const mapa = m.valor > 0 ? entradas : saidas;
+    if (!mapa.has(chave)) mapa.set(chave, []);
+    mapa.get(chave).push(idx);
+  });
+  const pareados = new Set();
+  entradas.forEach((listaEntradas, chave) => {
+    const listaSaidas = saidas.get(chave) || [];
+    const qtd = Math.min(listaEntradas.length, listaSaidas.length);
+    for (let i = 0; i < qtd; i++) {
+      pareados.add(listaEntradas[i]);
+      pareados.add(listaSaidas[i]);
+    }
+  });
+  return pareados;
+}
+
+function contarTransferenciasPareadas(movimentos = extratoBancarioTemp) {
+  return indicesTransferenciasPareadas(movimentos).size / 2;
+}
+
 function mesmaContaConciliacao(pag, mov) {
   if (!pag?.conta || !mov?.conta) return true;
   return normalizarTexto(pag.conta) === normalizarTexto(mov.conta);
@@ -1102,13 +1193,14 @@ function gerarSugestoesConciliacao(opcoes = {}) {
     return;
   }
 
+  const transferenciasPareadas = indicesTransferenciasPareadas(extratoBancarioTemp);
   const contasBanco = new Set(contasExtrato(extratoBancarioTemp).map(normalizarTexto));
   const pagamentos = linhasImportadas
     .map((row, idx) => pagamentoConciliacao(row, idx))
     .filter(p => (contasBanco.size === 0 || contasBanco.has(normalizarTexto(p.conta))) && p.valor > 0);
   const movimentos = extratoBancarioTemp
     .filter(m => m.valor < 0 && normalizarTexto(m.tipoConciliacao).includes('parcelas de titulos'));
-  const entradas = extratoBancarioTemp.filter(m => m.valor > 0);
+  const entradas = extratoBancarioTemp.filter((m, idx) => m.valor > 0 && !transferenciasPareadas.has(idx));
   const usadosMov = new Set();
   const sugestoesPorPagamento = new Map();
 
@@ -1639,11 +1731,14 @@ function montarLinhasDominioConciliacao({ validarPendencias = true } = {}) {
   }
   salvarRegrasRecebimentoConciliacao();
   const linhas = [];
+  const transferenciasPareadas = indicesTransferenciasPareadas(extratoBancarioTemp);
   itensNovos.forEach(item => {
     const codigo = obterCodigoContaParaDominio(codigosConciliacaoTemp[item.id]);
     if (item.movimento === 'recebimento') {
       const movimentos = item.movimentos && item.movimentos.length ? item.movimentos : [item];
       movimentos.forEach(mov => {
+        const idxMov = extratoBancarioTemp.indexOf(mov);
+        if (idxMov >= 0 && transferenciasPareadas.has(idxMov)) return;
         linhas.push([
           fmtDate(mov.data || item.data),
           limparTextoExportacaoDominio(mov.conta || item.conta || infoExtratoBancarioTemp?.conta || ''),
