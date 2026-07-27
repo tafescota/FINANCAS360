@@ -321,6 +321,7 @@
       <button class="btn" onclick="exportarDominioPagamentos()">Exportar somente pagamentos (.xlsx)</button>
       <span class="conciliacao-note">O ideal é exportar o arquivo final após validar a conciliação. Use pagamentos somente quando não for conciliar extrato.</span>
     </div>
+    <div id="resumo-conciliacao-resultado"></div>
     <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:12px;margin-bottom:16px">
       <div class="metric"><div class="metric-label">Total de lançamentos</div><div class="metric-value" id="met-total">0</div><div class="metric-sub"><div id="met-linhas-originais">0 linhas originais</div><div id="met-linhas-extras">0 linhas extras</div></div></div>
       <div class="metric"><div class="metric-label">Sem código</div><div class="metric-value" id="met-sem" class="">0</div></div>
@@ -651,6 +652,7 @@ function mostrarTela(id, registrarHistorico = true) {
   if (id === 'tela-regras') renderRegras();
   if (id === 'tela-plano-contas') renderResumoPlanoContas();
   if (id === 'tela-conciliacao-bancaria') renderConciliacaoBancaria();
+  if (id === 'tela-resultado') renderResumoConferenciaResultado();
   if (id === 'tela-importar' && grupoAtivo) {
     document.getElementById('titulo-importar').textContent = 'Importar planilha — ' + grupoAtivo;
   }
@@ -847,9 +849,7 @@ function extratoMovimentosWorkbook(wb) {
   return { movimentos, nomePlanilha };
 }
 
-function renderConciliacaoBancaria() {
-  const el = document.getElementById('resumo-conciliacao-bancaria');
-  if (!el) return;
+function htmlResumoConferenciaBancaria() {
   const qtdPagamentos = linhasImportadas.length;
   const entradas = extratoBancarioTemp.filter(m => m.valor > 0);
   const saidas = extratoBancarioTemp.filter(m => m.valor < 0);
@@ -864,7 +864,7 @@ function renderConciliacaoBancaria() {
   const totalSaidasPagamentos = arredondarMoeda(Math.abs(saidasPagamentos.reduce((s, m) => s + m.valor, 0)));
   const diferencaConferencia = arredondarMoeda(totalPagamentos - totalSaidasPagamentos);
   const valoresBatem = Math.abs(diferencaConferencia) < 0.01;
-  el.innerHTML = `
+  return `
     <div class="conciliacao-grid conciliacao-summary-grid">
       <div class="metric metric-muted"><div class="metric-label">Grupo ativo</div><div class="metric-value metric-text">${escapeHtml(grupoAtivo || 'Nenhum')}</div></div>
       <div class="metric metric-muted"><div class="metric-label">Pagamentos carregados</div><div class="metric-value">${qtdPagamentos}</div></div>
@@ -880,6 +880,18 @@ function renderConciliacaoBancaria() {
         · ${valoresBatem ? 'valores batem' : 'diferença de R$ ' + fmtValor(Math.abs(diferencaConferencia))}
       </div>
     </div>`;
+}
+
+function renderResumoConferenciaResultado() {
+  const el = document.getElementById('resumo-conciliacao-resultado');
+  if (!el) return;
+  el.innerHTML = htmlResumoConferenciaBancaria();
+}
+
+function renderConciliacaoBancaria() {
+  const el = document.getElementById('resumo-conciliacao-bancaria');
+  if (!el) return;
+  el.innerHTML = htmlResumoConferenciaBancaria();
   renderPreviewExtratoBancario();
 }
 
