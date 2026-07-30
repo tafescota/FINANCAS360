@@ -26,7 +26,7 @@
   .topbar-sub { color: rgba(255,255,255,0.5); font-size: 13px; }
   .topbar-grupo { margin-left: auto; color: rgba(255,255,255,0.7); font-size: 12px; background: rgba(255,255,255,0.1); padding: 4px 12px; border-radius: 20px; }
 
-  .container { max-width: 1480px; margin: 0 auto; padding: 24px 24px; }
+  .container { width: 100%; max-width: none; margin: 0 auto; padding: 24px 24px; box-sizing: border-box; }
 
   .card { background: var(--bg); border: 1px solid var(--border); border-radius: var(--radius); padding: 20px 24px; box-shadow: var(--shadow); }
 
@@ -73,15 +73,16 @@
   .table-novas th, .table-novas td { padding: 8px 6px; }
   .table-novas th { white-space: normal; line-height: 1.25; }
   .table-novas th:nth-child(1) { width: 44px; }
-  .table-novas th:nth-child(2) { width: 16%; }
-  .table-novas th:nth-child(3) { width: 16%; }
-  .table-novas th:nth-child(4) { width: 16%; }
-  .table-novas th:nth-child(5) { width: 25%; }
-  .table-novas th:nth-child(6) { width: 7%; }
-  .table-novas th:nth-child(7) { width: 10%; }
+  .table-novas th:nth-child(2) { width: 10%; }
+  .table-novas th:nth-child(3) { width: 12%; }
+  .table-novas th:nth-child(4) { width: 15%; }
+  .table-novas th:nth-child(5) { width: 15%; }
+  .table-novas th:nth-child(6) { width: 22%; }
+  .table-novas th:nth-child(7) { width: 6%; }
   .table-novas th:nth-child(8) { width: 10%; }
+  .table-novas th:nth-child(9) { width: 10%; }
   .table-novas td { min-height: 56px; white-space: normal; overflow-wrap: anywhere; line-height: 1.35; }
-  .table-novas td:nth-child(5) { overflow-wrap: normal; word-break: normal; }
+  .table-novas td:nth-child(6) { overflow-wrap: normal; word-break: normal; }
   .table-novas td:nth-child(2) { font-weight: 600; color: #111827; }
   .table-novas td:first-child, .table-novas th:first-child { text-align: center; padding-left: 10px; padding-right: 10px; }
   .table-novas input[type=text] { height: 34px; min-width: 0; font-size: 12px; padding-left: 8px; padding-right: 8px; }
@@ -327,7 +328,7 @@
     <div class="table-wrap table-scroll table-novas-wrap" style="margin-bottom:16px">
       <table class="table-novas">
         <thead>
-          <tr><th><input type="checkbox" id="check-todas-lote" onchange="alternarTodasVisiveis(this.checked)"></th><th>Empresa / Centro</th><th>Fornecedor</th><th>Plano de Contas</th><th>Histórico</th><th>Número</th><th>Documento</th><th>Código Domínio</th></tr>
+          <tr><th><input type="checkbox" id="check-todas-lote" onchange="alternarTodasVisiveis(this.checked)"></th><th>Empresa</th><th>Centro de Custo</th><th>Fornecedor</th><th>Plano de Contas</th><th>Histórico</th><th>Número</th><th>Documento</th><th>Código Domínio</th></tr>
         </thead>
         <tbody id="tbody-novas-chaves"></tbody>
       </table>
@@ -361,7 +362,7 @@
     <div class="table-wrap table-scroll" style="margin-bottom:16px">
       <table>
         <thead>
-          <tr><th>Data</th><th>Cód. Débito</th><th>Cód. Crédito</th><th style="text-align:right">Valor</th><th>Empresa</th><th>Complemento</th></tr>
+          <tr><th>Data</th><th>Cód. Débito</th><th>Cód. Crédito</th><th style="text-align:right">Valor</th><th>Empresa</th><th>Tipo do Rateio</th><th>Complemento</th></tr>
         </thead>
         <tbody id="tbody-resultado"></tbody>
       </table>
@@ -386,6 +387,14 @@
       <button class="btn btn-primary" onclick="gerarSugestoesConciliacao()">Gerar sugestões</button>
       <span style="font-size:12px;color:var(--text2);margin-left:10px">Aceita um ou mais relatórios analíticos de extrato em .xlsx.</span>
       <input type="file" id="extrato-bancario-input" accept=".xlsx,.xls" multiple style="display:none" onchange="onFileChangeExtratoBancario(event)">
+      <div id="bloco-recebimentos-rateio" style="display:none;margin-top:16px;padding-top:16px;border-top:1px solid var(--border)">
+        <h4 style="margin:0 0 8px;font-size:14px">Recebimentos por rateio</h4>
+        <p class="conciliacao-note" style="margin-bottom:12px">Use apenas para grupos em Rateio de Títulos. Aceita Rateio de Cartões a Receber e Parcela de Título a Receber.</p>
+        <button class="btn btn-blue" onclick="document.getElementById('recebimentos-rateio-input').click()">Importar recebimentos por rateio</button>
+        <button class="btn" onclick="limparRecebimentosRateio()">Limpar recebimentos</button>
+        <input type="file" id="recebimentos-rateio-input" accept=".xlsx,.xls" multiple style="display:none" onchange="onFileChangeRecebimentosRateio(event)">
+        <div id="resumo-recebimentos-rateio" style="margin-top:12px"></div>
+      </div>
       <div id="msg-conciliacao-bancaria" style="margin-top:14px"></div>
     </div>
     <div id="preview-conciliacao-bancaria" class="conciliacao-preview"></div>
@@ -458,6 +467,8 @@ let mostrarLancamentosConciliados = false;
 let mostrarPendenciasPreenchidas = false;
 let filtroPendenciasConciliacaoTemp = '';
 let pendenciasConciliacaoSelecionadas = new Set();
+let recebimentosRateioTemp = [];
+let infoRecebimentosRateioTemp = null;
 
 const COLS = { TIPO:0, NUMERO:1, PARCELA:2, EMPRESA:3, FORNECEDOR:4, EMISSAO:5, VENCIMENTO:6, LIQUIDACAO:7, VALOR_BRUTO:8, COMPETENCIA:9, PLANO:10, CC:11, ACRESCIMO:12, VALOR_LIQ:13, CONTA:14, MEIO_PAG:15, TIPO_DOC:16, APROVADA:17, STATUS:18, HISTORICO:19 };
 
@@ -1140,9 +1151,265 @@ function renderConciliacaoBancaria() {
   const el = document.getElementById('resumo-conciliacao-bancaria');
   if (!el) return;
   el.innerHTML = htmlResumoConferenciaBancaria();
+  const blocoRateio = document.getElementById('bloco-recebimentos-rateio');
+  if (blocoRateio) blocoRateio.style.display = modoImportacaoDoGrupo() === 'rateio' ? '' : 'none';
+  renderResumoRecebimentosRateio();
   renderPreviewExtratoBancario();
 }
 
+function grupoPodeRecebimentosRateio() {
+  return modoImportacaoDoGrupo() === 'rateio';
+}
+
+function headerInfoRecebimentos(raw, obrigatorias) {
+  const headerIdx = raw.findIndex(row => {
+    const cols = (row || []).map(c => normalizarTexto(c));
+    return obrigatorias.every(nome => cols.includes(normalizarTexto(nome)));
+  });
+  if (headerIdx === -1) return null;
+  const headers = raw[headerIdx].map(c => normalizarTexto(c));
+  const idx = nome => headers.indexOf(normalizarTexto(nome));
+  return { headerIdx, idx };
+}
+
+function linhaRecebimentoRateioBase({ data, valor, conta, empresaBanco, centroCusto, tipo, historico, plano, origem, arquivoOrigem, linhaOrigem, tipoLancamento }) {
+  const empresaBancoLimpa = limparTextoECD(empresaBanco || conta || '');
+  const centroLimpo = limparTextoECD(centroCusto || empresaBancoLimpa);
+  const valorMoeda = arredondarMoeda(valor);
+  if (!data || !valorMoeda || !centroLimpo) return null;
+  return {
+    id: `rateio-rec-${recebimentosRateioTemp.length}-${Math.random().toString(36).slice(2)}`,
+    data,
+    dataKey: dataKey(data),
+    valor: valorMoeda,
+    total: Math.abs(valorMoeda),
+    conta: limparTextoECD(conta),
+    empresaBanco: empresaBancoLimpa,
+    centroCusto: centroLimpo,
+    tipo: limparTextoECD(tipo || origem || 'Recebimento por rateio'),
+    historico: limparTextoECD(historico || plano || origem || 'Recebimento por rateio'),
+    plano: limparTextoECD(plano || ''),
+    origem: limparTextoECD(origem || ''),
+    arquivoOrigem,
+    linhaOrigem,
+    tipoLancamento: limparTextoECD(tipoLancamento || ''),
+    movimento: 'recebimento-rateio',
+    rateio: true,
+    intercompany: grupoUsaNumerariosRateio() && normalizarTexto(empresaBancoLimpa) !== normalizarTexto(centroLimpo),
+    tipoRateio: grupoUsaNumerariosRateio() && normalizarTexto(empresaBancoLimpa) !== normalizarTexto(centroLimpo) ? 'TRANSFERENCIA DE NUMERARIOS' : 'PROPRIO'
+  };
+}
+
+function linhasRateioCartoesReceber(wb, arquivoOrigem) {
+  const nomePlanilha = wb.SheetNames.find(n => /cart/i.test(n)) || wb.SheetNames[0];
+  const ws = wb.Sheets[nomePlanilha];
+  const raw = XLSX.utils.sheet_to_json(ws, { header: 1, defval: null });
+  const info = headerInfoRecebimentos(raw, ['Empresa', 'Adquirente', 'Produto', 'Dt. Liquidação', 'Valor Bruto', 'Conta', 'Centro de Custo', 'Plano de Conta']);
+  if (!info) return null;
+  const { headerIdx, idx } = info;
+  const col = {
+    empresa: idx('empresa'),
+    adquirente: idx('adquirente'),
+    bandeira: idx('bandeira'),
+    modalidade: idx('modalidade'),
+    produto: idx('produto'),
+    valor: idx('valor bruto'),
+    conta: idx('conta'),
+    liquidacao: idx('dt. liquidacao'),
+    centroCusto: idx('centro de custo'),
+    plano: idx('plano de conta'),
+    tipoLancamento: idx('tipo de lancamento')
+  };
+  const linhas = raw.slice(headerIdx + 1).map((row, rowIdx) => {
+    const tipoLancamento = limparTextoECD(col.tipoLancamento >= 0 ? row[col.tipoLancamento] : '');
+    const plano = limparTextoECD(row[col.plano]);
+    const partesHistorico = [
+      col.adquirente >= 0 ? row[col.adquirente] : '',
+      col.bandeira >= 0 ? row[col.bandeira] : '',
+      col.modalidade >= 0 ? row[col.modalidade] : '',
+      col.produto >= 0 ? row[col.produto] : '',
+      plano,
+      tipoLancamento
+    ].filter(Boolean);
+    return linhaRecebimentoRateioBase({
+      data: row[col.liquidacao],
+      valor: row[col.valor],
+      conta: row[col.conta],
+      empresaBanco: grupoUsaNumerariosRateio() ? grupoAtivo : row[col.empresa],
+      centroCusto: row[col.centroCusto],
+      tipo: valorNegativo(row[col.valor]) ? 'Taxa/Ajuste de Cartões' : 'Recebimento de Cartões',
+      historico: partesHistorico.join(' - '),
+      plano,
+      origem: 'Rateio de Cartões a Receber',
+      arquivoOrigem,
+      linhaOrigem: headerIdx + rowIdx + 2,
+      tipoLancamento
+    });
+  }).filter(Boolean);
+  return { tipo: 'cartoes', nomePlanilha, linhas };
+}
+
+function valorNegativo(v) {
+  return arredondarMoeda(v) < 0;
+}
+
+function linhasRateioTitulosReceber(wb, arquivoOrigem) {
+  const nomePlanilha = wb.SheetNames.find(n => /receber|parcela|t[íi]tulo/i.test(n)) || wb.SheetNames[0];
+  const ws = wb.Sheets[nomePlanilha];
+  const raw = XLSX.utils.sheet_to_json(ws, { header: 1, defval: null });
+  const info = headerInfoRecebimentos(raw, ['Cliente / Fornecedor', 'Liquidação', 'Valor Bruto', 'Conta'])
+    || headerInfoRecebimentos(raw, ['Cliente / Fornecedor', 'Liquidação', 'Valor Líquido', 'Conta'])
+    || headerInfoRecebimentos(raw, ['Cliente / Fornecedor', 'Dt. Liquidação', 'Valor Líquido', 'Conta']);
+  if (!info) return null;
+  const { headerIdx, idx } = info;
+  const col = {
+    empresa: idx('empresa'),
+    fornecedor: idx('cliente / fornecedor'),
+    liquidacao: idx('liquidacao') >= 0 ? idx('liquidacao') : idx('dt. liquidacao'),
+    valor: idx('valor liquido') >= 0 ? idx('valor liquido') : idx('valor bruto'),
+    conta: idx('conta'),
+    centroCusto: idx('centro de custo') >= 0 ? idx('centro de custo') : idx('centro de custos'),
+    plano: idx('plano de contas') >= 0 ? idx('plano de contas') : idx('plano de conta'),
+    status: idx('status'),
+    historico: idx('historico'),
+    tipoDoc: idx('tipo de documento'),
+    numero: idx('numero')
+  };
+  const linhas = raw.slice(headerIdx + 1).map((row, rowIdx) => {
+    const status = limparTextoECD(col.status >= 0 ? row[col.status] : 'Liquidado');
+    if (status && !normalizarTexto(status).includes('liquidado')) return null;
+    const plano = limparTextoECD(col.plano >= 0 ? row[col.plano] : 'Títulos recebidos');
+    const tipoDoc = limparTextoECD(col.tipoDoc >= 0 ? row[col.tipoDoc] : 'Títulos recebidos');
+    const historico = [
+      col.fornecedor >= 0 ? row[col.fornecedor] : '',
+      tipoDoc,
+      col.numero >= 0 ? row[col.numero] : '',
+      plano,
+      col.historico >= 0 ? row[col.historico] : ''
+    ].filter(Boolean).join(' - ');
+    return linhaRecebimentoRateioBase({
+      data: row[col.liquidacao],
+      valor: row[col.valor],
+      conta: row[col.conta],
+      empresaBanco: grupoUsaNumerariosRateio() ? grupoAtivo : (col.empresa >= 0 ? row[col.empresa] : row[col.conta]),
+      centroCusto: col.centroCusto >= 0 ? row[col.centroCusto] : (col.empresa >= 0 ? row[col.empresa] : row[col.conta]),
+      tipo: 'Título recebido',
+      historico,
+      plano,
+      origem: 'Parcela de Título a Receber',
+      arquivoOrigem,
+      linhaOrigem: headerIdx + rowIdx + 2,
+      tipoLancamento: status
+    });
+  }).filter(Boolean);
+  return { tipo: 'titulos', nomePlanilha, linhas };
+}
+
+function lerRecebimentosRateioArquivo(file) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = function(e) {
+      try {
+        const data = new Uint8Array(e.target.result);
+        const wb = XLSX.read(data, { type: 'array', cellDates: true });
+        const cartoes = linhasRateioCartoesReceber(wb, file.name);
+        const titulos = cartoes ? null : linhasRateioTitulosReceber(wb, file.name);
+        const resultado = cartoes || titulos;
+        if (!resultado || resultado.linhas.length === 0) throw new Error('Nenhum recebimento liquidado foi encontrado no formato esperado.');
+        resolve({ arquivo: file.name, ...resultado });
+      } catch (err) {
+        reject(new Error(`${file.name}: ${err.message}`));
+      }
+    };
+    reader.onerror = () => reject(new Error(`${file.name}: erro ao ler o arquivo.`));
+    reader.readAsArrayBuffer(file);
+  });
+}
+
+function chaveRecebimentoRateio(r) {
+  return [fmtDate(r.data), r.conta, r.empresaBanco, r.centroCusto, r.valor, r.historico, r.linhaOrigem, r.arquivoOrigem].map(v => normalizarTexto(v)).join('|');
+}
+
+async function processarRecebimentosRateio(files) {
+  if (!grupoPodeRecebimentosRateio()) {
+    mostrarMsgConciliacao('Recebimentos por rateio só ficam disponíveis para grupos em Rateio de Títulos.', 'warn');
+    return;
+  }
+  try {
+    const resultados = await Promise.all(files.map(lerRecebimentosRateioArquivo));
+    const novos = resultados.flatMap(r => r.linhas);
+    const existentes = new Set(recebimentosRateioTemp.map(chaveRecebimentoRateio));
+    const novosUnicos = novos.filter(r => {
+      const chave = chaveRecebimentoRateio(r);
+      if (existentes.has(chave)) return false;
+      existentes.add(chave);
+      return true;
+    });
+    recebimentosRateioTemp = [...recebimentosRateioTemp, ...novosUnicos];
+    const arquivos = [...new Set([...(infoRecebimentosRateioTemp?.arquivos || []), ...resultados.map(r => r.arquivo)])];
+    infoRecebimentosRateioTemp = { arquivos, tipos: [...new Set(resultados.map(r => r.tipo))] };
+    conciliacaoItensTemp = [];
+    codigosConciliacaoTemp = {};
+    trechosRecebimentoConciliacaoTemp = {};
+    conciliacaoAplicadaTemp = false;
+    mostrarMsgConciliacao(`${novosUnicos.length} recebimento${novosUnicos.length !== 1 ? 's' : ''} por rateio importado${novosUnicos.length !== 1 ? 's' : ''}.`, 'ok');
+    renderConciliacaoBancaria();
+    if (extratoBancarioTemp.length > 0) gerarSugestoesConciliacao({ redirecionarSeOk: false });
+  } catch (err) {
+    mostrarMsgConciliacao('Erro ao importar recebimentos por rateio: ' + err.message, 'warn');
+  }
+}
+
+function onFileChangeRecebimentosRateio(e) {
+  const files = Array.from(e.target.files || []);
+  if (files.length > 0) processarRecebimentosRateio(files);
+  e.target.value = '';
+}
+
+function limparRecebimentosRateio() {
+  recebimentosRateioTemp = [];
+  infoRecebimentosRateioTemp = null;
+  conciliacaoItensTemp = [];
+  codigosConciliacaoTemp = {};
+  trechosRecebimentoConciliacaoTemp = {};
+  renderResumoRecebimentosRateio();
+  renderConciliacaoBancaria();
+  mostrarMsgConciliacao('Recebimentos por rateio removidos desta sessão.', 'orange');
+}
+
+function resumoRecebimentosRateio() {
+  const positivos = recebimentosRateioTemp.filter(r => r.valor > 0);
+  const negativos = recebimentosRateioTemp.filter(r => r.valor < 0);
+  const intercompany = recebimentosRateioTemp.filter(r => r.intercompany);
+  const proprio = recebimentosRateioTemp.filter(r => !r.intercompany);
+  return {
+    total: recebimentosRateioTemp.length,
+    positivos: positivos.length,
+    negativos: negativos.length,
+    intercompany: intercompany.length,
+    proprio: proprio.length,
+    valorPositivo: arredondarMoeda(positivos.reduce((s, r) => s + r.valor, 0)),
+    valorNegativo: arredondarMoeda(negativos.reduce((s, r) => s + Math.abs(r.valor), 0)),
+    liquido: arredondarMoeda(recebimentosRateioTemp.reduce((s, r) => s + r.valor, 0))
+  };
+}
+
+function renderResumoRecebimentosRateio() {
+  const el = document.getElementById('resumo-recebimentos-rateio');
+  if (!el) return;
+  if (!grupoPodeRecebimentosRateio()) {
+    el.innerHTML = '';
+    return;
+  }
+  if (recebimentosRateioTemp.length === 0) {
+    el.innerHTML = `<div class="alert alert-orange">Recebimentos por rateio ainda não importados nesta sessão.</div>`;
+    return;
+  }
+  const r = resumoRecebimentosRateio();
+  el.innerHTML = `<div class="alert alert-ok">
+    <strong>${r.total} recebimento${r.total !== 1 ? 's' : ''} por rateio</strong> · positivos R$ ${fmtValor(r.valorPositivo)} · taxas/ajustes R$ ${fmtValor(r.valorNegativo)} · líquido R$ ${fmtValor(r.liquido)} · ${r.intercompany} transferência${r.intercompany !== 1 ? 's' : ''} de numerários · ${r.proprio} próprio${r.proprio !== 1 ? 's' : ''}
+  </div>`;
+}
 function onFileChangeExtratoBancario(e) {
   const files = Array.from(e.target.files || []);
   if (files.length > 0) processarExtratosBancarios(files);
@@ -1503,6 +1770,71 @@ function encontrarCombinacaoPorValor(candidatos, valorAlvo) {
   return null;
 }
 
+function escopoRecebimentoRateio(item) {
+  return escopoRegraPagamento(item?.empresaBanco, item?.centroCusto, !!item?.rateio);
+}
+
+function criarItensRecebimentosRateioAgrupados() {
+  if (!grupoPodeRecebimentosRateio() || recebimentosRateioTemp.length === 0) return [];
+  const gruposRateio = new Map();
+  recebimentosRateioTemp.forEach((r, idx) => {
+    const escopoRegra = escopoRecebimentoRateio(r);
+    const chave = [r.dataKey, r.conta, r.empresaBanco, r.centroCusto, r.tipo, r.historico, r.valor < 0 ? 'NEG' : 'POS'].map(v => normalizarTexto(v)).join('|');
+    const atual = gruposRateio.get(chave) || {
+      id: `rec-rateio-${gruposRateio.size}`,
+      movimento: 'recebimento',
+      rateioRecebimento: true,
+      tipo: r.tipo,
+      historico: r.historico,
+      plano: r.plano,
+      qtd: 0,
+      total: 0,
+      data: fmtDate(r.data),
+      conta: r.conta,
+      empresa: r.empresaBanco,
+      empresaBanco: r.empresaBanco,
+      centroCusto: r.centroCusto,
+      intercompany: r.intercompany,
+      tipoRateio: r.tipoRateio,
+      escopoRegra,
+      movimentos: []
+    };
+    atual.qtd += 1;
+    atual.total = arredondarMoeda(atual.total + Math.abs(r.valor));
+    atual.movimentos.push({ ...r, idxRecebimentoRateio: idx });
+    gruposRateio.set(chave, atual);
+  });
+  return Array.from(gruposRateio.values());
+}
+
+function itensNumerarioRecebimentosRateio(itensRateio) {
+  if (!grupoUsaNumerariosRateio()) return [];
+  const vistos = new Set();
+  const itens = [];
+  itensRateio.filter(item => item.intercompany).forEach(item => {
+    ['EMPRESA DO BANCO', 'CENTRO DE CUSTO'].forEach(lado => {
+      const chave = chaveNumerarioRateio(item.empresaBanco, item.centroCusto, lado);
+      if (vistos.has(chave)) return;
+      vistos.add(chave);
+      itens.push({
+        ...itemNumerarioRateio(item.empresaBanco, item.centroCusto, lado),
+        id: `num-rec-${itens.length}`,
+        movimento: 'numerario-rateio',
+        tipo: lado,
+        total: 0,
+        data: '',
+        conta: item.conta,
+        historico: `Conta de numerários para recebimentos ${item.empresaBanco} x ${item.centroCusto}`
+      });
+    });
+  });
+  return itens;
+}
+
+function codigoBancoConciliacao(conta) {
+  const contaLimpa = limparTextoECD(conta);
+  return codigoContaSemConciliacao(contaLimpa) || contaLimpa;
+}
 function gerarSugestoesConciliacao(opcoes = {}) {
   const { redirecionarSeOk = true } = opcoes;
   const el = document.getElementById('resultado-conciliacao-bancaria');
@@ -1683,7 +2015,10 @@ function renderSugestoesConciliacao(sugestoes, qtdPagamentos, qtdMovimentos, ent
   const pendentesPagamento = sugestoes.filter(s => !s.mov);
   const linhasPagamentosPendentes = pendentesPagamento.map(renderLinhaPagamento).join('');
   const regrasRecebimentos = deparaRecebimentos[grupoAtivo] || {};
-  const itensRecebimento = Array.from(entradasAgrupadas.values()).slice(0, 60).map((r, idx) => ({ ...r, id: `rec-${idx}`, movimento: 'recebimento' }));
+  const itensRecebimentoExtrato = Array.from(entradasAgrupadas.values()).slice(0, 60).map((r, idx) => ({ ...r, id: `rec-${idx}`, movimento: 'recebimento', escopoRegra: '' }));
+  const itensRecebimentoRateio = criarItensRecebimentosRateioAgrupados();
+  const itensRecebimento = [...itensRecebimentoExtrato, ...itensRecebimentoRateio];
+  const itensNumerarioRateio = itensNumerarioRecebimentosRateio(itensRecebimentoRateio);
   const itensSaidaExtra = saidasExtras.slice(0, 80).map(({ mov, idxMov }) => ({
     id: `saida-${idxMov}`,
     movimento: 'saida-pendente',
@@ -1707,23 +2042,27 @@ function renderSugestoesConciliacao(sugestoes, qtdPagamentos, qtdMovimentos, ent
     conta: s.pag.conta,
     empresa: ''
   }));
-  conciliacaoItensTemp = [...itensPagamentoPendente, ...itensSaidaExtra, ...itensRecebimento];
+  conciliacaoItensTemp = [...itensPagamentoPendente, ...itensSaidaExtra, ...itensRecebimento, ...itensNumerarioRateio];
   conciliacaoAplicadaTemp = false;
   conciliacaoItensTemp.forEach(item => {
     if (!(item.id in codigosConciliacaoTemp)) codigosConciliacaoTemp[item.id] = '';
     if (item.movimento === 'recebimento' && !codigosConciliacaoTemp[item.id]) {
-      codigosConciliacaoTemp[item.id] = obterCodigoContaParaDominio(encontrarCodigoRegraRecebimentoConciliacao(regrasRecebimentos, item.tipo, item.historico));
+      codigosConciliacaoTemp[item.id] = obterCodigoContaParaDominio(encontrarCodigoRegraRecebimentoConciliacao(regrasRecebimentos, item.tipo, item.historico, item.escopoRegra || ''));
+    }
+      if (item.movimento === 'numerario-rateio' && !codigosConciliacaoTemp[item.id]) {
+      codigosConciliacaoTemp[item.id] = obterCodigoContaParaDominio((depara[grupoAtivo] || {})[item.chave] || '');
     }
   });
   const entradasPreenchidas = itensRecebimento.filter(r => !!codigosConciliacaoTemp[r.id]);
   const entradasPendentes = itensRecebimento.filter(r => !codigosConciliacaoTemp[r.id]);
+  const numerariosPendentes = itensNumerarioRateio.filter(r => !obterCodigoContaParaDominio(codigosConciliacaoTemp[r.id]));
   const renderLinhaRecebimento = (r, compacta) => {
     const preenchido = !!codigosConciliacaoTemp[r.id];
     const status = preenchido ? 'preenchido' : 'de-para';
     const statusClasse = preenchido ? 'ok' : 'mid';
     if (compacta) {
       return `<tr class="conciliacao-row-compact">
-        <td><span class="badge badge-blue">Recebimento</span></td>
+        <td><span class="badge badge-blue">${r.rateioRecebimento ? 'Recebimento rateio' : 'Recebimento'}</span></td>
         <td class="col-secondary">${r.qtd} movimento${r.qtd !== 1 ? 's' : ''}</td>
         <td>${descTruncada(`${r.tipo} - ${r.historico}`)}</td>
         <td class="col-value">R$ ${fmtValor(r.total)}</td>
@@ -1733,7 +2072,7 @@ function renderSugestoesConciliacao(sugestoes, qtdPagamentos, qtdMovimentos, ent
       </tr>`;
     }
     return `<tr class="${preenchido ? 'conciliacao-row-filled' : ''}">
-      <td><span class="badge badge-blue">Recebimento</span></td>
+      <td><span class="badge badge-blue">${r.rateioRecebimento ? 'Recebimento rateio' : 'Recebimento'}</span></td>
       <td class="col-secondary">${r.qtd} movimento${r.qtd !== 1 ? 's' : ''}</td>
       <td><strong>${escapeHtml(r.tipo)}</strong><br>${descTruncada(r.historico, 'muted-line')}</td>
       <td class="col-value">R$ ${fmtValor(r.total)}</td>
@@ -1746,6 +2085,15 @@ function renderSugestoesConciliacao(sugestoes, qtdPagamentos, qtdMovimentos, ent
   const linhasEntradasPreenchidas = mostrarPendenciasPreenchidas
     ? entradasPreenchidas.map(r => renderLinhaRecebimento(r, false)).join('')
     : '';
+  const linhasNumerariosPendentes = numerariosPendentes.map(r => `<tr class="conciliacao-row-warn">
+    <td><span class="badge">Numerários</span></td>
+    <td class="col-secondary">Rateio</td>
+    <td><strong>${escapeHtml(r.tipo)}</strong><br>${descTruncada(r.historico, 'muted-line')}</td>
+    <td class="col-value">-</td>
+    <td><span style="color:#991b1b;font-weight:600">Preencher conta de numerários na janela de pendências</span></td>
+    <td><span class="conciliacao-status warn">de-para</span></td>
+    <td class="col-secondary">${escapeHtml(r.empresaBanco || r.empresa)} x ${escapeHtml(r.centroCusto || '')}</td>
+  </tr>`).join('');
   const linhasSaidasExtras = itensSaidaExtra.map(r => `<tr class="conciliacao-row-warn">
     <td><span class="badge">Saída pendente</span></td>
     <td class="col-secondary">${escapeHtml(r.data || '')}</td>
@@ -1765,7 +2113,7 @@ function renderSugestoesConciliacao(sugestoes, qtdPagamentos, qtdMovimentos, ent
     </td>
   </tr>${mostrarLancamentosConciliados ? linhasConciliadas : ''}`;
   const qtdPendencias = pendentesPagamento.length + itensSaidaExtra.length + itensRecebimento.length;
-  const qtdParaResolver = pendentesPagamento.length + itensSaidaExtra.length + entradasPendentes.length;
+  const qtdParaResolver = pendentesPagamento.length + itensSaidaExtra.length + entradasPendentes.length + numerariosPendentes.length;
   const textoBotaoPreenchidas = mostrarPendenciasPreenchidas ? 'Recolher pendências preenchidas' : 'Expandir pendências preenchidas';
   const pendenciasOk = qtdParaResolver === 0;
   const secaoPendencias = `<tr>
@@ -1779,7 +2127,7 @@ function renderSugestoesConciliacao(sugestoes, qtdPagamentos, qtdMovimentos, ent
       </div>
     </td>
   </tr>`;
-  const linhas = secaoConciliados + secaoPendencias + linhasPagamentosPendentes + linhasSaidasExtras + linhasEntradasPendentes + linhasEntradasPreenchidas;
+  const linhas = secaoConciliados + secaoPendencias + linhasPagamentosPendentes + linhasSaidasExtras + linhasNumerariosPendentes + linhasEntradasPendentes + linhasEntradasPreenchidas;
 
   el.innerHTML = `<div class="card conciliacao-panel">
     <h3>Conciliação e de-para</h3>
@@ -1789,6 +2137,7 @@ function renderSugestoesConciliacao(sugestoes, qtdPagamentos, qtdMovimentos, ent
       <div class="metric metric-focus-ok"><div class="metric-label">Pagamentos conciliados</div><div class="metric-value ok">${conciliadas.length}</div></div>
       <div class="metric ${semSugestao > 0 ? 'metric-focus-warn' : 'metric-muted'}"><div class="metric-label">Pagamentos pendentes</div><div class="metric-value ${semSugestao > 0 ? 'warn' : 'ok'}">${semSugestao}</div></div>
       <div class="metric ${saidasExtras.length > 0 ? 'metric-focus-warn' : 'metric-muted'}"><div class="metric-label">Saídas pendentes</div><div class="metric-value ${saidasExtras.length > 0 ? 'warn' : 'ok'}">${saidasExtras.length}</div></div>
+      ${itensRecebimentoRateio.length ? `<div class="metric metric-muted"><div class="metric-label">Recebimentos rateio</div><div class="metric-value metric-text">${itensRecebimentoRateio.length}</div><div class="metric-sub">${numerariosPendentes.length} numerário${numerariosPendentes.length !== 1 ? 's' : ''} pendente${numerariosPendentes.length !== 1 ? 's' : ''}</div></div>` : ''}
     </div>
     <p class="conciliacao-note" style="margin-bottom:10px">Pagamentos são validados contra as saídas do extrato. As pendências devem ser conciliadas manualmente quando não houver sugestão automática.</p>
     <div class="conciliation-actions">
@@ -1839,7 +2188,8 @@ function coletarCodigosConciliacao() {
 function labelMovimentoConciliacao(item) {
   if (item.movimento === 'pagamento-pendente') return 'Pagamento pendente';
   if (item.movimento === 'saida-pendente') return 'Saída pendente';
-  if (item.movimento === 'recebimento') return 'Recebimento';
+  if (item.movimento === 'recebimento') return item.rateioRecebimento ? 'Recebimento rateio' : 'Recebimento';
+  if (item.movimento === 'numerario-rateio') return 'Numerários';
   return item.movimento || 'Movimento';
 }
 
@@ -2049,27 +2399,28 @@ function obterTrechoRegraRecebimento(item) {
   return selecionado || limparTextoECD(item.historico || '');
 }
 
-function montarChaveRecebimentoConciliacao(tipo, trecho, historicoInteiro = false) {
+function montarChaveRecebimentoConciliacao(tipo, trecho, historicoInteiro = false, escopo = '') {
   const tipoLimpo = limparTextoECD(tipo || 'Recebimento');
   const trechoLimpo = limparTextoECD(trecho);
+  const prefixoEscopo = escopo ? limparTextoECD(escopo) + ' | ' : '';
   return historicoInteiro
-    ? `RECEBIMENTO | ${tipoLimpo} | HISTORICO_EXATO | ${trechoLimpo}`
-    : `RECEBIMENTO | ${tipoLimpo} | HISTORICO_CONTEM | ${trechoLimpo}`;
+    ? `${prefixoEscopo}RECEBIMENTO | ${tipoLimpo} | HISTORICO_EXATO | ${trechoLimpo}`
+    : `${prefixoEscopo}RECEBIMENTO | ${tipoLimpo} | HISTORICO_CONTEM | ${trechoLimpo}`;
 }
 
 function obterChaveRegraRecebimentoConciliacao(item) {
   const trecho = obterTrechoRegraRecebimento(item);
   const historico = limparTextoECD(item.historico || '');
-  return montarChaveRecebimentoConciliacao(item.tipo, trecho, normalizarTexto(trecho) === normalizarTexto(historico));
+  return montarChaveRecebimentoConciliacao(item.tipo, trecho, normalizarTexto(trecho) === normalizarTexto(historico), item.escopoRegra || '');
 }
 
-function encontrarCodigoRegraRecebimentoConciliacao(regras, tipo, historico) {
+function encontrarCodigoRegraRecebimentoConciliacao(regras, tipo, historico, escopo = '') {
   const historicoLimpo = limparTextoECD(historico);
   const tipoLimpo = limparTextoECD(tipo || 'Recebimento');
-  const chaveExata = montarChaveRecebimentoConciliacao(tipoLimpo, historicoLimpo, true);
+  const chaveExata = montarChaveRecebimentoConciliacao(tipoLimpo, historicoLimpo, true, escopo);
   if (regras[chaveExata]) return regras[chaveExata];
 
-  const prefixo = `RECEBIMENTO | ${tipoLimpo} | HISTORICO_CONTEM | `;
+  const prefixo = (escopo ? limparTextoECD(escopo) + ' | ' : '') + `RECEBIMENTO | ${tipoLimpo} | HISTORICO_CONTEM | `;
   const historicoNormalizado = normalizarTexto(historicoLimpo);
   const achada = Object.keys(regras).find(chave => {
     if (!chave.startsWith(prefixo)) return false;
@@ -2083,6 +2434,7 @@ function encontrarCodigoRegraRecebimentoConciliacao(regras, tipo, historico) {
 function recebimentoAtendeRegra(item, itemRegra) {
   if (!item || !itemRegra || item.movimento !== 'recebimento') return false;
   if (normalizarTexto(item.tipo || '') !== normalizarTexto(itemRegra.tipo || '')) return false;
+  if (normalizarTexto(item.escopoRegra || '') !== normalizarTexto(itemRegra.escopoRegra || '')) return false;
   const termos = normalizarTexto(obterTrechoRegraRecebimento(itemRegra)).split(/\s+/).filter(Boolean);
   const historico = normalizarTexto(item.historico || '');
   return termos.length > 0 && termos.every(termo => historico.includes(termo));
@@ -2099,20 +2451,31 @@ function aplicarRegraRecebimentoConciliacao(id, codigo) {
       const campo = document.querySelector(`[data-conciliacao-modal-id="${CSS.escape(item.id)}"]`);
       if (campo) campo.value = codigo;
     }
+      if (item.movimento === 'numerario-rateio' && !codigosConciliacaoTemp[item.id]) {
+      codigosConciliacaoTemp[item.id] = obterCodigoContaParaDominio((depara[grupoAtivo] || {})[item.chave] || '');
+    }
   });
 }
 
 function salvarRegrasRecebimentoConciliacao() {
   if (!grupoAtivo) return;
   const regras = Object.assign({}, deparaRecebimentos[grupoAtivo] || {});
-  conciliacaoItensTemp
-    .filter(item => item.movimento === 'recebimento')
-    .forEach(item => {
-      const codigo = obterCodigoContaParaDominio(codigosConciliacaoTemp[item.id]);
-      if (!codigo) return;
+  const regrasPagamentos = Object.assign({}, depara[grupoAtivo] || {});
+  conciliacaoItensTemp.forEach(item => {
+    const codigo = obterCodigoContaParaDominio(codigosConciliacaoTemp[item.id]);
+    if (!codigo) return;
+    if (item.movimento === 'recebimento') {
       regras[obterChaveRegraRecebimentoConciliacao(item)] = codigo;
-    });
+    }
+    if (item.movimento === 'numerario-rateio' && item.chave) {
+      regrasPagamentos[item.chave] = codigo;
+    }
+      if (item.movimento === 'numerario-rateio' && !codigosConciliacaoTemp[item.id]) {
+      codigosConciliacaoTemp[item.id] = obterCodigoContaParaDominio((depara[grupoAtivo] || {})[item.chave] || '');
+    }
+  });
   deparaRecebimentos[grupoAtivo] = regras;
+  depara[grupoAtivo] = regrasPagamentos;
   salvarStorage();
 }
 
@@ -2127,7 +2490,55 @@ function salvarModalPendenciasConciliacao() {
   gerarSugestoesConciliacao();
 }
 
-const CABECALHO_DOMINIO = ['Data','Cód. Conta Débito','Cód. Conta Crédito','Valor','Cód. Histórico','Complemento Histórico','Inicia Lote','Código Matriz/Filial','Centro de Custo Débito','Centro de Custo Crédito'];
+const CABECALHO_DOMINIO = ['Data','Cód. Conta Débito','Cód. Conta Crédito','Valor','Cód. Histórico','Complemento Histórico','Inicia Lote','Código Matriz/Filial','Centro de Custo Débito','Centro de Custo Crédito','Tipo do Rateio'];
+
+function linhaDominio(data, debito, credito, valor, complemento, empresa, tipoRateio = '') {
+  return [
+    data || '',
+    limparTextoExportacaoDominio(debito || ''),
+    limparTextoExportacaoDominio(credito || ''),
+    arredondarMoeda(Math.abs(valor || 0)),
+    '',
+    limparTextoExportacaoDominio(complemento || ''),
+    '',
+    limparTextoExportacaoDominio(empresa || grupoAtivo || ''),
+    '',
+    '',
+    limparTextoExportacaoDominio(tipoRateio || '')
+  ];
+}
+
+function montarLinhasRecebimentoRateioDominio(item, codigoRecebimento, regrasNumerarios) {
+  const linhas = [];
+  const movimentos = item.movimentos && item.movimentos.length ? item.movimentos : [item];
+  movimentos.forEach(mov => {
+    const valor = Math.abs(arredondarMoeda(mov.valor || item.total));
+    if (!valor) return;
+    const banco = codigoBancoConciliacao(mov.conta || item.conta);
+    const empresaBanco = mov.empresaBanco || item.empresaBanco || item.empresa || grupoAtivo;
+    const centroCusto = mov.centroCusto || item.centroCusto || empresaBanco;
+    const complemento = [mov.tipoRateio || item.tipoRateio, mov.historico || item.historico].filter(Boolean).join(' - ');
+    const negativo = arredondarMoeda(mov.valor || item.total) < 0;
+    if (mov.intercompany || item.intercompany) {
+      const codNumerarioBanco = obterCodigoContaParaDominio(regrasNumerarios[chaveNumerarioRateio(empresaBanco, centroCusto, 'EMPRESA DO BANCO')] || '');
+      const codNumerarioCentro = obterCodigoContaParaDominio(regrasNumerarios[chaveNumerarioRateio(empresaBanco, centroCusto, 'CENTRO DE CUSTO')] || '');
+      if (negativo) {
+        linhas.push(linhaDominio(fmtDate(mov.data || item.data), codNumerarioBanco, banco, valor, complemento + ' - BANCO', empresaBanco, 'TRANSFERENCIA DE NUMERARIOS'));
+        linhas.push(linhaDominio(fmtDate(mov.data || item.data), codigoRecebimento, codNumerarioCentro, valor, complemento + ' - CENTRO DE CUSTO', centroCusto, 'TRANSFERENCIA DE NUMERARIOS'));
+      } else {
+        linhas.push(linhaDominio(fmtDate(mov.data || item.data), banco, codNumerarioBanco, valor, complemento + ' - BANCO', empresaBanco, 'TRANSFERENCIA DE NUMERARIOS'));
+        linhas.push(linhaDominio(fmtDate(mov.data || item.data), codNumerarioCentro, codigoRecebimento, valor, complemento + ' - CENTRO DE CUSTO', centroCusto, 'TRANSFERENCIA DE NUMERARIOS'));
+      }
+      return;
+    }
+    if (negativo) {
+      linhas.push(linhaDominio(fmtDate(mov.data || item.data), codigoRecebimento, banco, valor, complemento, centroCusto, 'PROPRIO'));
+    } else {
+      linhas.push(linhaDominio(fmtDate(mov.data || item.data), banco, codigoRecebimento, valor, complemento, centroCusto, 'PROPRIO'));
+    }
+  });
+  return linhas;
+}
 
 function montarLinhasDominioConciliacao({ validarPendencias = true } = {}) {
   coletarCodigosConciliacao();
@@ -2138,7 +2549,10 @@ function montarLinhasDominioConciliacao({ validarPendencias = true } = {}) {
   if (itensNovos.length === 0) {
     return [];
   }
-  const pendentes = itensNovos.filter(item => !obterCodigoContaParaDominio(codigosConciliacaoTemp[item.id]));
+  const pendentes = conciliacaoItensTemp.filter(item => {
+    if (item.movimento !== 'recebimento' && item.movimento !== 'numerario-rateio') return false;
+    return !obterCodigoContaParaDominio(codigosConciliacaoTemp[item.id]);
+  });
   if (pendentes.length > 0 && validarPendencias) {
     abrirModalPendenciasConciliacao();
     return null;
@@ -2146,44 +2560,30 @@ function montarLinhasDominioConciliacao({ validarPendencias = true } = {}) {
   salvarRegrasRecebimentoConciliacao();
   const linhas = [];
   const transferenciasPareadas = indicesTransferenciasPareadas(extratoBancarioTemp);
+  const regrasNumerarios = depara[grupoAtivo] || {};
   itensNovos.forEach(item => {
     const codigo = obterCodigoContaParaDominio(codigosConciliacaoTemp[item.id]);
-    if (item.movimento === 'recebimento') {
-      const movimentos = item.movimentos && item.movimentos.length ? item.movimentos : [item];
-      movimentos.forEach(mov => {
-        const idxMov = extratoBancarioTemp.indexOf(mov);
-        if (idxMov >= 0 && transferenciasPareadas.has(idxMov)) return;
-        linhas.push([
-          fmtDate(mov.data || item.data),
-          limparTextoExportacaoDominio(mov.conta || item.conta || infoExtratoBancarioTemp?.conta || ''),
-          codigo,
-          arredondarMoeda(Math.abs(mov.valor || item.total)),
-          '',
-          limparTextoExportacaoDominio(descricaoMovimentoExtrato(mov) || item.historico),
-          '',
-          limparTextoExportacaoDominio(mov.empresa || item.empresa || grupoAtivo || ''),
-          '',
-          ''
-        ]);
-      });
+    if (item.rateioRecebimento) {
+      linhas.push(...montarLinhasRecebimentoRateioDominio(item, codigo, regrasNumerarios));
       return;
     }
-    linhas.push([
-      item.data || '',
-      codigo,
-      limparTextoExportacaoDominio(item.conta || infoExtratoBancarioTemp?.conta || ''),
-      arredondarMoeda(item.total),
-      '',
-      limparTextoExportacaoDominio(item.historico),
-      '',
-      limparTextoExportacaoDominio(item.empresa || grupoAtivo || ''),
-      '',
-      ''
-    ]);
+    const movimentos = item.movimentos && item.movimentos.length ? item.movimentos : [item];
+    movimentos.forEach(mov => {
+      const idxMov = extratoBancarioTemp.indexOf(mov);
+      if (idxMov >= 0 && transferenciasPareadas.has(idxMov)) return;
+      linhas.push(linhaDominio(
+        fmtDate(mov.data || item.data),
+        mov.conta || item.conta || infoExtratoBancarioTemp?.conta || '',
+        codigo,
+        Math.abs(mov.valor || item.total),
+        descricaoMovimentoExtrato(mov) || item.historico,
+        mov.empresa || item.empresa || grupoAtivo || '',
+        ''
+      ));
+    });
   });
   return linhas;
 }
-
 function exportarConciliacaoBancaria() {
   const linhas = montarLinhasDominioConciliacao();
   if (linhas === null) return;
@@ -2777,10 +3177,8 @@ function renderNovasChaves() {
     const palavrasHistorico = renderPalavrasHistorico(chave, historicoExibido, trechoHistorico);
     return `<tr>
       <td><input type="checkbox" data-chave="${escapeAttr(chave)}" ${selecionadasLote.has(chave) ? 'checked' : ''} onchange="alternarSelecionadaLote(this.dataset.chave, this.checked)"></td>
-      <td title="${escapeAttr([empresa, centroCusto].filter(Boolean).join(' / '))}">
-        <div class="cell-main">${escapeHtml(empresa || '')}</div>
-        ${centroCusto && centroCusto !== empresa ? `<div class="cell-sub">${escapeHtml(centroCusto)}</div>` : ''}
-      </td>
+      <td title="${escapeAttr(empresa || '')}"><div class="cell-main">${escapeHtml(empresa || '')}</div></td>
+      <td title="${escapeAttr(centroCusto || '')}" style="color:var(--text2)">${escapeHtml(centroCusto || '')}</td>
       <td title="${escapeAttr(fornecedor)}"><div class="cell-main">${escapeHtml(fornecedor)}</div></td>
       <td title="${escapeAttr(plano)}">
         <div class="cell-main">${escapeHtml(plano)}</div>
@@ -2917,7 +3315,7 @@ function ocultarPendenciaPreenchida(inp, focarProximo = false) {
   inp.closest('tr')?.remove();
   const visiveis = obterNovasChavesVisiveis();
   if (visiveis.length === 0) {
-    document.getElementById('tbody-novas-chaves').innerHTML = `<tr><td colspan="8" style="text-align:center;color:var(--text2);padding:32px">Nenhuma pendência visível com os filtros atuais.</td></tr>`;
+    document.getElementById('tbody-novas-chaves').innerHTML = `<tr><td colspan="9" style="text-align:center;color:var(--text2);padding:32px">Nenhuma pendência visível com os filtros atuais.</td></tr>`;
   }
   atualizarStatusLote(visiveis);
   if (focarProximo && proximo) focarCampoCodigo(proximo);
@@ -3087,7 +3485,7 @@ function gerarLancamentos(dados, regras) {
     const intercompanyRateio = rateioIntercompanyLinha(r);
     const valorLancamento = linhaRateioNegativa ? Math.abs(valorLiq) : valorLiq;
     const complemento = [forn, tipoDoc, num, plano, historico].filter(Boolean).join(' - ');
-    const complementoIntercompany = ['INTERCOMPANY RATEIO', empresaBancoRateio, centroCustoRateio, complemento].filter(Boolean).join(' - ');
+    const complementoIntercompany = ['TRANSFERENCIA DE NUMERARIOS', empresaBancoRateio, centroCustoRateio, complemento].filter(Boolean).join(' - ');
 
     totalLiquido += valorLiq;
     totalBruto += valorBruto;
@@ -3117,13 +3515,14 @@ function gerarLancamentos(dados, regras) {
         codCredito: linhaBanco.codCredito,
         valorLiq: valorLancamento,
         valorFmt: fmtValor(valorLancamento),
-        complemento: complementoIntercompany + ' - banco',
+        complemento: complementoIntercompany + ' - BANCO',
         empresa: empresaBancoRateio,
         plano,
         acrescimoDesconto,
         semCodigo: !linhaBanco.codDebito || !linhaBanco.codCredito,
         rateioIntercompany: true,
-        camada: 'banco'
+        camada: 'banco',
+        tipoRateio: 'TRANSFERENCIA DE NUMERARIOS'
       });
       lancamentosGerados.push({
         idx,
@@ -3132,13 +3531,14 @@ function gerarLancamentos(dados, regras) {
         codCredito: linhaCentro.codCredito,
         valorLiq: valorLancamento,
         valorFmt: fmtValor(valorLancamento),
-        complemento: complementoIntercompany + ' - centro de custo',
+        complemento: complementoIntercompany + ' - CENTRO DE CUSTO',
         empresa,
         plano,
         acrescimoDesconto,
         semCodigo: !linhaCentro.codDebito || !linhaCentro.codCredito,
         rateioIntercompany: true,
-        camada: 'centro-custo'
+        camada: 'centro-custo',
+        tipoRateio: 'TRANSFERENCIA DE NUMERARIOS'
       });
       return;
     }
@@ -3152,7 +3552,7 @@ function gerarLancamentos(dados, regras) {
       ajustes.push({ empresa, fornecedor: forn, plano, historico, acrescimoDesconto, valorLiq });
     }
 
-    lancamentosGerados.push({ idx, data: dataLiq, codDebito, codCredito, valorLiq: valorLancamento, valorFmt: fmtValor(valorLancamento), complemento, empresa, plano, acrescimoDesconto, semCodigo: !codDebito || !codCredito, rateioNegativo: linhaRateioNegativa });
+    lancamentosGerados.push({ idx, data: dataLiq, codDebito, codCredito, valorLiq: valorLancamento, valorFmt: fmtValor(valorLancamento), complemento, empresa, plano, acrescimoDesconto, semCodigo: !codDebito || !codCredito, rateioNegativo: linhaRateioNegativa, tipoRateio: r.__rateio ? 'PROPRIO' : '' });
     if (acrescimoDesconto !== 0) {
       const tipoAjuste = acrescimoDesconto < 0 ? 'DESCONTO' : 'ACRÉSCIMO';
       const valorAjuste = Math.abs(acrescimoDesconto);
@@ -3175,7 +3575,8 @@ function gerarLancamentos(dados, regras) {
         plano,
         acrescimoDesconto,
         tipoAjuste,
-        semCodigo: !codDebitoAjuste || !codCreditoAjuste
+        semCodigo: !codDebitoAjuste || !codCreditoAjuste,
+        tipoRateio: r.__rateio ? 'PROPRIO' : ''
       });
     }
   });
@@ -3248,6 +3649,7 @@ function gerarLancamentos(dados, regras) {
       <td style="color:var(--text2)">${l.codCredito}</td>
       <td style="text-align:right;white-space:nowrap">${l.valorFmt}</td>
       <td style="color:var(--text2);white-space:nowrap">${l.empresa}</td>
+      <td style="color:var(--text2);white-space:nowrap">${l.tipoRateio || ''}</td>
       <td style="color:var(--text2);max-width:220px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${l.complemento}</td>
     </tr>
   `).join('');
@@ -3259,7 +3661,7 @@ function montarLinhasDominioPagamentos() {
   const lancamentosPagamentos = lancamentosGerados.filter(l => !l.origemConciliacao);
   return lancamentosPagamentos.map(l => [
     l.data, l.codDebito, limparTextoExportacaoDominio(l.codCredito), l.valorLiq, '', limparTextoExportacaoDominio(l.complemento),
-    '', limparTextoExportacaoDominio(l.empresa), '', ''
+    '', limparTextoExportacaoDominio(l.empresa), '', '', limparTextoExportacaoDominio(l.tipoRateio || '')
   ]);
 }
 
@@ -3481,6 +3883,23 @@ iniciarSincronizacaoAutomatica();
 </script>
 </body>
 </html>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
