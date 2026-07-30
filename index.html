@@ -72,17 +72,19 @@
   .table-novas { table-layout: fixed; width: 100%; min-width: 0; font-size: 11.5px; }
   .table-novas th, .table-novas td { padding: 8px 6px; }
   .table-novas th { white-space: normal; line-height: 1.25; }
-  .table-novas th:nth-child(1) { width: 44px; }
-  .table-novas th:nth-child(2) { width: 10%; }
-  .table-novas th:nth-child(3) { width: 12%; }
-  .table-novas th:nth-child(4) { width: 15%; }
-  .table-novas th:nth-child(5) { width: 15%; }
-  .table-novas th:nth-child(6) { width: 22%; }
-  .table-novas th:nth-child(7) { width: 6%; }
-  .table-novas th:nth-child(8) { width: 10%; }
-  .table-novas th:nth-child(9) { width: 10%; }
+  .table-novas th:nth-child(1) { width: 40px; }
+  .table-novas th:nth-child(2) { width: 9%; }
+  .table-novas th:nth-child(3) { width: 10%; }
+  .table-novas th:nth-child(4) { width: 14%; }
+  .table-novas th:nth-child(5) { width: 13%; }
+  .table-novas th:nth-child(6) { width: 20%; }
+  .table-novas th:nth-child(7) { width: 9%; }
+  .table-novas th:nth-child(8) { width: 7%; }
+  .table-novas th:nth-child(9) { width: 9%; }
+  .table-novas th:nth-child(10) { width: 9%; }
   .table-novas td { min-height: 56px; white-space: normal; overflow-wrap: anywhere; line-height: 1.35; }
   .table-novas td:nth-child(6) { overflow-wrap: normal; word-break: normal; }
+  .table-novas td:nth-child(7) { overflow-wrap: normal; word-break: normal; }
   .table-novas td:nth-child(2) { font-weight: 600; color: #111827; }
   .table-novas td:first-child, .table-novas th:first-child { text-align: center; padding-left: 10px; padding-right: 10px; }
   .table-novas input[type=text] { height: 34px; min-width: 0; font-size: 12px; padding-left: 8px; padding-right: 8px; }
@@ -275,6 +277,17 @@
       <div class="drop-title">Arraste a planilha aqui ou clique para selecionar</div>
       <div class="drop-sub" id="drop-sub-importacao">Arquivo de Parcelas de Títulos exportado do financeiro (.xlsx ou .xlsm)</div>
     </div>
+    <div id="importar-recebimentos-rateio-inicio" class="card" style="display:none;margin-top:14px">
+      <div class="section-header" style="margin-bottom:8px">
+        <div>
+          <h3 style="margin:0;font-size:16px">Recebimentos por rateio</h3>
+          <p class="conciliacao-note" style="margin:6px 0 0">Use para importar Rateio de Cartões a Receber e Rateio/Parcela de Títulos a Receber deste grupo.</p>
+        </div>
+      </div>
+      <button class="btn btn-blue" onclick="document.getElementById('recebimentos-rateio-input').click()">Importar recebimentos por rateio</button>
+      <button class="btn" onclick="limparRecebimentosRateio()">Limpar recebimentos</button>
+      <div id="resumo-recebimentos-rateio-importar" style="margin-top:12px"></div>
+    </div>
   </div>
 
   <!-- TELA PLANO DE CONTAS -->
@@ -328,7 +341,7 @@
     <div class="table-wrap table-scroll table-novas-wrap" style="margin-bottom:16px">
       <table class="table-novas">
         <thead>
-          <tr><th><input type="checkbox" id="check-todas-lote" onchange="alternarTodasVisiveis(this.checked)"></th><th>Empresa</th><th>Centro de Custo</th><th>Fornecedor</th><th>Plano de Contas</th><th>Histórico</th><th>Número</th><th>Documento</th><th>Código Domínio</th></tr>
+          <tr><th><input type="checkbox" id="check-todas-lote" onchange="alternarTodasVisiveis(this.checked)"></th><th>Empresa</th><th>Centro de Custo</th><th>Fornecedor</th><th>Plano de Contas</th><th>Histórico</th><th>Tipo do Rateio</th><th>Número</th><th>Documento</th><th>Código Domínio</th></tr>
         </thead>
         <tbody id="tbody-novas-chaves"></tbody>
       </table>
@@ -586,6 +599,21 @@ function rateioIntercompanyLinha(r) {
     && normalizarTexto(empresaBanco) !== normalizarTexto(empresaCentro);
 }
 
+function tipoRateioOperacao(empresaOrigem, centroCusto, rateio = false) {
+  if (!rateio) return '';
+  const origem = limparTextoECD(empresaOrigem);
+  const centro = limparTextoECD(centroCusto || origem);
+  if (!origem || !centro) return 'PROPRIO';
+  return normalizarTexto(origem) === normalizarTexto(centro) ? 'PROPRIO' : 'TRANSFERENCIA DE NUMERARIOS';
+}
+
+function tipoRateioItem(item) {
+  return tipoRateioOperacao(item?.empresaOrigem || item?.empresa, item?.centroCusto, !!item?.rateio);
+}
+
+function tipoRateioLinha(r) {
+  return tipoRateioOperacao(empresaOrigemLinha(r), centroCustoLinha(r), !!r?.__rateio);
+}
 function chaveNumerarioRateio(empresaBanco, centroCusto, lado) {
   return [
     'RATEIO NUMERARIOS',
@@ -928,6 +956,9 @@ function selecionarModoImportacaoPagamentos(modo) {
       ? 'Arquivo de Rateio de Títulos a Pagar exportado do financeiro (.xlsx ou .xlsm)'
       : 'Arquivo de Parcelas de Títulos exportado do financeiro (.xlsx ou .xlsm)';
   }
+  const blocoRecebInicio = document.getElementById('importar-recebimentos-rateio-inicio');
+  if (blocoRecebInicio) blocoRecebInicio.style.display = modoImportacaoPagamentos === 'rateio' ? '' : 'none';
+  renderResumoRecebimentosRateio();
 }
 
 function indiceCabecalhoPlanilha(raw) {
@@ -1395,20 +1426,22 @@ function resumoRecebimentosRateio() {
 }
 
 function renderResumoRecebimentosRateio() {
-  const el = document.getElementById('resumo-recebimentos-rateio');
-  if (!el) return;
-  if (!grupoPodeRecebimentosRateio()) {
-    el.innerHTML = '';
-    return;
+  const els = ['resumo-recebimentos-rateio', 'resumo-recebimentos-rateio-importar']
+    .map(id => document.getElementById(id))
+    .filter(Boolean);
+  if (els.length === 0) return;
+  let html = '';
+  if (grupoPodeRecebimentosRateio()) {
+    if (recebimentosRateioTemp.length === 0) {
+      html = `<div class="alert alert-orange">Recebimentos por rateio ainda não importados nesta sessão.</div>`;
+    } else {
+      const r = resumoRecebimentosRateio();
+      html = `<div class="alert alert-ok">
+        <strong>${r.total} recebimento${r.total !== 1 ? 's' : ''} por rateio</strong> · positivos R$ ${fmtValor(r.valorPositivo)} · taxas/ajustes R$ ${fmtValor(r.valorNegativo)} · líquido R$ ${fmtValor(r.liquido)} · ${r.intercompany} transferência${r.intercompany !== 1 ? 's' : ''} de numerários · ${r.proprio} próprio${r.proprio !== 1 ? 's' : ''}
+      </div>`;
+    }
   }
-  if (recebimentosRateioTemp.length === 0) {
-    el.innerHTML = `<div class="alert alert-orange">Recebimentos por rateio ainda não importados nesta sessão.</div>`;
-    return;
-  }
-  const r = resumoRecebimentosRateio();
-  el.innerHTML = `<div class="alert alert-ok">
-    <strong>${r.total} recebimento${r.total !== 1 ? 's' : ''} por rateio</strong> · positivos R$ ${fmtValor(r.valorPositivo)} · taxas/ajustes R$ ${fmtValor(r.valorNegativo)} · líquido R$ ${fmtValor(r.liquido)} · ${r.intercompany} transferência${r.intercompany !== 1 ? 's' : ''} de numerários · ${r.proprio} próprio${r.proprio !== 1 ? 's' : ''}
-  </div>`;
+  els.forEach(el => { el.innerHTML = html; });
 }
 function onFileChangeExtratoBancario(e) {
   const files = Array.from(e.target.files || []);
@@ -3164,17 +3197,18 @@ function renderNovasChaves() {
     return textoBuscaNovaChave(item).includes(filtro);
   });
   if (visiveis.length === 0) {
-    tbody.innerHTML = `<tr><td colspan="9" style="text-align:center;color:var(--text2);padding:32px">Nenhuma pendência visível com os filtros atuais.</td></tr>`;
+    tbody.innerHTML = `<tr><td colspan="10" style="text-align:center;color:var(--text2);padding:32px">Nenhuma pendência visível com os filtros atuais.</td></tr>`;
     atualizarStatusLote(visiveis);
     return;
   }
-  tbody.innerHTML = visiveis.map(({ chave, fornecedor, plano, tipoDoc, historico, trechoHistorico, numero, empresa, centroCusto }) => {
+  tbody.innerHTML = visiveis.map(({ chave, fornecedor, plano, tipoDoc, historico, trechoHistorico, numero, empresa, centroCusto, empresaOrigem, rateio }) => {
     const infoDoc = separarNumeroDoHistorico(tipoDoc, numero, historico);
     const historicoExibido = infoDoc.historico;
     const isAjuste = tipoDoc === 'DESCONTO' || tipoDoc === 'ACRÉSCIMO' || tipoDoc.startsWith('DESCONTO -') || tipoDoc.startsWith('ACRÉSCIMO -');
     const historicoVisual = isAjuste ? `${tipoDoc} - ${historicoExibido}` : historicoExibido;
     const numeroExibido = tipoUsaNumero(tipoDoc) ? infoDoc.numero : '';
     const palavrasHistorico = renderPalavrasHistorico(chave, historicoExibido, trechoHistorico);
+    const tipoRateio = tipoRateioOperacao(empresaOrigem || empresa, centroCusto, !!rateio);
     return `<tr>
       <td><input type="checkbox" data-chave="${escapeAttr(chave)}" ${selecionadasLote.has(chave) ? 'checked' : ''} onchange="alternarSelecionadaLote(this.dataset.chave, this.checked)"></td>
       <td title="${escapeAttr(empresa || '')}"><div class="cell-main">${escapeHtml(empresa || '')}</div></td>
@@ -3187,6 +3221,7 @@ function renderNovasChaves() {
         ${isAjuste ? `<div style="font-weight:700;color:#92400e;margin-bottom:4px">${escapeHtml(tipoDoc)} -</div>` : ''}
         ${historicoExibido ? `<div class="historico-regra-label">Clique nas palavras da regra:</div>${palavrasHistorico}` : ''}
       </td>
+      <td title="${escapeAttr(tipoRateio)}" style="color:var(--text2)">${tipoRateio ? `<span class="badge ${tipoRateio === 'PROPRIO' ? 'badge-blue' : ''}">${escapeHtml(tipoRateio)}</span>` : ''}</td>
       <td title="${escapeAttr(numeroExibido)}" style="color:var(--text2)">${escapeHtml(numeroExibido)}</td>
       <td title="${escapeAttr(tipoDoc)}" style="color:var(--text2)">${isAjuste ? `<span class="tipo-ajuste-badge">${escapeHtml(tipoDoc)}</span>` : escapeHtml(tipoDoc)}</td>
       <td>
@@ -3315,7 +3350,7 @@ function ocultarPendenciaPreenchida(inp, focarProximo = false) {
   inp.closest('tr')?.remove();
   const visiveis = obterNovasChavesVisiveis();
   if (visiveis.length === 0) {
-    document.getElementById('tbody-novas-chaves').innerHTML = `<tr><td colspan="9" style="text-align:center;color:var(--text2);padding:32px">Nenhuma pendência visível com os filtros atuais.</td></tr>`;
+    document.getElementById('tbody-novas-chaves').innerHTML = `<tr><td colspan="10" style="text-align:center;color:var(--text2);padding:32px">Nenhuma pendência visível com os filtros atuais.</td></tr>`;
   }
   atualizarStatusLote(visiveis);
   if (focarProximo && proximo) focarCampoCodigo(proximo);
@@ -3486,6 +3521,7 @@ function gerarLancamentos(dados, regras) {
     const valorLancamento = linhaRateioNegativa ? Math.abs(valorLiq) : valorLiq;
     const complemento = [forn, tipoDoc, num, plano, historico].filter(Boolean).join(' - ');
     const complementoIntercompany = ['TRANSFERENCIA DE NUMERARIOS', empresaBancoRateio, centroCustoRateio, complemento].filter(Boolean).join(' - ');
+    const tipoRateioAtual = tipoRateioLinha(r);
 
     totalLiquido += valorLiq;
     totalBruto += valorBruto;
@@ -3493,53 +3529,23 @@ function gerarLancamentos(dados, regras) {
     if (acrescimoDesconto > 0) totalAcrescimo += acrescimoDesconto;
     if (!codDeparaPrincipal) pendentes.add(chave);
 
+
     if (intercompanyRateio) {
-      const chaveNumerarioBanco = chaveNumerarioRateio(empresaBancoRateio, centroCustoRateio, 'EMPRESA DO BANCO');
-      const chaveNumerarioCentro = chaveNumerarioRateio(empresaBancoRateio, centroCustoRateio, 'CENTRO DE CUSTO');
       const codNumerarioBanco = codigoNumerarioRateio(regras, empresaBancoRateio, centroCustoRateio, 'EMPRESA DO BANCO');
       const codNumerarioCentro = codigoNumerarioRateio(regras, empresaBancoRateio, centroCustoRateio, 'CENTRO DE CUSTO');
+      const chaveNumerarioBanco = chaveNumerarioRateio(empresaBancoRateio, centroCustoRateio, 'EMPRESA DO BANCO');
+      const chaveNumerarioCentro = chaveNumerarioRateio(empresaBancoRateio, centroCustoRateio, 'CENTRO DE CUSTO');
       if (!codNumerarioBanco) pendentes.add(chaveNumerarioBanco);
       if (!codNumerarioCentro) pendentes.add(chaveNumerarioCentro);
-
-      const linhaBanco = linhaRateioNegativa
-        ? { codDebito: codCredito, codCredito: codNumerarioBanco }
-        : { codDebito: codNumerarioBanco, codCredito };
-      const linhaCentro = linhaRateioNegativa
-        ? { codDebito: codNumerarioCentro, codCredito: codDeparaPrincipal }
-        : { codDebito: codDeparaPrincipal, codCredito: codNumerarioCentro };
-
-      lancamentosGerados.push({
-        idx,
-        data: dataLiq,
-        codDebito: linhaBanco.codDebito,
-        codCredito: linhaBanco.codCredito,
-        valorLiq: valorLancamento,
-        valorFmt: fmtValor(valorLancamento),
-        complemento: complementoIntercompany + ' - BANCO',
-        empresa: empresaBancoRateio,
-        plano,
-        acrescimoDesconto,
-        semCodigo: !linhaBanco.codDebito || !linhaBanco.codCredito,
-        rateioIntercompany: true,
-        camada: 'banco',
-        tipoRateio: 'TRANSFERENCIA DE NUMERARIOS'
-      });
-      lancamentosGerados.push({
-        idx,
-        data: dataLiq,
-        codDebito: linhaCentro.codDebito,
-        codCredito: linhaCentro.codCredito,
-        valorLiq: valorLancamento,
-        valorFmt: fmtValor(valorLancamento),
-        complemento: complementoIntercompany + ' - CENTRO DE CUSTO',
-        empresa,
-        plano,
-        acrescimoDesconto,
-        semCodigo: !linhaCentro.codDebito || !linhaCentro.codCredito,
-        rateioIntercompany: true,
-        camada: 'centro-custo',
-        tipoRateio: 'TRANSFERENCIA DE NUMERARIOS'
-      });
+      const semCodigoBanco = !codNumerarioBanco || !codCredito;
+      const semCodigoCentro = !codDeparaPrincipal || !codNumerarioCentro;
+      if (linhaRateioNegativa) {
+        lancamentosGerados.push({ idx, data: dataLiq, codDebito: codCredito, codCredito: codNumerarioBanco, valorLiq: valorLancamento, valorFmt: fmtValor(valorLancamento), complemento: complementoIntercompany + ' - EMPRESA DO BANCO', empresa: empresaBancoRateio, plano, acrescimoDesconto, semCodigo: semCodigoBanco, rateioNegativo: true, tipoRateio: tipoRateioAtual });
+        lancamentosGerados.push({ idx, data: dataLiq, codDebito: codNumerarioCentro, codCredito: codDeparaPrincipal, valorLiq: valorLancamento, valorFmt: fmtValor(valorLancamento), complemento: complementoIntercompany + ' - CENTRO DE CUSTO', empresa, plano, acrescimoDesconto, semCodigo: semCodigoCentro, rateioNegativo: true, tipoRateio: tipoRateioAtual });
+      } else {
+        lancamentosGerados.push({ idx, data: dataLiq, codDebito: codNumerarioBanco, codCredito, valorLiq: valorLancamento, valorFmt: fmtValor(valorLancamento), complemento: complementoIntercompany + ' - EMPRESA DO BANCO', empresa: empresaBancoRateio, plano, acrescimoDesconto, semCodigo: semCodigoBanco, tipoRateio: tipoRateioAtual });
+        lancamentosGerados.push({ idx, data: dataLiq, codDebito: codDeparaPrincipal, codCredito: codNumerarioCentro, valorLiq: valorLancamento, valorFmt: fmtValor(valorLancamento), complemento: complementoIntercompany + ' - CENTRO DE CUSTO', empresa, plano, acrescimoDesconto, semCodigo: semCodigoCentro, tipoRateio: tipoRateioAtual });
+      }
       return;
     }
 
@@ -3552,7 +3558,7 @@ function gerarLancamentos(dados, regras) {
       ajustes.push({ empresa, fornecedor: forn, plano, historico, acrescimoDesconto, valorLiq });
     }
 
-    lancamentosGerados.push({ idx, data: dataLiq, codDebito, codCredito, valorLiq: valorLancamento, valorFmt: fmtValor(valorLancamento), complemento, empresa, plano, acrescimoDesconto, semCodigo: !codDebito || !codCredito, rateioNegativo: linhaRateioNegativa, tipoRateio: r.__rateio ? 'PROPRIO' : '' });
+    lancamentosGerados.push({ idx, data: dataLiq, codDebito, codCredito, valorLiq: valorLancamento, valorFmt: fmtValor(valorLancamento), complemento, empresa, plano, acrescimoDesconto, semCodigo: !codDebito || !codCredito, rateioNegativo: linhaRateioNegativa, tipoRateio: tipoRateioAtual });
     if (acrescimoDesconto !== 0) {
       const tipoAjuste = acrescimoDesconto < 0 ? 'DESCONTO' : 'ACRÉSCIMO';
       const valorAjuste = Math.abs(acrescimoDesconto);
@@ -3576,7 +3582,7 @@ function gerarLancamentos(dados, regras) {
         acrescimoDesconto,
         tipoAjuste,
         semCodigo: !codDebitoAjuste || !codCreditoAjuste,
-        tipoRateio: r.__rateio ? 'PROPRIO' : ''
+        tipoRateio: tipoRateioAtual
       });
     }
   });
@@ -3883,6 +3889,13 @@ iniciarSincronizacaoAutomatica();
 </script>
 </body>
 </html>
+
+
+
+
+
+
+
 
 
 
