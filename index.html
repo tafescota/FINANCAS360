@@ -396,10 +396,8 @@
       <p class="conciliacao-note" style="margin-bottom:14px">
         Esta área será usada para cruzar a planilha de pagamentos carregada nesta sessão com o extrato bancário. Os dados do extrato e os vínculos de conciliação serão temporários e não serão salvos na base compartilhada.
       </p>
-      <button class="btn btn-blue" onclick="document.getElementById('extrato-bancario-input').click()">Importar extrato bancário</button>
-      <button class="btn" onclick="limparExtratoBancario()">Limpar extrato</button>
-      <button class="btn btn-primary" onclick="gerarSugestoesConciliacao()">Gerar sugestões</button>
-      <span style="font-size:12px;color:var(--text2);margin-left:10px">Aceita um ou mais relatórios analíticos de extrato em .xlsx.</span>
+      <button class="btn btn-primary" onclick="document.getElementById('extrato-bancario-input').click()">Importar extrato para conciliação</button>
+      <span style="font-size:12px;color:var(--text2);margin-left:10px">Aceita um ou mais relatórios analíticos de extrato em .xlsx. As sugestões são geradas automaticamente após a importação.</span>
       <input type="file" id="extrato-bancario-input" accept=".xlsx,.xls" multiple style="display:none" onchange="onFileChangeExtratoBancario(event)">
       <div id="bloco-recebimentos-rateio" style="display:none;margin-top:16px;padding-top:16px;border-top:1px solid var(--border)">
         <h4 style="margin:0 0 8px;font-size:14px">Recebimentos por rateio</h4>
@@ -946,6 +944,7 @@ function selecionarModoImportacaoPagamentos(modo) {
   const status = document.getElementById('modo-importacao-status');
   const nota = document.getElementById('nota-modo-importacao');
   const sub = document.getElementById('drop-sub-importacao');
+  const dropTitle = document.querySelector('#drop-area .drop-title');
   if (btnParcelas) btnParcelas.className = 'btn btn-sm ' + (modoImportacaoPagamentos === 'parcelas' ? 'btn-primary' : '');
   if (btnRateio) btnRateio.className = 'btn btn-sm ' + (modoImportacaoPagamentos === 'rateio' ? 'btn-primary' : '');
   if (status) status.textContent = nomeModoImportacao(modoImportacaoPagamentos);
@@ -956,8 +955,13 @@ function selecionarModoImportacaoPagamentos(modo) {
   }
   if (sub) {
     sub.textContent = modoImportacaoPagamentos === 'rateio'
-      ? 'Selecione pagamentos e recebimentos por rateio juntos (.xlsx ou .xlsm)'
+      ? 'Anexe aqui as planilhas de PAGAMENTOS e RECEBIMENTOS por rateio juntas (.xlsx ou .xlsm)'
       : 'Arquivo de Parcelas de Títulos exportado do financeiro (.xlsx ou .xlsm)';
+  }
+  if (dropTitle) {
+    dropTitle.textContent = modoImportacaoPagamentos === 'rateio'
+      ? 'Arraste pagamentos e recebimentos aqui ou clique para selecionar'
+      : 'Arraste a planilha aqui ou clique para selecionar';
   }
   const blocoRecebInicio = document.getElementById('importar-recebimentos-rateio-inicio');
   if (blocoRecebInicio) blocoRecebInicio.style.display = modoImportacaoPagamentos === 'rateio' ? '' : 'none';
@@ -1572,6 +1576,12 @@ async function processarExtratosBancarios(files) {
     if (paresTransferencia > 0) partesMsg.push(`${paresTransferencia} transferência${paresTransferencia !== 1 ? 's' : ''} entre contas identificada${paresTransferencia !== 1 ? 's' : ''}`);
     mostrarMsgConciliacao(partesMsg.join('. ') + '.', 'ok');
     renderConciliacaoBancaria();
+    if (linhasImportadas.length > 0) {
+      const resultado = gerarSugestoesConciliacao();
+      if (resultado?.qtdParaResolver > 0) {
+        setTimeout(() => abrirModalPendenciasConciliacao(), 0);
+      }
+    }
   } catch (err) {
     mostrarMsgConciliacao('Erro ao importar extrato: ' + err.message, 'warn');
   }
@@ -2027,6 +2037,7 @@ function gerarSugestoesConciliacao(opcoes = {}) {
   if (redirecionarSeOk && resultado?.qtdParaResolver === 0) {
     setTimeout(() => mostrarTela('tela-resultado'), 0);
   }
+  return resultado;
 }
 
 function renderSugestoesConciliacao(sugestoes, qtdPagamentos, qtdMovimentos, entradas = [], saidasExtras = []) {
