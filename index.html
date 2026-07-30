@@ -2570,32 +2570,32 @@ function linhaDominio(data, debito, credito, valor, complemento, empresa, tipoRa
 function montarLinhasRecebimentoRateioDominio(item, codigoRecebimento, regrasNumerarios) {
   const linhas = [];
   const movimentos = item.movimentos && item.movimentos.length ? item.movimentos : [item];
-  movimentos.forEach(mov => {
-    const valor = Math.abs(arredondarMoeda(mov.valor || item.total));
-    if (!valor) return;
-    const banco = codigoBancoConciliacao(mov.conta || item.conta);
-    const empresaBanco = mov.empresaBanco || item.empresaBanco || item.empresa || grupoAtivo;
-    const centroCusto = mov.centroCusto || item.centroCusto || empresaBanco;
-    const complemento = [mov.tipoRateio || item.tipoRateio, mov.historico || item.historico].filter(Boolean).join(' - ');
-    const negativo = arredondarMoeda(mov.valor || item.total) < 0;
-    if (mov.intercompany || item.intercompany) {
-      const codNumerarioBanco = obterCodigoContaParaDominio(regrasNumerarios[chaveNumerarioRateio(empresaBanco, centroCusto, 'EMPRESA DO BANCO')] || '');
-      const codNumerarioCentro = obterCodigoContaParaDominio(regrasNumerarios[chaveNumerarioRateio(empresaBanco, centroCusto, 'CENTRO DE CUSTO')] || '');
-      if (negativo) {
-        linhas.push(linhaDominio(fmtDate(mov.data || item.data), codNumerarioBanco, banco, valor, complemento + ' - BANCO', empresaBanco, 'TRANSFERENCIA DE NUMERARIOS'));
-        linhas.push(linhaDominio(fmtDate(mov.data || item.data), codigoRecebimento, codNumerarioCentro, valor, complemento + ' - CENTRO DE CUSTO', centroCusto, 'TRANSFERENCIA DE NUMERARIOS'));
-      } else {
-        linhas.push(linhaDominio(fmtDate(mov.data || item.data), banco, codNumerarioBanco, valor, complemento + ' - BANCO', empresaBanco, 'TRANSFERENCIA DE NUMERARIOS'));
-        linhas.push(linhaDominio(fmtDate(mov.data || item.data), codNumerarioCentro, codigoRecebimento, valor, complemento + ' - CENTRO DE CUSTO', centroCusto, 'TRANSFERENCIA DE NUMERARIOS'));
-      }
-      return;
-    }
+  const primeiroMovimento = movimentos[0] || item;
+  const valor = Math.abs(arredondarMoeda(item.total || movimentos.reduce((s, mov) => s + Math.abs(mov.valor || 0), 0)));
+  if (!valor) return linhas;
+  const banco = codigoBancoConciliacao(item.conta || primeiroMovimento.conta);
+  const empresaBanco = item.empresaBanco || primeiroMovimento.empresaBanco || item.empresa || grupoAtivo;
+  const centroCusto = item.centroCusto || primeiroMovimento.centroCusto || empresaBanco;
+  const complemento = [item.tipo || primeiroMovimento.tipo, item.historico || primeiroMovimento.historico].filter(Boolean).join(' - ');
+  const complementoNumerarios = [complemento, 'TRANSFERENCIA DE NUMERARIOS'].filter(Boolean).join(' - ');
+  const negativo = movimentos.every(mov => arredondarMoeda(mov.valor || 0) < 0) || arredondarMoeda(item.valor || 0) < 0;
+  if (item.intercompany || primeiroMovimento.intercompany) {
+    const codNumerarioBanco = obterCodigoContaParaDominio(regrasNumerarios[chaveNumerarioRateio(empresaBanco, centroCusto, 'EMPRESA DO BANCO')] || '');
+    const codNumerarioCentro = obterCodigoContaParaDominio(regrasNumerarios[chaveNumerarioRateio(empresaBanco, centroCusto, 'CENTRO DE CUSTO')] || '');
     if (negativo) {
-      linhas.push(linhaDominio(fmtDate(mov.data || item.data), codigoRecebimento, banco, valor, complemento, centroCusto, 'PROPRIO'));
+      linhas.push(linhaDominio(fmtDate(item.data || primeiroMovimento.data), codNumerarioBanco, banco, valor, complementoNumerarios, empresaBanco, 'TRANSFERENCIA DE NUMERARIOS'));
+      linhas.push(linhaDominio(fmtDate(item.data || primeiroMovimento.data), codigoRecebimento, codNumerarioCentro, valor, complementoNumerarios, centroCusto, 'TRANSFERENCIA DE NUMERARIOS'));
     } else {
-      linhas.push(linhaDominio(fmtDate(mov.data || item.data), banco, codigoRecebimento, valor, complemento, centroCusto, 'PROPRIO'));
+      linhas.push(linhaDominio(fmtDate(item.data || primeiroMovimento.data), banco, codNumerarioBanco, valor, complementoNumerarios, empresaBanco, 'TRANSFERENCIA DE NUMERARIOS'));
+      linhas.push(linhaDominio(fmtDate(item.data || primeiroMovimento.data), codNumerarioCentro, codigoRecebimento, valor, complementoNumerarios, centroCusto, 'TRANSFERENCIA DE NUMERARIOS'));
     }
-  });
+    return linhas;
+  }
+  if (negativo) {
+    linhas.push(linhaDominio(fmtDate(item.data || primeiroMovimento.data), codigoRecebimento, banco, valor, complemento, centroCusto, 'PROPRIO'));
+  } else {
+    linhas.push(linhaDominio(fmtDate(item.data || primeiroMovimento.data), banco, codigoRecebimento, valor, complemento, centroCusto, 'PROPRIO'));
+  }
   return linhas;
 }
 
