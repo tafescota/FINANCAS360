@@ -26,7 +26,7 @@
   .topbar-sub { color: rgba(255,255,255,0.5); font-size: 13px; }
   .topbar-grupo { margin-left: auto; color: rgba(255,255,255,0.7); font-size: 12px; background: rgba(255,255,255,0.1); padding: 4px 12px; border-radius: 20px; }
 
-  .container { max-width: 1120px; margin: 0 auto; padding: 24px 24px; }
+  .container { max-width: 1480px; margin: 0 auto; padding: 24px 24px; }
 
   .card { background: var(--bg); border: 1px solid var(--border); border-radius: var(--radius); padding: 20px 24px; box-shadow: var(--shadow); }
 
@@ -73,11 +73,13 @@
   .table-novas th, .table-novas td { padding: 8px 6px; }
   .table-novas th { white-space: normal; line-height: 1.25; }
   .table-novas th:nth-child(1) { width: 44px; }
-  .table-novas th:nth-child(2) { width: 18%; }
-  .table-novas th:nth-child(3) { width: 18%; }
-  .table-novas th:nth-child(4) { width: 19%; }
-  .table-novas th:nth-child(5) { width: 27%; }
-  .table-novas th:nth-child(6) { width: 18%; }
+  .table-novas th:nth-child(2) { width: 16%; }
+  .table-novas th:nth-child(3) { width: 16%; }
+  .table-novas th:nth-child(4) { width: 16%; }
+  .table-novas th:nth-child(5) { width: 25%; }
+  .table-novas th:nth-child(6) { width: 7%; }
+  .table-novas th:nth-child(7) { width: 10%; }
+  .table-novas th:nth-child(8) { width: 10%; }
   .table-novas td { min-height: 56px; white-space: normal; overflow-wrap: anywhere; line-height: 1.35; }
   .table-novas td:nth-child(5) { overflow-wrap: normal; word-break: normal; }
   .table-novas td:nth-child(2) { font-weight: 600; color: #111827; }
@@ -108,6 +110,16 @@
 
   .grupo-card { background: var(--bg); border: 1px solid var(--border); border-radius: var(--radius); padding: 16px 20px; display: flex; align-items: center; gap: 12px; margin-bottom: 10px; transition: border-color 0.15s; }
   .grupo-card.ativo { border-color: var(--blue); }
+  .grupos-toolbar { display: grid; grid-template-columns: minmax(240px, 1fr) auto; align-items: center; gap: 12px; margin-bottom: 12px; padding: 12px 14px; }
+  .grupos-toolbar input[type=search] { height: 38px; }
+  .grupo-lista { background: var(--bg); border: 1px solid var(--border); border-radius: var(--radius); overflow: hidden; box-shadow: var(--shadow); }
+  .grupo-row { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 12px; padding: 12px 18px; border-bottom: 1px solid var(--border); }
+  .grupo-row:last-child { border-bottom: 0; }
+  .grupo-row:nth-child(even) { background: #fbfdff; }
+  .grupo-row:hover { background: #f8fafc; }
+  .grupo-row.ativo { background: #f4f9ff; box-shadow: inset 3px 0 0 var(--blue); }
+  .grupo-row-main { min-width: 0; }
+  .grupo-row-actions { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; justify-content: flex-end; }
   .grupo-nome { font-weight: 600; font-size: 15px; }
   .grupo-info { font-size: 12px; color: var(--text2); margin-top: 2px; }
   .badge { font-size: 11px; padding: 2px 8px; border-radius: 20px; display: inline-block; }
@@ -214,6 +226,10 @@
     </div>
     <div id="msg-global"></div>
     <div id="status-banco" class="alert alert-orange" style="display:none"></div>
+    <div class="card grupos-toolbar">
+      <input type="search" id="busca-grupos" placeholder="Pesquisar empresa ou grupo..." oninput="renderGrupos()" autocomplete="off">
+      <div class="grupo-info" id="status-lista-grupos"></div>
+    </div>
     <div id="lista-grupos"></div>
     <input type="file" id="file-input" accept=".xlsx,.xlsm,.xls" style="display:none" onchange="onFileChange(event)">
     <input type="file" id="base-input" accept=".json" style="display:none" onchange="importarBaseDePara(event)">
@@ -311,7 +327,7 @@
     <div class="table-wrap table-scroll table-novas-wrap" style="margin-bottom:16px">
       <table class="table-novas">
         <thead>
-          <tr><th><input type="checkbox" id="check-todas-lote" onchange="alternarTodasVisiveis(this.checked)"></th><th>Empresa / Centro</th><th>Fornecedor</th><th>Plano / Documento</th><th>Histórico</th><th>Código Domínio</th></tr>
+          <tr><th><input type="checkbox" id="check-todas-lote" onchange="alternarTodasVisiveis(this.checked)"></th><th>Empresa / Centro</th><th>Fornecedor</th><th>Plano de Contas</th><th>Histórico</th><th>Número</th><th>Documento</th><th>Código Domínio</th></tr>
         </thead>
         <tbody id="tbody-novas-chaves"></tbody>
       </table>
@@ -2187,21 +2203,39 @@ function renderGrupos() {
   const el = document.getElementById('lista-grupos');
   if (grupos.length === 0) {
     el.innerHTML = `<div class="card"><div class="empty"><div class="empty-icon">🏢</div>Nenhum grupo cadastrado. Crie o primeiro para começar.</div></div>`;
+    const status = document.getElementById('status-lista-grupos');
+    if (status) status.textContent = '';
     return;
   }
-  el.innerHTML = grupos.map(g => {
+  const termoBusca = normalizarTexto(document.getElementById('busca-grupos')?.value || '');
+  const itens = grupos.map(g => {
     const qtd = Object.keys(depara[g] || {}).length;
     const qtdRecebimentos = Object.keys(deparaRecebimentos[g] || {}).length;
     const qtdContas = (planoContas[g] || []).length;
     const isAtivo = g === grupoAtivo;
     const modoGrupo = modoImportacaoDoGrupo(g);
     const modoLabel = nomeModoImportacao(modoGrupo);
-    return `<div class="grupo-card ${isAtivo ? 'ativo' : ''}">
-      <div style="flex:1">
+    const textoBusca = normalizarTexto([g, qtd, qtdRecebimentos, qtdContas, modoLabel].join(' '));
+    return { g, qtd, qtdRecebimentos, qtdContas, isAtivo, modoGrupo, modoLabel, textoBusca };
+  }).filter(item => !termoBusca || item.textoBusca.includes(termoBusca));
+
+  const status = document.getElementById('status-lista-grupos');
+  if (status) {
+    status.textContent = `${itens.length} de ${grupos.length} grupo${grupos.length !== 1 ? 's' : ''} exibido${itens.length !== 1 ? 's' : ''}`;
+  }
+
+  if (itens.length === 0) {
+    el.innerHTML = `<div class="card"><div class="empty">Nenhum grupo encontrado com esse filtro.</div></div>`;
+    return;
+  }
+
+  el.innerHTML = `<div class="grupo-lista">${itens.map(({ g, qtd, qtdRecebimentos, qtdContas, isAtivo, modoLabel }) => `
+    <div class="grupo-row ${isAtivo ? 'ativo' : ''}">
+      <div class="grupo-row-main">
         <div class="grupo-nome">${g} ${isAtivo ? '<span class="badge badge-blue">ativo</span>' : ''}</div>
         <div class="grupo-info">${qtd} regra${qtd !== 1 ? 's' : ''} de pagamentos · ${qtdRecebimentos} regra${qtdRecebimentos !== 1 ? 's' : ''} de recebimentos · ${qtdContas > 0 ? qtdContas + ' contas no plano' : 'plano de contas não carregado'} · ${modoLabel}</div>
       </div>
-      <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
+      <div class="grupo-row-actions">
         ${!isAtivo ? `<button class="btn btn-sm" onclick="selecionarGrupo('${g}')">Selecionar</button>` : ''}
         ${isAtivo ? `
           <button class="btn btn-sm" onclick="mostrarTela('tela-regras')">📋 Regras</button>
@@ -2210,8 +2244,7 @@ function renderGrupos() {
         ` : ''}
         <button class="btn btn-sm btn-danger" onclick="excluirGrupo('${g}')">🗑</button>
       </div>
-    </div>`;
-  }).join('');
+    </div>`).join('')}</div>`;
   const tg = document.getElementById('topbar-grupo');
   if (grupoAtivo) { tg.textContent = grupoAtivo; tg.style.display = ''; }
   else tg.style.display = 'none';
@@ -2749,17 +2782,15 @@ function renderNovasChaves() {
         ${centroCusto && centroCusto !== empresa ? `<div class="cell-sub">${escapeHtml(centroCusto)}</div>` : ''}
       </td>
       <td title="${escapeAttr(fornecedor)}"><div class="cell-main">${escapeHtml(fornecedor)}</div></td>
-      <td title="${escapeAttr([plano, tipoDoc, numeroExibido].filter(Boolean).join(' / '))}">
+      <td title="${escapeAttr(plano)}">
         <div class="cell-main">${escapeHtml(plano)}</div>
-        <div class="cell-sub">
-          ${isAjuste ? `<span class="tipo-ajuste-badge">${escapeHtml(tipoDoc)}</span>` : escapeHtml(tipoDoc)}
-          ${numeroExibido ? ` · ${escapeHtml(numeroExibido)}` : ''}
-        </div>
       </td>
       <td title="${escapeAttr(historicoVisual)}" style="color:var(--text2)">
         ${isAjuste ? `<div style="font-weight:700;color:#92400e;margin-bottom:4px">${escapeHtml(tipoDoc)} -</div>` : ''}
         ${historicoExibido ? `<div class="historico-regra-label">Clique nas palavras da regra:</div>${palavrasHistorico}` : ''}
       </td>
+      <td title="${escapeAttr(numeroExibido)}" style="color:var(--text2)">${escapeHtml(numeroExibido)}</td>
+      <td title="${escapeAttr(tipoDoc)}" style="color:var(--text2)">${isAjuste ? `<span class="tipo-ajuste-badge">${escapeHtml(tipoDoc)}</span>` : escapeHtml(tipoDoc)}</td>
       <td>
         <input type="text" class="conta-autocomplete" placeholder="Digite o código ou nome da conta" value="${escapeAttr(codigosTemp[chave] || '')}" data-chave="${escapeAttr(chave)}" oninput="atualizarCodigoNovaChave(this); criarAutocompleteConta(this)" style="width:100%">
       </td>
@@ -2886,7 +2917,7 @@ function ocultarPendenciaPreenchida(inp, focarProximo = false) {
   inp.closest('tr')?.remove();
   const visiveis = obterNovasChavesVisiveis();
   if (visiveis.length === 0) {
-    document.getElementById('tbody-novas-chaves').innerHTML = `<tr><td colspan="6" style="text-align:center;color:var(--text2);padding:32px">Nenhuma pendência visível com os filtros atuais.</td></tr>`;
+    document.getElementById('tbody-novas-chaves').innerHTML = `<tr><td colspan="8" style="text-align:center;color:var(--text2);padding:32px">Nenhuma pendência visível com os filtros atuais.</td></tr>`;
   }
   atualizarStatusLote(visiveis);
   if (focarProximo && proximo) focarCampoCodigo(proximo);
