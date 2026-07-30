@@ -2289,17 +2289,18 @@ function aplicarContaPendenciasConciliacaoSelecionadas() {
   const input = document.getElementById('codigo-lote-conciliacao');
   const codigo = obterCodigoContaParaDominio(input?.value || '');
   if (!codigo) {
-    alert('Informe a conta para aplicar nos recebimentos selecionados.');
+    alert('Informe a conta para aplicar nas pendências selecionadas.');
     return;
   }
   let qtd = 0;
   conciliacaoItensTemp.forEach(item => {
-    if (!pendenciasConciliacaoSelecionadas.has(item.id) || item.movimento !== 'recebimento') return;
+    if (!pendenciasConciliacaoSelecionadas.has(item.id)) return;
+    if (item.movimento !== 'recebimento' && item.movimento !== 'numerario-rateio') return;
     codigosConciliacaoTemp[item.id] = codigo;
-    aplicarRegraRecebimentoConciliacao(item.id, codigo);
+    if (item.movimento === 'recebimento') aplicarRegraRecebimentoConciliacao(item.id, codigo);
     qtd += 1;
   });
-  if (qtd === 0) alert('Selecione recebimentos para aplicar a conta.');
+  if (qtd === 0) alert('Selecione recebimentos ou numerários para aplicar a conta.');
   abrirModalPendenciasConciliacao();
 }
 
@@ -2320,6 +2321,7 @@ function abrirModalPendenciasConciliacao() {
     .filter(item => {
       if (item.movimento === 'pagamento-pendente') return !vinculosPagamentoConciliacaoTemp[item.id];
       if (item.movimento === 'recebimento') return !obterCodigoContaParaDominio(codigosConciliacaoTemp[item.id]);
+      if (item.movimento === 'numerario-rateio') return !obterCodigoContaParaDominio(codigosConciliacaoTemp[item.id]);
       return true;
     })
     .filter(item => !filtroPendenciasConciliacaoTemp || textoBuscaPendenciaConciliacao(item).includes(normalizarTexto(filtroPendenciasConciliacaoTemp)));
@@ -2376,7 +2378,7 @@ function abrirModalPendenciasConciliacao() {
       </div>
       <div style="padding:14px 22px;border-bottom:1px solid var(--border);display:grid;grid-template-columns:minmax(220px,1fr) minmax(180px,240px) auto auto auto;gap:10px;align-items:center">
         <input type="search" id="filtro-pendencias-conciliacao" value="${escapeAttr(filtroPendenciasConciliacaoTemp)}" placeholder="Pesquisar pendência, fornecedor, data, valor..." oninput="atualizarFiltroPendenciasConciliacao(this)">
-        <input type="text" id="codigo-lote-conciliacao" class="conta-autocomplete" placeholder="Conta para recebimentos" oninput="criarAutocompleteConta(this)">
+        <input type="text" id="codigo-lote-conciliacao" class="conta-autocomplete" placeholder="Conta para aplicar" oninput="criarAutocompleteConta(this)">
         <button class="btn btn-sm" onclick="selecionarPendenciasConciliacaoFiltradas()">Selecionar filtradas</button>
         <button class="btn btn-sm" onclick="aplicarContaPendenciasConciliacaoSelecionadas()">Aplicar conta</button>
         <button class="btn btn-sm" onclick="limparSelecaoPendenciasConciliacao()">Limpar seleção</button>
