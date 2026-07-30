@@ -586,6 +586,7 @@ function grupoUsaNumerariosRateio() {
 function empresaBancoRateioPorConta(conta, empresaFallback = '') {
   const fallback = limparTextoECD(empresaFallback);
   if (!grupoUsaNumerariosRateio()) return fallback;
+  if (!normalizarTexto(grupoAtivo).includes('aromas')) return fallback;
   const contaNorm = normalizarTexto(conta);
   const contasAromas = [
     { termo: 'bradesco', empresa: '14463 - CACHOEIRA - LOJA' },
@@ -2274,6 +2275,8 @@ function textoBuscaPendenciaConciliacao(item) {
     item.historico,
     item.conta,
     item.empresa,
+    item.empresaBanco,
+    item.centroCusto,
     item.total,
     codigosConciliacaoTemp[item.id]
   ].join(' '));
@@ -2370,7 +2373,9 @@ function abrirModalPendenciasConciliacao() {
       : `<input type="text" class="conta-autocomplete" data-conciliacao-modal-id="${escapeAttr(item.id)}" value="${escapeAttr(valor)}" placeholder="Digite código ou conta" oninput="atualizarCodigoConciliacaoModal(this); criarAutocompleteConta(this)" style="width:100%">`;
     const descricaoItem = item.movimento === 'recebimento'
       ? `<strong>${escapeHtml(item.tipo || '')}</strong><div class="historico-regra-label" style="margin-top:6px">Clique nas palavras da regra:</div>${renderPalavrasRecebimentoConciliacao(item)}`
-      : `<strong>${escapeHtml(item.tipo || '')}</strong><br><span style="color:var(--text2)">${escapeHtml(item.historico || '')}</span>`;
+      : item.movimento === 'numerario-rateio'
+        ? `<strong>${escapeHtml(item.tipo === 'EMPRESA DO BANCO' ? 'Conta de numerários da empresa do banco' : 'Conta de numerários do centro de custo')}</strong><br><span style="color:var(--text2)">Empresa do banco: ${escapeHtml(item.empresaBanco || item.empresa || '')}</span><br><span style="color:var(--text2)">Centro de custo: ${escapeHtml(item.centroCusto || '')}</span>`
+        : `<strong>${escapeHtml(item.tipo || '')}</strong><br><span style="color:var(--text2)">${escapeHtml(item.historico || '')}</span>`;
     return `<tr>
       <td><input type="checkbox" data-pendencia-conciliacao-id="${escapeAttr(item.id)}" ${pendenciasConciliacaoSelecionadas.has(item.id) ? 'checked' : ''} onchange="alternarPendenciaConciliacao(this.dataset.pendenciaConciliacaoId, this.checked)"></td>
       <td><span class="badge ${item.movimento === 'recebimento' ? 'badge-blue' : ''}">${escapeHtml(labelMovimentoConciliacao(item))}</span></td>
@@ -3363,7 +3368,7 @@ function renderNovasChaves() {
         ${isAjuste ? `<div style="font-weight:700;color:#92400e;margin-bottom:4px">${escapeHtml(tipoDoc)} -</div>` : ''}
         ${historicoExibido ? `<div class="historico-regra-label">Clique nas palavras da regra:</div>${palavrasHistorico}` : ''}
       </td>
-      <td title="${escapeAttr([tipoRateio, pontaNumerario].filter(Boolean).join(' - '))}" style="color:var(--text2)">${tipoRateio ? `<span class="badge ${tipoRateio === 'PROPRIO' ? 'badge-blue' : ''}">${escapeHtml(tipoRateio)}</span>${pontaNumerario ? `<div class="cell-subtle">${escapeHtml(pontaNumerario)}</div>` : ''}` : ''}</td>
+      <td title="${escapeAttr(tipoRateio || '')}" style="color:var(--text2)">${tipoRateio ? `<span class="badge ${tipoRateio === 'PROPRIO' ? 'badge-blue' : ''}">${escapeHtml(tipoRateio)}</span>` : ''}</td>
       <td title="${escapeAttr(numeroExibido)}" style="color:var(--text2)">${escapeHtml(numeroExibido)}</td>
       <td title="${escapeAttr(tipoDoc)}" style="color:var(--text2)">${isAjuste ? `<span class="tipo-ajuste-badge">${escapeHtml(tipoDoc)}</span>` : escapeHtml(tipoDoc)}</td>
       <td>
@@ -4081,6 +4086,8 @@ iniciarSincronizacaoAutomatica();
 </script>
 </body>
 </html>
+
+
 
 
 
