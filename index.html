@@ -2195,17 +2195,12 @@ function renderGrupos() {
     const isAtivo = g === grupoAtivo;
     const modoGrupo = modoImportacaoDoGrupo(g);
     const modoLabel = nomeModoImportacao(modoGrupo);
-    const grupoJson = JSON.stringify(g).replace(/"/g, '&quot;');
     return `<div class="grupo-card ${isAtivo ? 'ativo' : ''}">
       <div style="flex:1">
         <div class="grupo-nome">${g} ${isAtivo ? '<span class="badge badge-blue">ativo</span>' : ''}</div>
         <div class="grupo-info">${qtd} regra${qtd !== 1 ? 's' : ''} de pagamentos · ${qtdRecebimentos} regra${qtdRecebimentos !== 1 ? 's' : ''} de recebimentos · ${qtdContas > 0 ? qtdContas + ' contas no plano' : 'plano de contas não carregado'} · ${modoLabel}</div>
       </div>
       <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
-        <select class="btn btn-sm" title="Formato de pagamentos deste grupo" onchange="alterarModoGrupo(${grupoJson}, this.value)" onclick="event.stopPropagation()">
-          <option value="parcelas" ${modoGrupo === 'parcelas' ? 'selected' : ''}>Parcelas</option>
-          <option value="rateio" ${modoGrupo === 'rateio' ? 'selected' : ''}>Rateio</option>
-        </select>
         ${!isAtivo ? `<button class="btn btn-sm" onclick="selecionarGrupo('${g}')">Selecionar</button>` : ''}
         ${isAtivo ? `
           <button class="btn btn-sm" onclick="mostrarTela('tela-regras')">📋 Regras</button>
