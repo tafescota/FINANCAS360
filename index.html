@@ -472,6 +472,7 @@ let conciliacaoAplicadaTemp = false;
 let mostrarLancamentosConciliados = false;
 let mostrarPendenciasPreenchidas = false;
 let filtroPendenciasConciliacaoTemp = '';
+let timerFiltroPendenciasConciliacao = null;
 let pendenciasConciliacaoSelecionadas = new Set();
 let recebimentosRateioTemp = [];
 let infoRecebimentosRateioTemp = null;
@@ -2306,7 +2307,8 @@ function textoBuscaPendenciaConciliacao(item) {
 
 function atualizarFiltroPendenciasConciliacao(input) {
   filtroPendenciasConciliacaoTemp = input.value || '';
-  abrirModalPendenciasConciliacao();
+  clearTimeout(timerFiltroPendenciasConciliacao);
+  timerFiltroPendenciasConciliacao = setTimeout(() => abrirModalPendenciasConciliacao(), 180);
 }
 
 function alternarPendenciaConciliacao(id, marcado) {
@@ -2341,7 +2343,13 @@ function aplicarContaPendenciasConciliacaoSelecionadas() {
     if (item.movimento === 'recebimento') aplicarRegraRecebimentoConciliacao(item.id, codigo);
     qtd += 1;
   });
-  if (qtd === 0) alert('Selecione recebimentos ou numerários para aplicar a conta.');
+  if (qtd === 0) {
+    alert('Selecione recebimentos ou numerários para aplicar a conta.');
+    return;
+  }
+  salvarRegrasRecebimentoConciliacao();
+  pendenciasConciliacaoSelecionadas.clear();
+  fecharModalPendenciasConciliacao();
   abrirModalPendenciasConciliacao();
 }
 
@@ -3754,7 +3762,7 @@ function gerarLancamentos(dados, regras) {
     const intercompanyRateio = rateioIntercompanyLinha(r);
     const valorLancamento = linhaRateioNegativa ? Math.abs(valorLiq) : valorLiq;
     const complemento = [forn, tipoDoc, num, plano, historico].filter(Boolean).join(' - ');
-    const complementoIntercompany = ['TRANSFERENCIA DE NUMERARIOS', empresaBancoRateio, centroCustoRateio, complemento].filter(Boolean).join(' - ');
+    const complementoIntercompany = [complemento, 'TRANSFERENCIA DE NUMERARIOS'].filter(Boolean).join(' - ');
     const tipoRateioAtual = tipoRateioLinha(r);
 
     totalLiquido += valorLiq;
@@ -3776,11 +3784,11 @@ function gerarLancamentos(dados, regras) {
       const semCodigoBanco = !codNumerarioBanco || !codCredito;
       const semCodigoCentro = !codDeparaPrincipal || !codNumerarioCentro;
       if (linhaRateioNegativa) {
-        lancamentosGerados.push({ idx, data: dataLiq, codDebito: codCredito, codCredito: codNumerarioBanco, valorLiq: valorLancamento, valorFmt: fmtValor(valorLancamento), complemento: complementoIntercompany + ' - EMPRESA DO BANCO', empresa: empresaBancoRateio, plano, acrescimoDesconto, semCodigo: semCodigoBanco, rateioNegativo: true, tipoRateio: tipoRateioAtual });
-        lancamentosGerados.push({ idx, data: dataLiq, codDebito: codNumerarioCentro, codCredito: codDeparaPrincipal, valorLiq: valorLancamento, valorFmt: fmtValor(valorLancamento), complemento: complementoIntercompany + ' - CENTRO DE CUSTO', empresa, plano, acrescimoDesconto, semCodigo: semCodigoCentro, rateioNegativo: true, tipoRateio: tipoRateioAtual });
+        lancamentosGerados.push({ idx, data: dataLiq, codDebito: codCredito, codCredito: codNumerarioBanco, valorLiq: valorLancamento, valorFmt: fmtValor(valorLancamento), complemento: complementoIntercompany, empresa: empresaBancoRateio, plano, acrescimoDesconto, semCodigo: semCodigoBanco, rateioNegativo: true, tipoRateio: tipoRateioAtual });
+        lancamentosGerados.push({ idx, data: dataLiq, codDebito: codNumerarioCentro, codCredito: codDeparaPrincipal, valorLiq: valorLancamento, valorFmt: fmtValor(valorLancamento), complemento: complementoIntercompany, empresa, plano, acrescimoDesconto, semCodigo: semCodigoCentro, rateioNegativo: true, tipoRateio: tipoRateioAtual });
       } else {
-        lancamentosGerados.push({ idx, data: dataLiq, codDebito: codNumerarioBanco, codCredito, valorLiq: valorLancamento, valorFmt: fmtValor(valorLancamento), complemento: complementoIntercompany + ' - EMPRESA DO BANCO', empresa: empresaBancoRateio, plano, acrescimoDesconto, semCodigo: semCodigoBanco, tipoRateio: tipoRateioAtual });
-        lancamentosGerados.push({ idx, data: dataLiq, codDebito: codDeparaPrincipal, codCredito: codNumerarioCentro, valorLiq: valorLancamento, valorFmt: fmtValor(valorLancamento), complemento: complementoIntercompany + ' - CENTRO DE CUSTO', empresa, plano, acrescimoDesconto, semCodigo: semCodigoCentro, tipoRateio: tipoRateioAtual });
+        lancamentosGerados.push({ idx, data: dataLiq, codDebito: codNumerarioBanco, codCredito, valorLiq: valorLancamento, valorFmt: fmtValor(valorLancamento), complemento: complementoIntercompany, empresa: empresaBancoRateio, plano, acrescimoDesconto, semCodigo: semCodigoBanco, tipoRateio: tipoRateioAtual });
+        lancamentosGerados.push({ idx, data: dataLiq, codDebito: codDeparaPrincipal, codCredito: codNumerarioCentro, valorLiq: valorLancamento, valorFmt: fmtValor(valorLancamento), complemento: complementoIntercompany, empresa, plano, acrescimoDesconto, semCodigo: semCodigoCentro, tipoRateio: tipoRateioAtual });
       }
       return;
     }
@@ -4125,6 +4133,8 @@ iniciarSincronizacaoAutomatica();
 </script>
 </body>
 </html>
+
+
 
 
 
