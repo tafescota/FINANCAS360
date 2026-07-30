@@ -335,7 +335,7 @@
     <div class="table-wrap table-scroll table-novas-wrap" style="margin-bottom:16px">
       <table class="table-novas">
         <thead>
-          <tr><th><input type="checkbox" id="check-todas-lote" onchange="alternarTodasVisiveis(this.checked)"></th><th>Empresa</th><th>Centro de Custo</th><th>Fornecedor</th><th>Plano de Contas</th><th>Histórico</th><th>Tipo do Rateio</th><th>Número</th><th>Documento</th><th>Código Domínio</th></tr>
+          <tr><th><input type="checkbox" id="check-todas-lote" onchange="alternarTodasVisiveis(this.checked)"></th><th>Empresa</th><th>Centro de Custo</th><th>Fornecedor</th><th>Plano de Contas</th><th>Histórico</th><th>Tipo</th><th>Número</th><th>Documento</th><th>Código Domínio</th></tr>
         </thead>
         <tbody id="tbody-novas-chaves"></tbody>
       </table>
@@ -369,7 +369,7 @@
     <div class="table-wrap table-scroll" style="margin-bottom:16px">
       <table>
         <thead>
-          <tr><th>Data</th><th>Cód. Débito</th><th>Cód. Crédito</th><th style="text-align:right">Valor</th><th>Empresa</th><th>Tipo do Rateio</th><th>Complemento</th></tr>
+          <tr><th>Data</th><th>Cód. Débito</th><th>Cód. Crédito</th><th style="text-align:right">Valor</th><th>Empresa</th><th>Tipo</th><th>Complemento</th></tr>
         </thead>
         <tbody id="tbody-resultado"></tbody>
       </table>
@@ -2088,7 +2088,6 @@ function renderSugestoesConciliacao(sugestoes, qtdPagamentos, qtdMovimentos, ent
     atual.movimentos.push(m);
     entradasAgrupadas.set(chave, atual);
   });
-  const descTruncada = (texto, classe = '') => `<span class="desc-truncate ${classe}" title="${escapeAttr(texto || '')}">${escapeHtml(texto || '')}</span>`;
   const renderLinhaPagamento = s => {
     const temSugestao = !!s.mov;
     const classeLinha = temSugestao ? 'conciliacao-row-ok' : 'conciliacao-row-warn';
@@ -2426,8 +2425,7 @@ function abrirModalPendenciasConciliacao() {
       <td>${escapeHtml(item.data || (item.qtd ? `${item.qtd} movimento${item.qtd !== 1 ? 's' : ''}` : ''))}</td>
       <td style="text-align:right;white-space:nowrap">R$ ${fmtValor(item.total)}</td>
       <td>${campoAcao}</td>
-    </tr>`;
-  }).join('');
+    </tr>`;  }).join('');
   modal.innerHTML = `
     <div style="background:var(--bg);border-radius:var(--radius);box-shadow:0 16px 48px rgba(0,0,0,0.25);width:min(1440px,98vw);max-height:88vh;display:flex;flex-direction:column">
       <div style="padding:18px 22px;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between;gap:12px">
@@ -2757,7 +2755,7 @@ function renderGrupos() {
   el.innerHTML = `<div class="grupo-lista">${itens.map(({ g, qtd, qtdRecebimentos, qtdContas, isAtivo, modoLabel }) => `
     <div class="grupo-row ${isAtivo ? 'ativo' : ''}">
       <div class="grupo-row-main">
-        <div class="grupo-nome"><button type="button" class="grupo-nome-editavel" title="Editar nome e formato do grupo" onclick="editarGrupoCadastro('${escapeAttr(g)}')">${escapeHtml(g)}</button> ${isAtivo ? '<span class="badge badge-blue">ativo</span>' : ''}</div>
+        <div class="grupo-nome"><a href="#" class="grupo-nome-editavel" title="Editar nome e formato do grupo" onclick="event.preventDefault(); editarGrupoCadastro('${escapeAttr(g)}')">${escapeHtml(g)}</a> ${isAtivo ? '<span class="badge badge-blue">ativo</span>' : ''}</div>
         <div class="grupo-info">${qtd} regra${qtd !== 1 ? 's' : ''} de pagamentos · ${qtdRecebimentos} regra${qtdRecebimentos !== 1 ? 's' : ''} de recebimentos · ${qtdContas > 0 ? qtdContas + ' contas no plano' : 'plano de contas não carregado'} · ${modoLabel}</div>
       </div>
       <div class="grupo-row-actions">
@@ -3401,23 +3399,46 @@ function renderNovasChaves() {
     const numeroExibido = tipoUsaNumero(tipoDoc) ? infoDoc.numero : '';
     const palavrasHistorico = renderPalavrasHistorico(chave, historicoExibido, trechoHistorico);
     const tipoRateio = tipoRateioOperacao(empresaOrigem || empresa, centroCusto, !!rateio);
+    const ehNumerario = !!pontaNumerario;
+    const naturezaLabel = (naturezaNumerario || '').toString().toUpperCase();
+    const tipoRateioTitulo = ehNumerario
+      ? (naturezaLabel === 'PASSIVO' ? 'NUM. PASSIVO' : naturezaLabel === 'ATIVO' ? 'NUM. ATIVO' : 'NUMERÁRIOS')
+      : tipoRateio === 'TRANSFERENCIA DE NUMERARIOS'
+        ? 'DESPESA'
+        : tipoRateio === 'PROPRIO'
+          ? 'PRÓPRIO'
+          : tipoRateio;
+    const tipoRateioSub = ehNumerario
+      ? 'Transferência'
+      : tipoRateio === 'TRANSFERENCIA DE NUMERARIOS'
+        ? 'Centro de custo'
+        : '';
+    const placeholderCodigo = ehNumerario
+      ? `Conta de numerários ${naturezaLabel.toLowerCase()}`
+      : tipoRateio === 'TRANSFERENCIA DE NUMERARIOS'
+        ? 'Conta da despesa/fornecedor'
+        : 'Digite o código ou nome da conta';
+    const dicaCodigo = ehNumerario
+      ? `Preencher a conta de transferência de numerários ${naturezaLabel.toLowerCase()}.`
+      : tipoRateio === 'TRANSFERENCIA DE NUMERARIOS'
+        ? 'Preencher a conta contábil da despesa/fornecedor, não o banco.'
+        : '';
     return `<tr>
       <td><input type="checkbox" data-chave="${escapeAttr(chave)}" ${selecionadasLote.has(chave) ? 'checked' : ''} onchange="alternarSelecionadaLote(this.dataset.chave, this.checked)"></td>
       <td title="${escapeAttr(empresa || '')}"><div class="cell-main">${escapeHtml(empresa || '')}</div></td>
       <td title="${escapeAttr(centroCusto || '')}" style="color:var(--text2)">${escapeHtml(centroCusto || '')}</td>
       <td title="${escapeAttr(fornecedor)}"><div class="cell-main">${escapeHtml(fornecedor)}</div></td>
-      <td title="${escapeAttr(plano)}">
-        <div class="cell-main">${escapeHtml(plano)}</div>
-      </td>
+      <td title="${escapeAttr(plano)}"><div class="cell-main">${escapeHtml(plano)}</div></td>
       <td title="${escapeAttr(historicoVisual)}" style="color:var(--text2)">
         ${isAjuste ? `<div style="font-weight:700;color:#92400e;margin-bottom:4px">${escapeHtml(tipoDoc)} -</div>` : ''}
         ${historicoExibido ? `<div class="historico-regra-label">Clique nas palavras da regra:</div>${palavrasHistorico}` : ''}
       </td>
-      <td title="${escapeAttr([tipoRateio, naturezaNumerario].filter(Boolean).join(' - '))}" style="color:var(--text2)">${tipoRateio ? `<span class="badge ${tipoRateio === 'PROPRIO' ? 'badge-blue' : ''}">${escapeHtml(tipoRateio)}</span>${naturezaNumerario ? `<div class="cell-subtle">${escapeHtml(naturezaNumerario)}</div>` : ''}` : ''}</td>
+      <td title="${escapeAttr([tipoRateioTitulo, tipoRateioSub].filter(Boolean).join(' - '))}" style="color:var(--text2)">${tipoRateioTitulo ? `<span class="badge ${tipoRateio === 'PROPRIO' ? 'badge-blue' : ''}">${escapeHtml(tipoRateioTitulo)}</span>${tipoRateioSub ? `<div class="cell-subtle">${escapeHtml(tipoRateioSub)}</div>` : ''}` : ''}</td>
       <td title="${escapeAttr(numeroExibido)}" style="color:var(--text2)">${escapeHtml(numeroExibido)}</td>
       <td title="${escapeAttr(tipoDoc)}" style="color:var(--text2)">${isAjuste ? `<span class="tipo-ajuste-badge">${escapeHtml(tipoDoc)}</span>` : escapeHtml(tipoDoc)}</td>
       <td>
-        <input type="text" class="conta-autocomplete" placeholder="Digite o código ou nome da conta" value="${escapeAttr(codigosTemp[chave] || '')}" data-chave="${escapeAttr(chave)}" oninput="atualizarCodigoNovaChave(this); criarAutocompleteConta(this)" style="width:100%">
+        <input type="text" class="conta-autocomplete" placeholder="${escapeAttr(placeholderCodigo)}" value="${escapeAttr(codigosTemp[chave] || '')}" data-chave="${escapeAttr(chave)}" oninput="atualizarCodigoNovaChave(this); criarAutocompleteConta(this)" style="width:100%">
+        ${dicaCodigo ? `<div class="cell-subtle" style="margin-top:4px">${escapeHtml(dicaCodigo)}</div>` : ''}
       </td>
     </tr>`;
   }).join('');
@@ -4133,6 +4154,10 @@ iniciarSincronizacaoAutomatica();
 </script>
 </body>
 </html>
+
+
+
+
 
 
 
