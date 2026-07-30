@@ -331,6 +331,18 @@
       <table class="table-novas">
         <thead>
           <tr><th><input type="checkbox" id="check-todas-lote" onchange="alternarTodasVisiveis(this.checked)"></th><th>Empresa</th><th>Centro de Custo</th><th>Fornecedor</th><th>Plano de Contas</th><th>Histórico</th><th>Tipo do Rateio</th><th>Número</th><th>Documento</th><th>Código Domínio</th></tr>
+          <tr class="table-filter-row">
+            <th><button type="button" class="btn-filter-clear" title="Limpar filtros" onclick="limparFiltrosNovasChaves()">×</button></th>
+            <th><input type="search" placeholder="Filtrar" data-filtro-col="empresa" oninput="atualizarFiltroColunaNovasChaves(this)"></th>
+            <th><input type="search" placeholder="Filtrar" data-filtro-col="centroCusto" oninput="atualizarFiltroColunaNovasChaves(this)"></th>
+            <th><input type="search" placeholder="Filtrar" data-filtro-col="fornecedor" oninput="atualizarFiltroColunaNovasChaves(this)"></th>
+            <th><input type="search" placeholder="Filtrar" data-filtro-col="plano" oninput="atualizarFiltroColunaNovasChaves(this)"></th>
+            <th><input type="search" placeholder="Filtrar" data-filtro-col="historico" oninput="atualizarFiltroColunaNovasChaves(this)"></th>
+            <th><select data-filtro-col="tipoRateio" onchange="atualizarFiltroColunaNovasChaves(this)"><option value="">Todos</option><option value="PROPRIO">Próprio</option><option value="TRANSFERENCIA DE NUMERARIOS">Numerários</option></select></th>
+            <th><input type="search" placeholder="Filtrar" data-filtro-col="numero" oninput="atualizarFiltroColunaNovasChaves(this)"></th>
+            <th><input type="search" placeholder="Filtrar" data-filtro-col="tipoDoc" oninput="atualizarFiltroColunaNovasChaves(this)"></th>
+            <th><input type="search" placeholder="Filtrar" data-filtro-col="codigo" oninput="atualizarFiltroColunaNovasChaves(this)"></th>
+          </tr>
         </thead>
         <tbody id="tbody-novas-chaves"></tbody>
       </table>
@@ -447,6 +459,7 @@ let linhasImportadasModo = 'parcelas';
 let novasChavesTemp = [];
 let codigosTemp = {};
 let selecionadasLote = new Set();
+let filtrosNovasChaves = { empresa: '', centroCusto: '', fornecedor: '', plano: '', historico: '', tipoRateio: '', numero: '', tipoDoc: '', codigo: '' };
 let lancamentosGerados = [];
 let editandoRegras = false;
 let editTemp = {};
@@ -666,6 +679,7 @@ function encontrarCodigoRegraAjuste(regras, forn, plano, tipoAjuste, ponta, hist
 }
 
 function obterChaveRegraNova(item) {
+  if (item.pontaNumerario || String(item.chave || '').startsWith('RATEIO NUMERARIOS |')) return item.chave;
   const trecho = limparTextoECD(item.trechoHistorico || '');
   const escopo = item.escopoRegra || escopoRegraItem(item);
   if (item.historico && trecho && normalizarTexto(trecho) !== normalizarTexto(item.historico)) {
@@ -1053,7 +1067,24 @@ function prepararPagamentosImportados(dados, abrirTelaPendencias = true) {
         const chaveNumerario = chaveNumerarioRateio(empresaOrigem, centroCusto, lado);
         if (!regrasSalvas[chaveNumerario] && !vistas.has(chaveNumerario)) {
           vistas.add(chaveNumerario);
-          novas.push(itemNumerarioRateio(empresaOrigem, centroCusto, lado));
+          novas.push({
+            chave: chaveNumerario,
+            fornecedor: forn,
+            plano,
+            tipoDoc,
+            historico,
+            trechoHistorico: '',
+            trechoHistoricoIndices: [],
+            numero,
+            empresa: empresaOrigem,
+            empresaOrigem,
+            centroCusto,
+            empresaLancamento: empresaLancamentoLinha(r),
+            rateio: !!r.__rateio,
+            escopoRegra,
+            tipoDocOriginal: tipoDoc,
+            pontaNumerario: lado
+          });
         }
       });
     }
@@ -3284,17 +3315,13 @@ function renderNovasChaves() {
   const tbody = document.getElementById('tbody-novas-chaves');
   const filtro = normalizarTexto(document.getElementById('filtro-lote')?.value || '');
   const somentePendentes = document.getElementById('somente-pendentes')?.checked ?? true;
-  const visiveis = novasChavesTemp.filter(item => {
-    if (somentePendentes && codigosTemp[item.chave]) return false;
-    if (!filtro) return true;
-    return textoBuscaNovaChave(item).includes(filtro);
-  });
+  const visiveis = filtrarNovasChaves(novasChavesTemp, filtro, somentePendentes);
   if (visiveis.length === 0) {
     tbody.innerHTML = `<tr><td colspan="10" style="text-align:center;color:var(--text2);padding:32px">Nenhuma pendência visível com os filtros atuais.</td></tr>`;
     atualizarStatusLote(visiveis);
     return;
   }
-  tbody.innerHTML = visiveis.map(({ chave, fornecedor, plano, tipoDoc, historico, trechoHistorico, numero, empresa, centroCusto, empresaOrigem, rateio }) => {
+  tbody.innerHTML = visiveis.map(({ chave, fornecedor, plano, tipoDoc, historico, trechoHistorico, numero, empresa, centroCusto, empresaOrigem, rateio, pontaNumerario }) => {
     const infoDoc = separarNumeroDoHistorico(tipoDoc, numero, historico);
     const historicoExibido = infoDoc.historico;
     const isAjuste = tipoDoc === 'DESCONTO' || tipoDoc === 'ACRÉSCIMO' || tipoDoc.startsWith('DESCONTO -') || tipoDoc.startsWith('ACRÉSCIMO -');
@@ -3314,7 +3341,7 @@ function renderNovasChaves() {
         ${isAjuste ? `<div style="font-weight:700;color:#92400e;margin-bottom:4px">${escapeHtml(tipoDoc)} -</div>` : ''}
         ${historicoExibido ? `<div class="historico-regra-label">Clique nas palavras da regra:</div>${palavrasHistorico}` : ''}
       </td>
-      <td title="${escapeAttr(tipoRateio)}" style="color:var(--text2)">${tipoRateio ? `<span class="badge ${tipoRateio === 'PROPRIO' ? 'badge-blue' : ''}">${escapeHtml(tipoRateio)}</span>` : ''}</td>
+      <td title="${escapeAttr([tipoRateio, pontaNumerario].filter(Boolean).join(' - '))}" style="color:var(--text2)">${tipoRateio ? `<span class="badge ${tipoRateio === 'PROPRIO' ? 'badge-blue' : ''}">${escapeHtml(tipoRateio)}</span>${pontaNumerario ? `<div class="cell-subtle">${escapeHtml(pontaNumerario)}</div>` : ''}` : ''}</td>
       <td title="${escapeAttr(numeroExibido)}" style="color:var(--text2)">${escapeHtml(numeroExibido)}</td>
       <td title="${escapeAttr(tipoDoc)}" style="color:var(--text2)">${isAjuste ? `<span class="tipo-ajuste-badge">${escapeHtml(tipoDoc)}</span>` : escapeHtml(tipoDoc)}</td>
       <td>
@@ -3322,6 +3349,7 @@ function renderNovasChaves() {
       </td>
     </tr>`;
   }).join('');
+  restaurarInputsFiltrosNovasChaves();
   atualizarStatusLote(visiveis);
 }
 
@@ -3467,14 +3495,59 @@ function focarCampoCodigo(campo) {
   }, 0);
 }
 
+function valorFiltroNovaChave(item, campo) {
+  const infoDoc = separarNumeroDoHistorico(item.tipoDoc, item.numero, item.historico);
+  const tipoRateio = tipoRateioItem(item);
+  const valores = {
+    empresa: item.empresa || '',
+    centroCusto: item.centroCusto || '',
+    fornecedor: item.fornecedor || '',
+    plano: item.plano || '',
+    historico: [infoDoc.historico, item.trechoHistorico].join(' '),
+    tipoRateio,
+    numero: tipoUsaNumero(item.tipoDoc) ? infoDoc.numero : '',
+    tipoDoc: item.tipoDoc || '',
+    codigo: codigosTemp[item.chave] || ''
+  };
+  return normalizarTexto(valores[campo] || '');
+}
+
+function passaFiltrosColunasNovasChaves(item) {
+  return Object.entries(filtrosNovasChaves || {}).every(([campo, valor]) => {
+    const filtro = normalizarTexto(valor || '');
+    if (!filtro) return true;
+    return valorFiltroNovaChave(item, campo).includes(filtro);
+  });
+}
+
+function filtrarNovasChaves(lista, filtroGeral, somentePendentes) {
+  return lista.filter(item => {
+    if (somentePendentes && codigosTemp[item.chave]) return false;
+    if (filtroGeral && !textoBuscaNovaChave(item).includes(filtroGeral)) return false;
+    return passaFiltrosColunasNovasChaves(item);
+  });
+}
+
+function atualizarFiltroColunaNovasChaves(el) {
+  filtrosNovasChaves[el.dataset.filtroCol] = el.value || '';
+  renderNovasChaves();
+}
+
+function restaurarInputsFiltrosNovasChaves() {
+  document.querySelectorAll('[data-filtro-col]').forEach(el => {
+    el.value = filtrosNovasChaves[el.dataset.filtroCol] || '';
+  });
+}
+
+function limparFiltrosNovasChaves() {
+  filtrosNovasChaves = { empresa: '', centroCusto: '', fornecedor: '', plano: '', historico: '', tipoRateio: '', numero: '', tipoDoc: '', codigo: '' };
+  renderNovasChaves();
+}
+
 function obterNovasChavesVisiveis() {
   const filtro = normalizarTexto(document.getElementById('filtro-lote')?.value || '');
   const somentePendentes = document.getElementById('somente-pendentes')?.checked ?? true;
-  return novasChavesTemp.filter(item => {
-    if (somentePendentes && codigosTemp[item.chave]) return false;
-    if (!filtro) return true;
-    return textoBuscaNovaChave(item).includes(filtro);
-  });
+  return filtrarNovasChaves(novasChavesTemp, filtro, somentePendentes);
 }
 
 function atualizarStatusLote(visiveis = obterNovasChavesVisiveis()) {
@@ -3982,6 +4055,9 @@ iniciarSincronizacaoAutomatica();
 </script>
 </body>
 </html>
+
+
+
 
 
 
