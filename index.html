@@ -67,20 +67,22 @@
   tr.alt { background: var(--bg2); }
   .table-wrap { border: 1px solid var(--border); border-radius: var(--radius); overflow: hidden; background: var(--bg); }
   .table-scroll { overflow-x: auto; }
-  .table-novas-wrap { max-height: calc(100vh - 330px); min-height: 360px; overflow-y: auto; overflow-x: hidden; }
+  .table-novas-wrap { max-height: calc(100vh - 330px); min-height: 360px; overflow-y: auto; overflow-x: auto; }
   .table-novas-wrap thead th { position: sticky; top: 0; z-index: 2; box-shadow: 0 1px 0 var(--border); }
-  .table-novas { table-layout: fixed; width: 100%; min-width: 0; font-size: 11.5px; }
+  .table-novas { table-layout: fixed; width: 100%; min-width: 1450px; font-size: 11.5px; }
   .table-novas th, .table-novas td { padding: 8px 6px; }
   .table-novas th { white-space: normal; line-height: 1.25; }
-  .table-novas th:nth-child(1) { width: 36px; }
-  .table-novas th:nth-child(2) { width: 9%; }
-  .table-novas th:nth-child(3) { width: 13%; }
-  .table-novas th:nth-child(4) { width: 13%; }
-  .table-novas th:nth-child(5) { width: 18%; }
-  .table-novas th:nth-child(6) { width: 8%; }
-  .table-novas th:nth-child(7) { width: 11%; }
-  .table-novas th:nth-child(8) { width: 110px; }
+  .table-novas th:nth-child(1) { width: 44px; }
+  .table-novas th:nth-child(2) { width: 130px; }
+  .table-novas th:nth-child(3) { width: 170px; }
+  .table-novas th:nth-child(4) { width: 200px; }
+  .table-novas th:nth-child(5) { width: 230px; }
+  .table-novas th:nth-child(6) { width: 290px; }
+  .table-novas th:nth-child(7) { width: 90px; }
+  .table-novas th:nth-child(8) { width: 135px; }
+  .table-novas th:nth-child(9) { width: 220px; }
   .table-novas td { min-height: 56px; white-space: normal; overflow-wrap: anywhere; line-height: 1.35; }
+  .table-novas td:nth-child(6) { overflow-wrap: normal; word-break: normal; }
   .table-novas td:nth-child(2) { font-weight: 600; color: #111827; }
   .table-novas td:first-child, .table-novas th:first-child { text-align: center; padding-left: 10px; padding-right: 10px; }
   .table-novas input[type=text] { height: 34px; min-width: 0; font-size: 12px; padding-left: 8px; padding-right: 8px; }
