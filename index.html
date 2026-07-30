@@ -319,7 +319,7 @@
           <option value="PROPRIO">Próprio</option>
           <option value="TRANSFERENCIA DE NUMERARIOS">Transferência de numerários</option>
         </select>
-        <input type="text" id="codigo-lote" class="conta-autocomplete" placeholder="Conta para aplicar" oninput="criarAutocompleteConta(this)">
+        <input type="text" id="codigo-lote" class="conta-autocomplete" placeholder="Conta para aplicar nos itens selecionados" oninput="criarAutocompleteConta(this)">
         <button class="btn" onclick="selecionarFiltradasEmLote()">Selecionar filtradas</button>
         <button class="btn btn-primary" onclick="aplicarCodigoEmLote()">Aplicar conta</button>
         <button class="btn btn-blue" onclick="salvarTudoPreenchido()">Salvar preenchidas</button>
@@ -624,36 +624,53 @@ function tipoRateioItem(item) {
 function tipoRateioLinha(r) {
   return tipoRateioOperacao(empresaOrigemLinha(r), centroCustoLinha(r), !!r?.__rateio);
 }
-function chaveNumerarioRateio(empresaBanco, centroCusto, lado) {
+function chaveNumerarioRateio(empresaBanco, centroCusto, lado, natureza = '') {
   return [
     'RATEIO NUMERARIOS',
     limparTextoECD(empresaBanco),
     limparTextoECD(centroCusto),
-    limparTextoECD(lado)
-  ].join(' | ');
+    limparTextoECD(lado),
+    limparTextoECD(natureza)
+  ].filter(Boolean).join(' | ');
 }
 
-function codigoNumerarioRateio(regras, empresaBanco, centroCusto, lado) {
+function naturezaNumerarioPagamento(lado, negativo = false) {
+  if (lado === 'EMPRESA DO BANCO') return negativo ? 'PASSIVO' : 'ATIVO';
+  return negativo ? 'ATIVO' : 'PASSIVO';
+}
+
+function naturezaNumerarioRecebimento(lado, negativo = false) {
+  if (lado === 'EMPRESA DO BANCO') return negativo ? 'ATIVO' : 'PASSIVO';
+  return negativo ? 'PASSIVO' : 'ATIVO';
+}
+
+function codigoNumerarioRateio(regras, empresaBanco, centroCusto, lado, natureza = '') {
+  const codigoNovo = obterCodigoContaParaDominio(regras[chaveNumerarioRateio(empresaBanco, centroCusto, lado, natureza)] || '');
+  if (codigoNovo) return codigoNovo;
   return obterCodigoContaParaDominio(regras[chaveNumerarioRateio(empresaBanco, centroCusto, lado)] || '');
 }
 
-function itemNumerarioRateio(empresaBanco, centroCusto, lado) {
-  const chave = chaveNumerarioRateio(empresaBanco, centroCusto, lado);
+function itemNumerarioRateio(empresaBanco, centroCusto, lado, natureza = '') {
+  const chave = chaveNumerarioRateio(empresaBanco, centroCusto, lado, natureza);
+  const naturezaLabel = natureza ? `Transferência de numerários ${natureza.toLowerCase()}` : 'Transferência de numerários';
   return {
     chave,
     fornecedor: `Numerários ${empresaBanco} x ${centroCusto}`,
-    plano: lado === 'EMPRESA DO BANCO' ? 'Intercompany - empresa do banco' : 'Intercompany - centro de custo',
-    tipoDoc: lado,
-    historico: `Conta de numerários para ${empresaBanco} x ${centroCusto}`,
+    plano: naturezaLabel,
+    tipoDoc: natureza || lado,
+    historico: `Conta de numerários ${natureza ? natureza.toLowerCase() : ''} para ${empresaBanco} x ${centroCusto}`,
     trechoHistorico: '',
     trechoHistoricoIndices: [],
     numero: '',
     empresa: empresaBanco,
+    empresaBanco,
     empresaOrigem: empresaBanco,
     centroCusto,
     empresaLancamento: centroCusto,
     rateio: true,
-    escopoRegra: ''
+    escopoRegra: '',
+    pontaNumerario: lado,
+    naturezaNumerario: natureza
   };
 }
 
@@ -1077,9 +1094,11 @@ function prepararPagamentosImportados(dados, abrirTelaPendencias = true) {
       novas.push({ chave, fornecedor: forn, plano, tipoDoc, historico, trechoHistorico: '', trechoHistoricoIndices: [], numero, empresa: empresaOrigem, empresaOrigem, centroCusto, empresaLancamento: empresaLancamentoLinha(r), rateio: !!r.__rateio, escopoRegra });
     }
     if (rateioIntercompanyLinha(r)) {
+      const linhaRateioNegativa = arredondarMoeda(r[COLS.VALOR_LIQ]) < 0;
       ['EMPRESA DO BANCO', 'CENTRO DE CUSTO'].forEach(lado => {
-        const chaveNumerario = chaveNumerarioRateio(empresaOrigem, centroCusto, lado);
-        if (!regrasSalvas[chaveNumerario] && !vistas.has(chaveNumerario)) {
+        const naturezaNumerario = naturezaNumerarioPagamento(lado, linhaRateioNegativa);
+        const chaveNumerario = chaveNumerarioRateio(empresaOrigem, centroCusto, lado, naturezaNumerario);
+        if (!codigoNumerarioRateio(regrasSalvas, empresaOrigem, centroCusto, lado, naturezaNumerario) && !vistas.has(chaveNumerario)) {
           vistas.add(chaveNumerario);
           novas.push({
             chave: chaveNumerario,
@@ -1097,7 +1116,8 @@ function prepararPagamentosImportados(dados, abrirTelaPendencias = true) {
             rateio: !!r.__rateio,
             escopoRegra,
             tipoDocOriginal: tipoDoc,
-            pontaNumerario: lado
+            pontaNumerario: lado,
+            naturezaNumerario
           });
         }
       });
@@ -1886,18 +1906,20 @@ function itensNumerarioRecebimentosRateio(itensRateio) {
   const itens = [];
   itensRateio.filter(item => item.intercompany).forEach(item => {
     ['EMPRESA DO BANCO', 'CENTRO DE CUSTO'].forEach(lado => {
-      const chave = chaveNumerarioRateio(item.empresaBanco, item.centroCusto, lado);
+      const negativo = arredondarMoeda(item.total || item.valor || 0) < 0;
+      const naturezaNumerario = naturezaNumerarioRecebimento(lado, negativo);
+      const chave = chaveNumerarioRateio(item.empresaBanco, item.centroCusto, lado, naturezaNumerario);
       if (vistos.has(chave)) return;
       vistos.add(chave);
       itens.push({
-        ...itemNumerarioRateio(item.empresaBanco, item.centroCusto, lado),
+        ...itemNumerarioRateio(item.empresaBanco, item.centroCusto, lado, naturezaNumerario),
         id: `num-rec-${itens.length}`,
         movimento: 'numerario-rateio',
-        tipo: lado,
+        tipo: naturezaNumerario,
         total: 0,
         data: '',
         conta: item.conta,
-        historico: `Conta de numerários para recebimentos ${item.empresaBanco} x ${item.centroCusto}`
+        historico: `Conta de numerários ${naturezaNumerario.toLowerCase()} para recebimentos ${item.empresaBanco} x ${item.centroCusto}`
       });
     });
   });
@@ -2355,6 +2377,11 @@ function abrirModalPendenciasConciliacao() {
     );
     const mesmasSaidas = saidasDisponiveis.filter(saida => Math.abs(saida.total - item.total) < 0.01);
     const outrasSaidas = saidasDisponiveis.filter(saida => Math.abs(saida.total - item.total) >= 0.01).slice(0, 20);
+    const placeholderConta = item.movimento === 'numerario-rateio'
+      ? `Informe numerários ${(item.naturezaNumerario || item.tipo || '').toString().toLowerCase()}`
+      : item.movimento === 'recebimento'
+        ? 'Informe conta do recebimento/cliente'
+        : 'Digite código ou conta';
     const campoAcao = item.movimento === 'pagamento-pendente'
       ? `<select data-vinculo-pagamento-id="${escapeAttr(item.id)}" onchange="atualizarVinculoPagamentoConciliacao(this)" style="width:100%;padding:8px 10px;border:1px solid var(--border2);border-radius:var(--radius-sm);background:var(--bg);color:var(--text)">
           <option value="">Selecione o movimento do extrato</option>
@@ -2370,23 +2397,31 @@ function abrirModalPendenciasConciliacao() {
           </optgroup>
         </select>
         <div class="conciliacao-note" style="margin-top:4px">${mesmasSaidas.length} opção${mesmasSaidas.length !== 1 ? 'ões' : ''} com o mesmo valor de R$ ${fmtValor(item.total)}</div>`
-      : `<input type="text" class="conta-autocomplete" data-conciliacao-modal-id="${escapeAttr(item.id)}" value="${escapeAttr(valor)}" placeholder="Digite código ou conta" oninput="atualizarCodigoConciliacaoModal(this); criarAutocompleteConta(this)" style="width:100%">`;
-    const descricaoItem = item.movimento === 'recebimento'
-      ? `<strong>${escapeHtml(item.tipo || '')}</strong><div class="historico-regra-label" style="margin-top:6px">Clique nas palavras da regra:</div>${renderPalavrasRecebimentoConciliacao(item)}`
-      : item.movimento === 'numerario-rateio'
-        ? `<strong>${escapeHtml(item.tipo === 'EMPRESA DO BANCO' ? 'Conta de numerários da empresa do banco' : 'Conta de numerários do centro de custo')}</strong><br><span style="color:var(--text2)">Empresa do banco: ${escapeHtml(item.empresaBanco || item.empresa || '')}</span><br><span style="color:var(--text2)">Centro de custo: ${escapeHtml(item.centroCusto || '')}</span>`
-        : `<strong>${escapeHtml(item.tipo || '')}</strong><br><span style="color:var(--text2)">${escapeHtml(item.historico || '')}</span>`;
+      : `<input type="text" class="conta-autocomplete" data-conciliacao-modal-id="${escapeAttr(item.id)}" value="${escapeAttr(valor)}" placeholder="${escapeAttr(placeholderConta)}" oninput="atualizarCodigoConciliacaoModal(this); criarAutocompleteConta(this)" style="width:100%">`;
+    const empresaCol = item.empresaBanco || item.empresa || '';
+    const centroCol = item.centroCusto || item.empresaLancamento || '';
+    const fornecedorCol = item.fornecedor || item.descricao || item.historico || '';
+    const planoCol = item.movimento === 'numerario-rateio'
+      ? `Transferência de numerários ${(item.naturezaNumerario || item.tipo || '').toString().toLowerCase()}`
+      : (item.plano || item.tipo || '');
+    const historicoItem = item.movimento === 'recebimento'
+      ? `<div class="historico-regra-label">Clique nas palavras da regra:</div>${renderPalavrasRecebimentoConciliacao(item)}`
+      : `<span style="color:var(--text2)">${escapeHtml(item.historico || '')}</span>`;
     return `<tr>
       <td><input type="checkbox" data-pendencia-conciliacao-id="${escapeAttr(item.id)}" ${pendenciasConciliacaoSelecionadas.has(item.id) ? 'checked' : ''} onchange="alternarPendenciaConciliacao(this.dataset.pendenciaConciliacaoId, this.checked)"></td>
       <td><span class="badge ${item.movimento === 'recebimento' ? 'badge-blue' : ''}">${escapeHtml(labelMovimentoConciliacao(item))}</span></td>
+      <td title="${escapeAttr(empresaCol)}"><div class="cell-main">${escapeHtml(empresaCol)}</div></td>
+      <td title="${escapeAttr(centroCol)}" style="color:var(--text2)">${escapeHtml(centroCol)}</td>
+      <td title="${escapeAttr(fornecedorCol)}"><div class="cell-main">${escapeHtml(fornecedorCol)}</div></td>
+      <td title="${escapeAttr(planoCol)}"><div class="cell-main">${escapeHtml(planoCol)}</div></td>
+      <td title="${escapeAttr(item.historico || '')}" style="color:var(--text2)">${historicoItem}</td>
       <td>${escapeHtml(item.data || (item.qtd ? `${item.qtd} movimento${item.qtd !== 1 ? 's' : ''}` : ''))}</td>
-      <td>${descricaoItem}</td>
       <td style="text-align:right;white-space:nowrap">R$ ${fmtValor(item.total)}</td>
       <td>${campoAcao}</td>
     </tr>`;
   }).join('');
   modal.innerHTML = `
-    <div style="background:var(--bg);border-radius:var(--radius);box-shadow:0 16px 48px rgba(0,0,0,0.25);width:min(1040px,96vw);max-height:86vh;display:flex;flex-direction:column">
+    <div style="background:var(--bg);border-radius:var(--radius);box-shadow:0 16px 48px rgba(0,0,0,0.25);width:min(1440px,98vw);max-height:88vh;display:flex;flex-direction:column">
       <div style="padding:18px 22px;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between;gap:12px">
         <div>
           <h3 style="margin-bottom:2px">Preencher pendências da conciliação</h3>
@@ -2398,8 +2433,8 @@ function abrirModalPendenciasConciliacao() {
         </div>
       </div>
       <div style="padding:14px 22px;border-bottom:1px solid var(--border);display:grid;grid-template-columns:minmax(220px,1fr) minmax(180px,240px) auto auto auto;gap:10px;align-items:center">
-        <input type="search" id="filtro-pendencias-conciliacao" value="${escapeAttr(filtroPendenciasConciliacaoTemp)}" placeholder="Pesquisar pendência, fornecedor, data, valor..." oninput="atualizarFiltroPendenciasConciliacao(this)">
-        <input type="text" id="codigo-lote-conciliacao" class="conta-autocomplete" placeholder="Conta para aplicar" oninput="criarAutocompleteConta(this)">
+        <input type="search" id="filtro-pendencias-conciliacao" value="${escapeAttr(filtroPendenciasConciliacaoTemp)}" placeholder="Pesquisar empresa, centro, fornecedor, histórico, data, valor..." oninput="atualizarFiltroPendenciasConciliacao(this)">
+        <input type="text" id="codigo-lote-conciliacao" class="conta-autocomplete" placeholder="Conta para aplicar nos itens selecionados" oninput="criarAutocompleteConta(this)">
         <button class="btn btn-sm" onclick="selecionarPendenciasConciliacaoFiltradas()">Selecionar filtradas</button>
         <button class="btn btn-sm" onclick="aplicarContaPendenciasConciliacaoSelecionadas()">Aplicar conta</button>
         <button class="btn btn-sm" onclick="limparSelecaoPendenciasConciliacao()">Limpar seleção</button>
@@ -2407,8 +2442,8 @@ function abrirModalPendenciasConciliacao() {
       <div style="padding:16px 22px;overflow:auto">
         <div class="table-wrap table-scroll">
           <table>
-            <thead><tr><th style="width:34px"></th><th>Movimento</th><th>Data / Grupo</th><th>Descrição</th><th style="text-align:right">Valor</th><th>Conciliar com / De-para</th></tr></thead>
-            <tbody>${linhas || `<tr><td colspan="6" style="text-align:center;color:var(--ok-text);background:var(--ok-bg);padding:24px">Todas as pendências desta janela foram preenchidas.</td></tr>`}</tbody>
+            <thead><tr><th style="width:34px"></th><th>Movimento</th><th>Empresa</th><th>Centro de custo</th><th>Fornecedor / Origem</th><th>Plano / Tipo</th><th>Histórico</th><th>Data / Grupo</th><th style="text-align:right">Valor</th><th>Conta a informar / Conciliação</th></tr></thead>
+            <tbody>${linhas || `<tr><td colspan="10" style="text-align:center;color:var(--ok-text);background:var(--ok-bg);padding:24px">Todas as pendências desta janela foram preenchidas.</td></tr>`}</tbody>
           </table>
         </div>
       </div>
@@ -2601,8 +2636,10 @@ function montarLinhasRecebimentoRateioDominio(item, codigoRecebimento, regrasNum
   const complementoNumerarios = [complemento, 'TRANSFERENCIA DE NUMERARIOS'].filter(Boolean).join(' - ');
   const negativo = movimentos.every(mov => arredondarMoeda(mov.valor || 0) < 0) || arredondarMoeda(item.valor || 0) < 0;
   if (item.intercompany || primeiroMovimento.intercompany) {
-    const codNumerarioBanco = obterCodigoContaParaDominio(regrasNumerarios[chaveNumerarioRateio(empresaBanco, centroCusto, 'EMPRESA DO BANCO')] || '');
-    const codNumerarioCentro = obterCodigoContaParaDominio(regrasNumerarios[chaveNumerarioRateio(empresaBanco, centroCusto, 'CENTRO DE CUSTO')] || '');
+    const naturezaNumerarioBanco = naturezaNumerarioRecebimento('EMPRESA DO BANCO', negativo);
+    const naturezaNumerarioCentro = naturezaNumerarioRecebimento('CENTRO DE CUSTO', negativo);
+    const codNumerarioBanco = codigoNumerarioRateio(regrasNumerarios, empresaBanco, centroCusto, 'EMPRESA DO BANCO', naturezaNumerarioBanco);
+    const codNumerarioCentro = codigoNumerarioRateio(regrasNumerarios, empresaBanco, centroCusto, 'CENTRO DE CUSTO', naturezaNumerarioCentro);
     if (negativo) {
       linhas.push(linhaDominio(fmtDate(item.data || primeiroMovimento.data), codNumerarioBanco, banco, valor, complementoNumerarios, empresaBanco, 'TRANSFERENCIA DE NUMERARIOS'));
       linhas.push(linhaDominio(fmtDate(item.data || primeiroMovimento.data), codigoRecebimento, codNumerarioCentro, valor, complementoNumerarios, centroCusto, 'TRANSFERENCIA DE NUMERARIOS'));
@@ -3348,7 +3385,7 @@ function renderNovasChaves() {
     atualizarStatusLote(visiveis);
     return;
   }
-  tbody.innerHTML = visiveis.map(({ chave, fornecedor, plano, tipoDoc, historico, trechoHistorico, numero, empresa, centroCusto, empresaOrigem, rateio, pontaNumerario }) => {
+  tbody.innerHTML = visiveis.map(({ chave, fornecedor, plano, tipoDoc, historico, trechoHistorico, numero, empresa, centroCusto, empresaOrigem, rateio, pontaNumerario, naturezaNumerario }) => {
     const infoDoc = separarNumeroDoHistorico(tipoDoc, numero, historico);
     const historicoExibido = infoDoc.historico;
     const isAjuste = tipoDoc === 'DESCONTO' || tipoDoc === 'ACRÉSCIMO' || tipoDoc.startsWith('DESCONTO -') || tipoDoc.startsWith('ACRÉSCIMO -');
@@ -3368,7 +3405,7 @@ function renderNovasChaves() {
         ${isAjuste ? `<div style="font-weight:700;color:#92400e;margin-bottom:4px">${escapeHtml(tipoDoc)} -</div>` : ''}
         ${historicoExibido ? `<div class="historico-regra-label">Clique nas palavras da regra:</div>${palavrasHistorico}` : ''}
       </td>
-      <td title="${escapeAttr(tipoRateio || '')}" style="color:var(--text2)">${tipoRateio ? `<span class="badge ${tipoRateio === 'PROPRIO' ? 'badge-blue' : ''}">${escapeHtml(tipoRateio)}</span>` : ''}</td>
+      <td title="${escapeAttr([tipoRateio, naturezaNumerario].filter(Boolean).join(' - '))}" style="color:var(--text2)">${tipoRateio ? `<span class="badge ${tipoRateio === 'PROPRIO' ? 'badge-blue' : ''}">${escapeHtml(tipoRateio)}</span>${naturezaNumerario ? `<div class="cell-subtle">${escapeHtml(naturezaNumerario)}</div>` : ''}` : ''}</td>
       <td title="${escapeAttr(numeroExibido)}" style="color:var(--text2)">${escapeHtml(numeroExibido)}</td>
       <td title="${escapeAttr(tipoDoc)}" style="color:var(--text2)">${isAjuste ? `<span class="tipo-ajuste-badge">${escapeHtml(tipoDoc)}</span>` : escapeHtml(tipoDoc)}</td>
       <td>
@@ -3728,10 +3765,12 @@ function gerarLancamentos(dados, regras) {
 
 
     if (intercompanyRateio) {
-      const codNumerarioBanco = codigoNumerarioRateio(regras, empresaBancoRateio, centroCustoRateio, 'EMPRESA DO BANCO');
-      const codNumerarioCentro = codigoNumerarioRateio(regras, empresaBancoRateio, centroCustoRateio, 'CENTRO DE CUSTO');
-      const chaveNumerarioBanco = chaveNumerarioRateio(empresaBancoRateio, centroCustoRateio, 'EMPRESA DO BANCO');
-      const chaveNumerarioCentro = chaveNumerarioRateio(empresaBancoRateio, centroCustoRateio, 'CENTRO DE CUSTO');
+      const naturezaNumerarioBanco = naturezaNumerarioPagamento('EMPRESA DO BANCO', linhaRateioNegativa);
+      const naturezaNumerarioCentro = naturezaNumerarioPagamento('CENTRO DE CUSTO', linhaRateioNegativa);
+      const codNumerarioBanco = codigoNumerarioRateio(regras, empresaBancoRateio, centroCustoRateio, 'EMPRESA DO BANCO', naturezaNumerarioBanco);
+      const codNumerarioCentro = codigoNumerarioRateio(regras, empresaBancoRateio, centroCustoRateio, 'CENTRO DE CUSTO', naturezaNumerarioCentro);
+      const chaveNumerarioBanco = chaveNumerarioRateio(empresaBancoRateio, centroCustoRateio, 'EMPRESA DO BANCO', naturezaNumerarioBanco);
+      const chaveNumerarioCentro = chaveNumerarioRateio(empresaBancoRateio, centroCustoRateio, 'CENTRO DE CUSTO', naturezaNumerarioCentro);
       if (!codNumerarioBanco) pendentes.add(chaveNumerarioBanco);
       if (!codNumerarioCentro) pendentes.add(chaveNumerarioCentro);
       const semCodigoBanco = !codNumerarioBanco || !codCredito;
@@ -4086,6 +4125,16 @@ iniciarSincronizacaoAutomatica();
 </script>
 </body>
 </html>
+
+
+
+
+
+
+
+
+
+
 
 
 
