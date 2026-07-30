@@ -67,26 +67,25 @@
   tr.alt { background: var(--bg2); }
   .table-wrap { border: 1px solid var(--border); border-radius: var(--radius); overflow: hidden; background: var(--bg); }
   .table-scroll { overflow-x: auto; }
-  .table-novas-wrap { max-height: calc(100vh - 330px); min-height: 360px; overflow-y: auto; overflow-x: auto; }
+  .table-novas-wrap { max-height: calc(100vh - 330px); min-height: 360px; overflow-y: auto; overflow-x: hidden; }
   .table-novas-wrap thead th { position: sticky; top: 0; z-index: 2; box-shadow: 0 1px 0 var(--border); }
-  .table-novas { table-layout: fixed; width: 100%; min-width: 1450px; font-size: 11.5px; }
+  .table-novas { table-layout: fixed; width: 100%; min-width: 0; font-size: 11.5px; }
   .table-novas th, .table-novas td { padding: 8px 6px; }
   .table-novas th { white-space: normal; line-height: 1.25; }
   .table-novas th:nth-child(1) { width: 44px; }
-  .table-novas th:nth-child(2) { width: 130px; }
-  .table-novas th:nth-child(3) { width: 170px; }
-  .table-novas th:nth-child(4) { width: 200px; }
-  .table-novas th:nth-child(5) { width: 230px; }
-  .table-novas th:nth-child(6) { width: 290px; }
-  .table-novas th:nth-child(7) { width: 90px; }
-  .table-novas th:nth-child(8) { width: 135px; }
-  .table-novas th:nth-child(9) { width: 220px; }
+  .table-novas th:nth-child(2) { width: 18%; }
+  .table-novas th:nth-child(3) { width: 18%; }
+  .table-novas th:nth-child(4) { width: 19%; }
+  .table-novas th:nth-child(5) { width: 27%; }
+  .table-novas th:nth-child(6) { width: 18%; }
   .table-novas td { min-height: 56px; white-space: normal; overflow-wrap: anywhere; line-height: 1.35; }
-  .table-novas td:nth-child(6) { overflow-wrap: normal; word-break: normal; }
+  .table-novas td:nth-child(5) { overflow-wrap: normal; word-break: normal; }
   .table-novas td:nth-child(2) { font-weight: 600; color: #111827; }
   .table-novas td:first-child, .table-novas th:first-child { text-align: center; padding-left: 10px; padding-right: 10px; }
   .table-novas input[type=text] { height: 34px; min-width: 0; font-size: 12px; padding-left: 8px; padding-right: 8px; }
   .table-novas td .btn { height: 34px; padding: 0 10px; flex-shrink: 0; }
+  .cell-main { color: var(--text); font-weight: 600; }
+  .cell-sub { color: var(--text2); font-size: 11px; line-height: 1.35; margin-top: 3px; }
   .historico-regra-label { margin-bottom: 5px; color: var(--text3); font-size: 10.5px; }
   .historico-palavras { color: var(--text2); line-height: 1.8; }
   .historico-palavra { display: inline; border: 0; border-radius: 4px; background: transparent; color: inherit; padding: 1px 2px; margin: 0 1px; font: inherit; cursor: pointer; }
@@ -312,7 +311,7 @@
     <div class="table-wrap table-scroll table-novas-wrap" style="margin-bottom:16px">
       <table class="table-novas">
         <thead>
-          <tr><th><input type="checkbox" id="check-todas-lote" onchange="alternarTodasVisiveis(this.checked)"></th><th>Empresa</th><th>Centro de Custo</th><th>Fornecedor</th><th>Plano de Contas</th><th>Histórico</th><th>Número</th><th>Tipo de Documento</th><th>Código Domínio</th></tr>
+          <tr><th><input type="checkbox" id="check-todas-lote" onchange="alternarTodasVisiveis(this.checked)"></th><th>Empresa / Centro</th><th>Fornecedor</th><th>Plano / Documento</th><th>Histórico</th><th>Código Domínio</th></tr>
         </thead>
         <tbody id="tbody-novas-chaves"></tbody>
       </table>
@@ -2745,16 +2744,22 @@ function renderNovasChaves() {
     const palavrasHistorico = renderPalavrasHistorico(chave, historicoExibido, trechoHistorico);
     return `<tr>
       <td><input type="checkbox" data-chave="${escapeAttr(chave)}" ${selecionadasLote.has(chave) ? 'checked' : ''} onchange="alternarSelecionadaLote(this.dataset.chave, this.checked)"></td>
-      <td title="${escapeAttr(empresa||'')}" style="color:var(--text2)">${escapeHtml(empresa||'')}</td>
-      <td title="${escapeAttr(centroCusto||'')}" style="color:var(--text2)">${escapeHtml(centroCusto||'')}</td>
-      <td title="${escapeAttr(fornecedor)}">${escapeHtml(fornecedor)}</td>
-      <td title="${escapeAttr(plano)}" style="color:var(--text2)">${escapeHtml(plano)}</td>
+      <td title="${escapeAttr([empresa, centroCusto].filter(Boolean).join(' / '))}">
+        <div class="cell-main">${escapeHtml(empresa || '')}</div>
+        ${centroCusto && centroCusto !== empresa ? `<div class="cell-sub">${escapeHtml(centroCusto)}</div>` : ''}
+      </td>
+      <td title="${escapeAttr(fornecedor)}"><div class="cell-main">${escapeHtml(fornecedor)}</div></td>
+      <td title="${escapeAttr([plano, tipoDoc, numeroExibido].filter(Boolean).join(' / '))}">
+        <div class="cell-main">${escapeHtml(plano)}</div>
+        <div class="cell-sub">
+          ${isAjuste ? `<span class="tipo-ajuste-badge">${escapeHtml(tipoDoc)}</span>` : escapeHtml(tipoDoc)}
+          ${numeroExibido ? ` · ${escapeHtml(numeroExibido)}` : ''}
+        </div>
+      </td>
       <td title="${escapeAttr(historicoVisual)}" style="color:var(--text2)">
         ${isAjuste ? `<div style="font-weight:700;color:#92400e;margin-bottom:4px">${escapeHtml(tipoDoc)} -</div>` : ''}
         ${historicoExibido ? `<div class="historico-regra-label">Clique nas palavras da regra:</div>${palavrasHistorico}` : ''}
       </td>
-      <td title="${escapeAttr(numeroExibido)}" style="color:var(--text2)">${escapeHtml(numeroExibido)}</td>
-      <td title="${escapeAttr(tipoDoc)}" style="color:var(--text2)">${isAjuste ? `<span class="tipo-ajuste-badge">${escapeHtml(tipoDoc)}</span>` : escapeHtml(tipoDoc)}</td>
       <td>
         <input type="text" class="conta-autocomplete" placeholder="Digite o código ou nome da conta" value="${escapeAttr(codigosTemp[chave] || '')}" data-chave="${escapeAttr(chave)}" oninput="atualizarCodigoNovaChave(this); criarAutocompleteConta(this)" style="width:100%">
       </td>
@@ -2881,7 +2886,7 @@ function ocultarPendenciaPreenchida(inp, focarProximo = false) {
   inp.closest('tr')?.remove();
   const visiveis = obterNovasChavesVisiveis();
   if (visiveis.length === 0) {
-    document.getElementById('tbody-novas-chaves').innerHTML = `<tr><td colspan="9" style="text-align:center;color:var(--text2);padding:32px">Nenhuma pendência visível com os filtros atuais.</td></tr>`;
+    document.getElementById('tbody-novas-chaves').innerHTML = `<tr><td colspan="6" style="text-align:center;color:var(--text2);padding:32px">Nenhuma pendência visível com os filtros atuais.</td></tr>`;
   }
   atualizarStatusLote(visiveis);
   if (focarProximo && proximo) focarCampoCodigo(proximo);
