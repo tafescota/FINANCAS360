@@ -314,6 +314,11 @@
     <div class="bulk-tool">
       <div class="bulk-tool-top">
         <input type="search" id="filtro-lote" placeholder="Pesquisar fornecedor, histórico, plano ou tipo..." oninput="filtrarNovasChavesEmLote()">
+        <select id="filtro-tipo-lote" class="bulk-type-filter" onchange="atualizarFiltroTipoLote(this.value)">
+          <option value="">Todos os tipos</option>
+          <option value="PROPRIO">Próprio</option>
+          <option value="TRANSFERENCIA DE NUMERARIOS">Transferência de numerários</option>
+        </select>
         <input type="text" id="codigo-lote" class="conta-autocomplete" placeholder="Conta para aplicar" oninput="criarAutocompleteConta(this)">
         <button class="btn" onclick="selecionarFiltradasEmLote()">Selecionar filtradas</button>
         <button class="btn btn-primary" onclick="aplicarCodigoEmLote()">Aplicar conta</button>
@@ -331,18 +336,6 @@
       <table class="table-novas">
         <thead>
           <tr><th><input type="checkbox" id="check-todas-lote" onchange="alternarTodasVisiveis(this.checked)"></th><th>Empresa</th><th>Centro de Custo</th><th>Fornecedor</th><th>Plano de Contas</th><th>Histórico</th><th>Tipo do Rateio</th><th>Número</th><th>Documento</th><th>Código Domínio</th></tr>
-          <tr class="table-filter-row">
-            <th><button type="button" class="btn-filter-clear" title="Limpar filtros" onclick="limparFiltrosNovasChaves()">×</button></th>
-            <th><input type="search" placeholder="Filtrar" data-filtro-col="empresa" oninput="atualizarFiltroColunaNovasChaves(this)"></th>
-            <th><input type="search" placeholder="Filtrar" data-filtro-col="centroCusto" oninput="atualizarFiltroColunaNovasChaves(this)"></th>
-            <th><input type="search" placeholder="Filtrar" data-filtro-col="fornecedor" oninput="atualizarFiltroColunaNovasChaves(this)"></th>
-            <th><input type="search" placeholder="Filtrar" data-filtro-col="plano" oninput="atualizarFiltroColunaNovasChaves(this)"></th>
-            <th><input type="search" placeholder="Filtrar" data-filtro-col="historico" oninput="atualizarFiltroColunaNovasChaves(this)"></th>
-            <th><select data-filtro-col="tipoRateio" onchange="atualizarFiltroColunaNovasChaves(this)"><option value="">Todos</option><option value="PROPRIO">Próprio</option><option value="TRANSFERENCIA DE NUMERARIOS">Numerários</option></select></th>
-            <th><input type="search" placeholder="Filtrar" data-filtro-col="numero" oninput="atualizarFiltroColunaNovasChaves(this)"></th>
-            <th><input type="search" placeholder="Filtrar" data-filtro-col="tipoDoc" oninput="atualizarFiltroColunaNovasChaves(this)"></th>
-            <th><input type="search" placeholder="Filtrar" data-filtro-col="codigo" oninput="atualizarFiltroColunaNovasChaves(this)"></th>
-          </tr>
         </thead>
         <tbody id="tbody-novas-chaves"></tbody>
       </table>
@@ -3544,10 +3537,14 @@ function atualizarFiltroColunaNovasChaves(el) {
   renderNovasChaves();
 }
 
+function atualizarFiltroTipoLote(valor) {
+  filtrosNovasChaves.tipoRateio = valor || '';
+  renderNovasChaves();
+}
+
 function restaurarInputsFiltrosNovasChaves() {
-  document.querySelectorAll('[data-filtro-col]').forEach(el => {
-    el.value = filtrosNovasChaves[el.dataset.filtroCol] || '';
-  });
+  const topo = document.getElementById('filtro-tipo-lote');
+  if (topo) topo.value = filtrosNovasChaves.tipoRateio || '';
 }
 
 function limparFiltrosNovasChaves() {
