@@ -2017,6 +2017,23 @@ function codigoBancoConciliacao(conta) {
   const contaLimpa = limparTextoECD(conta);
   return codigoContaSemConciliacao(contaLimpa) || contaLimpa;
 }
+
+function empresaBancoConciliacao(item = {}, movimento = {}) {
+  const conta = movimento.conta || item.conta || infoExtratoBancarioTemp?.conta || '';
+  const porConta = empresaBancoRateioPorConta(conta, '');
+  if (porConta) return porConta;
+  const candidatos = [
+    movimento.empresaBanco,
+    item.empresaBanco,
+    movimento.empresa,
+    item.empresaOrigem,
+    item.empresa,
+    infoExtratoBancarioTemp?.empresa
+  ].map(limparTextoECD).filter(Boolean);
+  const foraDoGrupo = candidatos.find(v => normalizarTexto(v) !== normalizarTexto(grupoAtivo));
+  return foraDoGrupo || candidatos[0] || grupoAtivo || '';
+}
+
 function gerarSugestoesConciliacao(opcoes = {}) {
   const { redirecionarSeOk = true } = opcoes;
   const el = document.getElementById('resultado-conciliacao-bancaria');
@@ -2762,8 +2779,11 @@ function montarLinhasRecebimentoRateioDominio(item, codigoRecebimento, regrasNum
   const valor = Math.abs(arredondarMoeda(item.total || movimentos.reduce((s, mov) => s + Math.abs(mov.valor || 0), 0)));
   if (!valor) return linhas;
   const banco = codigoBancoConciliacao(item.conta || primeiroMovimento.conta);
-  const empresaBanco = item.empresaBanco || primeiroMovimento.empresaBanco || item.empresa || grupoAtivo;
-  const centroCusto = item.centroCusto || primeiroMovimento.centroCusto || empresaBanco;
+  const empresaBanco = empresaBancoConciliacao(item, primeiroMovimento);
+  const centroInformado = limparTextoECD(item.centroCusto || primeiroMovimento.centroCusto || '');
+  const centroCusto = centroInformado && normalizarTexto(centroInformado) !== normalizarTexto(grupoAtivo)
+    ? centroInformado
+    : empresaBanco;
   const complemento = [item.tipo || primeiroMovimento.tipo, item.historico || primeiroMovimento.historico].filter(Boolean).join(' - ');
   const complementoNumerarios = [complemento, 'TRANSFERENCIA DE NUMERARIOS'].filter(Boolean).join(' - ');
   const negativo = movimentos.every(mov => arredondarMoeda(mov.valor || 0) < 0) || arredondarMoeda(item.valor || 0) < 0;
@@ -2826,7 +2846,7 @@ function montarLinhasDominioConciliacao({ validarPendencias = true } = {}) {
         codigo,
         Math.abs(mov.valor || item.total),
         descricaoMovimentoExtrato(mov) || item.historico,
-        mov.empresa || item.empresa || grupoAtivo || '',
+        empresaBancoConciliacao(item, mov),
         ''
       ));
     });
