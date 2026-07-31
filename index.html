@@ -3592,7 +3592,7 @@ function renderLinhaAjustePar(linha) {
     <td title="${escapeAttr(infoDoc.numero || '')}" style="color:var(--text2)">${escapeHtml(infoDoc.numero || '')}</td>
     <td title="${escapeAttr(linha.ajuste)}" style="color:var(--text2)"><span class="tipo-ajuste-badge">${escapeHtml(linha.ajuste)}</span></td>
     <td>
-      <div style="display:grid;grid-template-columns:minmax(120px,1fr) minmax(120px,1fr);gap:8px">
+      <div class="ajuste-par-inputs">
         ${inputAjuste(linha.debito, 'Débito', 'Conta de débito')}
         ${inputAjuste(linha.credito, 'Crédito', 'Conta de crédito')}
       </div>
