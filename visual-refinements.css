@@ -1251,15 +1251,45 @@ input[type=search]:focus {
   text-align: center;
 }
 
-#tela-novas-chaves .ajuste-par-inputs {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
-  gap: 8px;
-  align-items: end;
+#tela-novas-chaves .tipo-ajuste-dc {
+  min-width: 42px;
+  max-width: 42px;
+  padding: 4px 0;
+  font-size: 10px;
+  line-height: 1;
+  white-space: nowrap;
 }
 
-#tela-novas-chaves .ajuste-par-inputs label {
+#tela-novas-chaves .ajuste-par-inputs {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 10px minmax(0, 1fr);
+  gap: 5px;
+  align-items: center;
+}
+
+#tela-novas-chaves .ajuste-par-field {
+  display: grid;
+  grid-template-columns: 16px minmax(0, 1fr);
+  align-items: center;
+  gap: 4px;
   min-width: 0;
+  font-size: 10px;
+  font-weight: 800;
+  color: var(--text2);
+  text-transform: uppercase;
+  letter-spacing: .04em;
+}
+
+#tela-novas-chaves .ajuste-par-field input.conta-autocomplete {
+  height: 30px;
+  padding-left: 7px;
+  padding-right: 7px;
+}
+
+#tela-novas-chaves .ajuste-par-separador {
+  color: #94a3b8;
+  font-weight: 800;
+  text-align: center;
 }
 
 @media (max-width: 980px) {
