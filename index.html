@@ -319,7 +319,7 @@
           <option value="PROPRIO">Próprio</option>
           <option value="TRANSFERENCIA DE NUMERARIOS">Transferência de numerários</option>
         </select>
-        <input type="text" id="codigo-lote" class="conta-autocomplete" placeholder="Conta para aplicar nos itens selecionados" oninput="criarAutocompleteConta(this)">
+        <input type="text" id="codigo-lote" class="conta-autocomplete" placeholder="Conta para aplicar nos selecionados" oninput="criarAutocompleteConta(this)">
         <button class="btn" onclick="selecionarFiltradasEmLote()">Selecionar filtradas</button>
         <button class="btn btn-primary" onclick="aplicarCodigoEmLote()">Aplicar conta</button>
         <button class="btn btn-blue" onclick="salvarTudoPreenchido()">Salvar preenchidas</button>
@@ -1196,6 +1196,62 @@ function extratoMovimentosWorkbook(wb) {
   return { movimentos, nomePlanilha };
 }
 
+function ordenarDataBR(a, b) {
+  const pa = String(a || '').split('/').map(Number);
+  const pb = String(b || '').split('/').map(Number);
+  const da = pa.length === 3 ? new Date(pa[2], pa[1] - 1, pa[0]).getTime() : 0;
+  const db = pb.length === 3 ? new Date(pb[2], pb[1] - 1, pb[0]).getTime() : 0;
+  return da - db || String(a || '').localeCompare(String(b || ''));
+}
+
+function htmlDetalheDiferencaConferencia(pagamentos, saidas) {
+  const porData = new Map();
+  pagamentos.forEach(p => {
+    const data = dataKey(p.data || p.dataKey) || 'Sem data';
+    const atual = porData.get(data) || { data, relatorio: 0, extrato: 0, qtdRelatorio: 0, qtdExtrato: 0, exemplosRelatorio: [], exemplosExtrato: [] };
+    atual.relatorio = arredondarMoeda(atual.relatorio + (p.valor || 0));
+    atual.qtdRelatorio += 1;
+    if (atual.exemplosRelatorio.length < 3) atual.exemplosRelatorio.push(`${p.fornecedor || 'Sem fornecedor'} R$ ${fmtValor(p.valor || 0)}`);
+    porData.set(data, atual);
+  });
+  saidas.forEach(m => {
+    const data = dataKey(m.data) || 'Sem data';
+    const atual = porData.get(data) || { data, relatorio: 0, extrato: 0, qtdRelatorio: 0, qtdExtrato: 0, exemplosRelatorio: [], exemplosExtrato: [] };
+    const valor = Math.abs(m.valor || 0);
+    atual.extrato = arredondarMoeda(atual.extrato + valor);
+    atual.qtdExtrato += 1;
+    if (atual.exemplosExtrato.length < 3) atual.exemplosExtrato.push(`${descricaoMovimentoExtrato(m) || 'Sem histórico'} R$ ${fmtValor(valor)}`);
+    porData.set(data, atual);
+  });
+  const divergentes = Array.from(porData.values())
+    .map(item => ({ ...item, diferenca: arredondarMoeda(item.relatorio - item.extrato) }))
+    .filter(item => Math.abs(item.diferenca) >= 0.01)
+    .sort((a, b) => ordenarDataBR(a.data, b.data));
+  if (!divergentes.length) return '';
+  const linhas = divergentes.slice(0, 80).map(item => `
+    <tr>
+      <td>${escapeHtml(item.data)}</td>
+      <td style="text-align:right">R$ ${fmtValor(item.relatorio)}</td>
+      <td style="text-align:right">R$ ${fmtValor(item.extrato)}</td>
+      <td style="text-align:right;font-weight:700;color:#9a3412">R$ ${fmtValor(Math.abs(item.diferenca))}</td>
+      <td>${item.qtdRelatorio} relatório · ${item.qtdExtrato} extrato</td>
+      <td title="${escapeAttr(item.exemplosRelatorio.join(' | '))}">${escapeHtml(item.exemplosRelatorio.join(' | '))}</td>
+      <td title="${escapeAttr(item.exemplosExtrato.join(' | '))}">${escapeHtml(item.exemplosExtrato.join(' | '))}</td>
+    </tr>`).join('');
+  const avisoRateio = linhasImportadasModo === 'rateio'
+    ? '<div class="conciliacao-note" style="margin:8px 0 10px">No rateio, descontos/acréscimos já entram como linhas próprias do relatório. Linhas negativas reduzem o total conciliável do pagamento.</div>'
+    : '';
+  return `<details class="conciliacao-diff-details">
+    <summary>Ver diferença por dia</summary>
+    ${avisoRateio}
+    <div class="table-wrap table-scroll" style="margin-top:8px">
+      <table class="diff-conferencia-table">
+        <thead><tr><th>Data</th><th style="text-align:right">Relatório</th><th style="text-align:right">Extrato</th><th style="text-align:right">Diferença</th><th>Qtd.</th><th>Exemplos no relatório</th><th>Exemplos no extrato</th></tr></thead>
+        <tbody>${linhas}</tbody>
+      </table>
+    </div>
+  </details>`;
+}
 function htmlResumoConferenciaBancaria() {
   const qtdPagamentos = linhasImportadas.length;
   const entradas = extratoBancarioTemp.filter(m => m.valor > 0);
@@ -1209,6 +1265,7 @@ function htmlResumoConferenciaBancaria() {
   const totalSaidasPagamentos = arredondarMoeda(Math.abs(saidasPagamentos.reduce((s, m) => s + m.valor, 0)));
   const diferencaConferencia = arredondarMoeda(totalPagamentos - totalSaidasPagamentos);
   const valoresBatem = Math.abs(diferencaConferencia) < 0.01;
+  const detalheDiferenca = valoresBatem ? '' : htmlDetalheDiferencaConferencia(pagamentosConciliaveis, saidasPagamentos);
   return `
     <div class="conciliacao-grid conciliacao-summary-grid">
       <div class="metric metric-muted"><div class="metric-label">Grupo ativo</div><div class="metric-value metric-text">${escapeHtml(grupoAtivo || 'Nenhum')}</div></div>
@@ -1224,6 +1281,7 @@ function htmlResumoConferenciaBancaria() {
         pagamentos totais R$ ${fmtValor(totalPagamentos)} · pagamentos bancários R$ ${fmtValor(totalSaidasPagamentos)}
         · ${valoresBatem ? 'valores batem' : 'diferença de R$ ' + fmtValor(Math.abs(diferencaConferencia))}
       </div>
+      ${detalheDiferenca}
     </div>`;
 }
 
@@ -2384,10 +2442,18 @@ function abrirModalPendenciasConciliacao() {
     );
     const mesmasSaidas = saidasDisponiveis.filter(saida => Math.abs(saida.total - item.total) < 0.01);
     const outrasSaidas = saidasDisponiveis.filter(saida => Math.abs(saida.total - item.total) >= 0.01).slice(0, 20);
-    const placeholderConta = item.movimento === 'numerario-rateio'
-      ? `Informe numerários ${(item.naturezaNumerario || item.tipo || '').toString().toLowerCase()}`
-      : item.movimento === 'recebimento'
-        ? 'Informe conta do recebimento/cliente'
+    const ehNumerarioPendencia = item.movimento === 'numerario-rateio';
+    const ehRecebimentoPendencia = item.movimento === 'recebimento';
+    const naturezaConta = (item.naturezaNumerario || item.tipo || '').toString().toLowerCase();
+    const contaAlvo = ehNumerarioPendencia
+      ? `Numerários ${naturezaConta}`
+      : ehRecebimentoPendencia
+        ? 'Conta do cliente/recebimento'
+        : 'Conciliação com extrato';
+    const placeholderConta = ehNumerarioPendencia
+      ? `Informe a conta de ${contaAlvo}`
+      : ehRecebimentoPendencia
+        ? 'Informe a conta do cliente/recebimento'
         : 'Digite código ou conta';
     const campoAcao = item.movimento === 'pagamento-pendente'
       ? `<select data-vinculo-pagamento-id="${escapeAttr(item.id)}" onchange="atualizarVinculoPagamentoConciliacao(this)" style="width:100%;padding:8px 10px;border:1px solid var(--border2);border-radius:var(--radius-sm);background:var(--bg);color:var(--text)">
@@ -2407,13 +2473,20 @@ function abrirModalPendenciasConciliacao() {
       : `<input type="text" class="conta-autocomplete" data-conciliacao-modal-id="${escapeAttr(item.id)}" value="${escapeAttr(valor)}" placeholder="${escapeAttr(placeholderConta)}" oninput="atualizarCodigoConciliacaoModal(this); criarAutocompleteConta(this)" style="width:100%">`;
     const empresaCol = item.empresaBanco || item.empresa || '';
     const centroCol = item.centroCusto || item.empresaLancamento || '';
-    const fornecedorCol = item.fornecedor || item.descricao || item.historico || '';
-    const planoCol = item.movimento === 'numerario-rateio'
-      ? `Transferência de numerários ${(item.naturezaNumerario || item.tipo || '').toString().toLowerCase()}`
-      : (item.plano || item.tipo || '');
-    const historicoItem = item.movimento === 'recebimento'
-      ? `<div class="historico-regra-label">Clique nas palavras da regra:</div>${renderPalavrasRecebimentoConciliacao(item)}`
-      : `<span style="color:var(--text2)">${escapeHtml(item.historico || '')}</span>`;
+    const fornecedorCol = ehNumerarioPendencia
+      ? (item.pontaNumerario === 'EMPRESA DO BANCO' ? 'Numerários da empresa do banco' : 'Numerários do centro de custo')
+      : (item.fornecedor || item.descricao || item.historico || '');
+    const planoCol = ehNumerarioPendencia ? contaAlvo : (item.plano || item.tipo || '');
+    const orientacaoItem = ehNumerarioPendencia
+      ? `Preencha ${contaAlvo}. Não é banco nem cliente.`
+      : ehRecebimentoPendencia
+        ? 'Preencha a conta do cliente/recebimento. O banco vem do extrato.'
+        : '';
+    const historicoItem = ehRecebimentoPendencia
+      ? `<div class="pendencia-orientacao">${escapeHtml(orientacaoItem)}</div><div class="historico-regra-label">Clique nas palavras da regra:</div>${renderPalavrasRecebimentoConciliacao(item)}`
+      : ehNumerarioPendencia
+        ? `<div class="pendencia-orientacao">${escapeHtml(orientacaoItem)}</div><span style="color:var(--text2)">${escapeHtml(item.historico || '')}</span>`
+        : `<span style="color:var(--text2)">${escapeHtml(item.historico || '')}</span>`;
     return `<tr>
       <td><input type="checkbox" data-pendencia-conciliacao-id="${escapeAttr(item.id)}" ${pendenciasConciliacaoSelecionadas.has(item.id) ? 'checked' : ''} onchange="alternarPendenciaConciliacao(this.dataset.pendenciaConciliacaoId, this.checked)"></td>
       <td><span class="badge ${item.movimento === 'recebimento' ? 'badge-blue' : ''}">${escapeHtml(labelMovimentoConciliacao(item))}</span></td>
@@ -2440,15 +2513,15 @@ function abrirModalPendenciasConciliacao() {
       </div>
       <div style="padding:14px 22px;border-bottom:1px solid var(--border);display:grid;grid-template-columns:minmax(220px,1fr) minmax(180px,240px) auto auto auto;gap:10px;align-items:center">
         <input type="search" id="filtro-pendencias-conciliacao" value="${escapeAttr(filtroPendenciasConciliacaoTemp)}" placeholder="Pesquisar empresa, centro, fornecedor, histórico, data, valor..." oninput="atualizarFiltroPendenciasConciliacao(this)">
-        <input type="text" id="codigo-lote-conciliacao" class="conta-autocomplete" placeholder="Conta para aplicar nos itens selecionados" oninput="criarAutocompleteConta(this)">
+        <input type="text" id="codigo-lote-conciliacao" class="conta-autocomplete" placeholder="Conta para aplicar nos selecionados" oninput="criarAutocompleteConta(this)">
         <button class="btn btn-sm" onclick="selecionarPendenciasConciliacaoFiltradas()">Selecionar filtradas</button>
         <button class="btn btn-sm" onclick="aplicarContaPendenciasConciliacaoSelecionadas()">Aplicar conta</button>
         <button class="btn btn-sm" onclick="limparSelecaoPendenciasConciliacao()">Limpar seleção</button>
       </div>
       <div style="padding:16px 22px;overflow:auto">
         <div class="table-wrap table-scroll">
-          <table>
-            <thead><tr><th style="width:34px"></th><th>Movimento</th><th>Empresa</th><th>Centro de custo</th><th>Fornecedor / Origem</th><th>Plano / Tipo</th><th>Histórico</th><th>Data / Grupo</th><th style="text-align:right">Valor</th><th>Conta a informar / Conciliação</th></tr></thead>
+          <table class="pendencias-conciliacao-table">
+            <thead><tr><th style="width:34px"></th><th>Movimento</th><th>Empresa do banco</th><th>Centro de custo</th><th>Origem / regra</th><th>Conta esperada</th><th>Histórico</th><th>Data / Grupo</th><th style="text-align:right">Valor</th><th>Conta a informar</th></tr></thead>
             <tbody>${linhas || `<tr><td colspan="10" style="text-align:center;color:var(--ok-text);background:var(--ok-bg);padding:24px">Todas as pendências desta janela foram preenchidas.</td></tr>`}</tbody>
           </table>
         </div>
@@ -4160,6 +4233,7 @@ iniciarSincronizacaoAutomatica();
 </script>
 </body>
 </html>
+
 
 
 
