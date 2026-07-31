@@ -3449,6 +3449,12 @@ function renderNovasChaves() {
 function escapeHtml(v) {
   return String(v ?? '').replace(/[&<>"']/g, c => ({ '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;', "'":'&#39;' }[c]));
 }
+function descTruncada(texto, classe = 'desc-truncate') {
+  const valor = String(texto ?? '').trim();
+  if (!valor) return '';
+  return `<span class="${escapeAttr(classe)}" title="${escapeAttr(valor)}">${escapeHtml(valor)}</span>`;
+}
+
 
 function escapeAttr(v) {
   return escapeHtml(v);
