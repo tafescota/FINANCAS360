@@ -310,7 +310,7 @@
     <div class="card" style="margin-bottom:16px">
       <div class="metric-label" style="margin-bottom:8px">Módulo isolado de provisão</div>
       <p class="conciliacao-note" style="margin-bottom:14px">
-        Use para importar o relatório de rateio e gerar uma planilha no modelo Domínio para provisão. Esta tela não altera de-para, conciliação, pagamentos ou regras salvas.
+        Use para importar o relatório de rateio e gerar uma planilha no modelo Domínio para provisão. Esta tela tem seu próprio de-para de débito/crédito (não mexe nas regras de conciliação, pagamentos ou recebimentos). Preencha débito e crédito na tabela abaixo: ao sair do campo, a combinação fica salva e é sugerida automaticamente na próxima importação para o mesmo fornecedor/plano/documento.
       </p>
       <div class="drop-area" id="drop-area-provisao" onclick="document.getElementById('file-input-provisao-rateio').click()" ondragover="dragOver(event)" ondragleave="dragLeave(event)" ondrop="onDropProvisaoRateio(event)">
         <div class="drop-icon">📄</div>
@@ -322,12 +322,13 @@
     <div id="resumo-provisao-rateio"></div>
     <div id="acoes-provisao-rateio" style="display:none;gap:10px;flex-wrap:wrap;margin:0 0 16px">
       <button class="btn btn-blue" onclick="exportarProvisaoRateio()">⬇ Exportar provisão Domínio (.xlsx)</button>
+      <button class="btn" onclick="aplicarRegrasSalvasProvisao()">🔁 Reaplicar regras salvas</button>
       <button class="btn" onclick="limparProvisaoRateio()">Limpar provisão</button>
     </div>
     <div class="table-wrap table-scroll" id="preview-provisao-rateio" style="display:none;margin-bottom:16px">
       <table>
         <thead>
-          <tr><th>Emissão</th><th>Débito sugerido</th><th>Crédito</th><th style="text-align:right">Valor</th><th>Empresa</th><th>Fornecedor</th><th>Documento</th><th>Complemento</th></tr>
+          <tr><th>Emissão</th><th>Débito</th><th>Crédito</th><th style="text-align:right">Valor</th><th>Empresa</th><th>Fornecedor</th><th>Documento</th><th>Complemento</th></tr>
         </thead>
         <tbody id="tbody-provisao-rateio"></tbody>
       </table>
@@ -466,6 +467,7 @@
 const STORAGE_GRUPOS = 'zip_depara_grupos';
 const STORAGE_DEPARA = 'zip_depara_regras';
 const STORAGE_DEPARA_RECEBIMENTOS = 'zip_depara_regras_recebimentos';
+const STORAGE_DEPARA_PROVISAO = 'zip_depara_regras_provisao';
 const STORAGE_PLANO_CONTAS = 'zip_depara_plano_contas';
 const STORAGE_CONTAS_SEM_CONCILIACAO = 'zip_depara_contas_sem_conciliacao';
 const STORAGE_CONFIG_GRUPOS = 'zip_depara_config_grupos';
@@ -474,6 +476,7 @@ const API_BASE_DEPARA = '/.netlify/functions/depara-base';
 let grupos = JSON.parse(localStorage.getItem(STORAGE_GRUPOS) || '[]');
 let depara = JSON.parse(localStorage.getItem(STORAGE_DEPARA) || '{}');
 let deparaRecebimentos = JSON.parse(localStorage.getItem(STORAGE_DEPARA_RECEBIMENTOS) || '{}');
+let deparaProvisao = JSON.parse(localStorage.getItem(STORAGE_DEPARA_PROVISAO) || '{}');
 let planoContas = JSON.parse(localStorage.getItem(STORAGE_PLANO_CONTAS) || '{}');
 let contasSemConciliacao = JSON.parse(localStorage.getItem(STORAGE_CONTAS_SEM_CONCILIACAO) || '{}');
 let configGrupos = JSON.parse(localStorage.getItem(STORAGE_CONFIG_GRUPOS) || '{}');
@@ -749,6 +752,23 @@ function encontrarCodigoRegraAjuste(regras, forn, plano, tipoAjuste, ponta, hist
   return pontaNaturalLegada ? encontrarCodigoRegra(regras, forn, plano, tipoAjuste, historico, escopo) : '';
 }
 
+function encontrarRegraProvisao(forn, plano, tipoDoc, historico, escopo = '') {
+  if (!grupoAtivo) return null;
+  const regras = deparaProvisao[grupoAtivo] || {};
+  const chaveExata = montarChave(forn, plano, tipoDoc, historico, escopo);
+  if (regras[chaveExata]) return regras[chaveExata];
+  const prefixoEscopo = escopo ? limparTextoECD(escopo) + ' | ' : '';
+  const prefixo = prefixoEscopo + forn + ' | ' + plano + ' | ' + tipoDoc + ' | HISTORICO_CONTEM | ';
+  const historicoNormalizado = normalizarTexto(historico);
+  const achada = Object.keys(regras).find(chave => {
+    if (!chave.startsWith(prefixo)) return false;
+    const trecho = chave.slice(prefixo.length);
+    const termos = normalizarTexto(trecho).split(/\s+/).filter(Boolean);
+    return termos.length > 0 && termos.every(termo => historicoNormalizado.includes(termo));
+  });
+  return achada ? regras[achada] : null;
+}
+
 function obterChaveRegraNova(item) {
   if (item.pontaNumerario || String(item.chave || '').startsWith('RATEIO NUMERARIOS |')) return item.chave;
   const trecho = limparTextoECD(item.trechoHistorico || '');
@@ -763,6 +783,7 @@ function salvarStorage() {
   localStorage.setItem(STORAGE_GRUPOS, JSON.stringify(grupos));
   localStorage.setItem(STORAGE_DEPARA, JSON.stringify(depara));
   localStorage.setItem(STORAGE_DEPARA_RECEBIMENTOS, JSON.stringify(deparaRecebimentos));
+  localStorage.setItem(STORAGE_DEPARA_PROVISAO, JSON.stringify(deparaProvisao));
   localStorage.setItem(STORAGE_PLANO_CONTAS, JSON.stringify(planoContas));
   localStorage.setItem(STORAGE_CONTAS_SEM_CONCILIACAO, JSON.stringify(contasSemConciliacao));
   localStorage.setItem(STORAGE_CONFIG_GRUPOS, JSON.stringify(configGrupos));
@@ -788,6 +809,7 @@ async function carregarBaseCompartilhada(mostrarMensagem = false) {
     grupos = Array.isArray(data.grupos) ? data.grupos : [];
     depara = data.depara && typeof data.depara === 'object' ? data.depara : {};
     deparaRecebimentos = data.deparaRecebimentos && typeof data.deparaRecebimentos === 'object' ? data.deparaRecebimentos : {};
+    deparaProvisao = data.deparaProvisao && typeof data.deparaProvisao === 'object' ? data.deparaProvisao : {};
     planoContas = data.planoContas && typeof data.planoContas === 'object' ? data.planoContas : {};
     contasSemConciliacao = data.contasSemConciliacao && typeof data.contasSemConciliacao === 'object' ? data.contasSemConciliacao : {};
     configGrupos = data.configGrupos && typeof data.configGrupos === 'object' ? data.configGrupos : {};
@@ -795,6 +817,7 @@ async function carregarBaseCompartilhada(mostrarMensagem = false) {
     localStorage.setItem(STORAGE_GRUPOS, JSON.stringify(grupos));
     localStorage.setItem(STORAGE_DEPARA, JSON.stringify(depara));
     localStorage.setItem(STORAGE_DEPARA_RECEBIMENTOS, JSON.stringify(deparaRecebimentos));
+    localStorage.setItem(STORAGE_DEPARA_PROVISAO, JSON.stringify(deparaProvisao));
     localStorage.setItem(STORAGE_PLANO_CONTAS, JSON.stringify(planoContas));
     localStorage.setItem(STORAGE_CONTAS_SEM_CONCILIACAO, JSON.stringify(contasSemConciliacao));
     localStorage.setItem(STORAGE_CONFIG_GRUPOS, JSON.stringify(configGrupos));
@@ -817,7 +840,7 @@ async function salvarBaseCompartilhada(forcar = false) {
   try {
     salvandoBaseCompartilhada = true;
     ultimaSyncLocal = Date.now();
-    const payload = { grupos, depara, deparaRecebimentos, planoContas, contasSemConciliacao, configGrupos };
+    const payload = { grupos, depara, deparaRecebimentos, deparaProvisao, planoContas, contasSemConciliacao, configGrupos };
     const resp = await fetch(API_BASE_DEPARA, {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
@@ -840,6 +863,7 @@ function exportarBaseDePara() {
     grupos,
     depara,
     deparaRecebimentos,
+    deparaProvisao,
     contasSemConciliacao,
     configGrupos
   };
@@ -869,6 +893,7 @@ function importarBaseDePara(event) {
       grupos = payload.grupos;
       depara = payload.depara;
       deparaRecebimentos = payload.deparaRecebimentos && typeof payload.deparaRecebimentos === 'object' ? payload.deparaRecebimentos : {};
+      deparaProvisao = payload.deparaProvisao && typeof payload.deparaProvisao === 'object' ? payload.deparaProvisao : {};
       contasSemConciliacao = payload.contasSemConciliacao && typeof payload.contasSemConciliacao === 'object' ? payload.contasSemConciliacao : {};
       configGrupos = payload.configGrupos && typeof payload.configGrupos === 'object' ? payload.configGrupos : {};
       grupoAtivo = grupos.includes(grupoAtivo) ? grupoAtivo : null;
@@ -1129,10 +1154,20 @@ function linhaProvisaoRateio(r, arquivoOrigem = '') {
   if (!valor) return null;
   const empresa = centroCustoLinha(r) || empresaLancamentoLinha(r) || empresaOrigemLinha(r);
   const complemento = [forn, tipoDoc, numero, plano, historico].filter(Boolean).join(' - ');
+  const escopo = escopoRegraLinha(r);
+  const chave = montarChave(forn, plano, tipoDoc, historico, escopo);
+  const regraSalva = encontrarRegraProvisao(forn, plano, tipoDoc, historico, escopo);
   return {
     data: fmtDate(r[COLS.EMISSAO]),
+    chave,
+    forn,
+    plano,
+    tipoDoc,
+    historico,
+    escopo,
     debitoSugerido: plano,
-    credito: '',
+    debitoConta: regraSalva?.debito || '',
+    creditoConta: regraSalva?.credito || '',
     valor,
     empresa,
     fornecedor: forn,
@@ -1218,21 +1253,23 @@ function renderProvisaoRateio() {
   }
   const total = provisaoRateioTemp.reduce((s, r) => s + r.valor, 0);
   const empresas = new Set(provisaoRateioTemp.map(r => r.empresa).filter(Boolean));
+  const semCodigo = provisaoRateioTemp.filter(r => !r.debitoConta || !r.creditoConta).length;
   resumo.innerHTML = `
     <div class="conciliacao-grid">
       <div class="metric"><div class="metric-label">Linhas de provisão</div><div class="metric-value">${provisaoRateioTemp.length}</div></div>
       <div class="metric"><div class="metric-label">Total</div><div class="metric-value" style="font-size:18px">R$ ${fmtValor(total)}</div></div>
       <div class="metric"><div class="metric-label">Empresas / centros</div><div class="metric-value" style="font-size:18px">${empresas.size}</div></div>
+      <div class="metric"><div class="metric-label">Sem débito/crédito</div><div class="metric-value ${semCodigo > 0 ? 'warn' : 'ok'}">${semCodigo}</div></div>
     </div>
     <div class="conciliacao-note" style="margin-bottom:14px">Arquivos: ${escapeHtml((infoProvisaoRateioTemp?.arquivos || []).join(', '))}</div>
   `;
   acoes.style.display = 'flex';
   preview.style.display = '';
-  tbody.innerHTML = provisaoRateioTemp.slice(0, 250).map(r => `
-    <tr>
-      <td>${escapeHtml(r.data)}</td>
-      <td><strong>${escapeHtml(r.debitoSugerido || '')}</strong></td>
-      <td class="cell-subtle">preencher</td>
+  tbody.innerHTML = provisaoRateioTemp.slice(0, 250).map((r, i) => `
+    <tr class="${(!r.debitoConta || !r.creditoConta) ? 'sem-codigo' : ''}">
+      <td style="white-space:nowrap">${escapeHtml(r.data)}</td>
+      <td><input type="text" class="conta-autocomplete" style="width:110px" placeholder="${escapeAttr(r.debitoSugerido || 'Débito')}" value="${escapeAttr(r.debitoConta || '')}" data-idx="${i}" data-campo="debito" oninput="atualizarContaProvisao(this); criarAutocompleteConta(this)" onblur="salvarRegraProvisaoLinha(${i})"></td>
+      <td><input type="text" class="conta-autocomplete" style="width:110px" placeholder="Crédito" value="${escapeAttr(r.creditoConta || '')}" data-idx="${i}" data-campo="credito" oninput="atualizarContaProvisao(this); criarAutocompleteConta(this)" onblur="salvarRegraProvisaoLinha(${i})"></td>
       <td style="text-align:right;white-space:nowrap">R$ ${fmtValor(r.valor)}</td>
       <td>${escapeHtml(r.empresa || '')}</td>
       <td>${escapeHtml(r.fornecedor || '')}</td>
@@ -1242,11 +1279,57 @@ function renderProvisaoRateio() {
   `).join('');
 }
 
+function atualizarContaProvisao(input) {
+  const idx = Number(input.dataset.idx);
+  const item = provisaoRateioTemp[idx];
+  if (!item) return;
+  if (input.dataset.campo === 'debito') item.debitoConta = input.value;
+  else item.creditoConta = input.value;
+}
+
+function salvarRegraProvisaoLinha(idx) {
+  const item = provisaoRateioTemp[idx];
+  if (!item || !grupoAtivo) return;
+  const debito = obterCodigoContaParaDominio(item.debitoConta || '');
+  const credito = obterCodigoContaParaDominio(item.creditoConta || '');
+  if (!debito || !credito) return;
+  item.debitoConta = debito;
+  item.creditoConta = credito;
+  deparaProvisao[grupoAtivo] = deparaProvisao[grupoAtivo] || {};
+  deparaProvisao[grupoAtivo][item.chave] = { debito, credito };
+  let aplicouOutras = false;
+  provisaoRateioTemp.forEach(outro => {
+    if (outro !== item && outro.chave === item.chave && (!outro.debitoConta || !outro.creditoConta)) {
+      outro.debitoConta = debito;
+      outro.creditoConta = credito;
+      aplicouOutras = true;
+    }
+  });
+  salvarStorage();
+  salvarBaseCompartilhada();
+  if (aplicouOutras) renderProvisaoRateio();
+}
+
+function aplicarRegrasSalvasProvisao() {
+  if (!grupoAtivo || !provisaoRateioTemp.length) return;
+  let aplicadas = 0;
+  provisaoRateioTemp.forEach(item => {
+    const regraSalva = encontrarRegraProvisao(item.forn, item.plano, item.tipoDoc, item.historico, item.escopo);
+    if (regraSalva && (!item.debitoConta || !item.creditoConta)) {
+      item.debitoConta = regraSalva.debito || item.debitoConta;
+      item.creditoConta = regraSalva.credito || item.creditoConta;
+      aplicadas++;
+    }
+  });
+  renderProvisaoRateio();
+  mostrarMsgProvisaoRateio(aplicadas > 0 ? `${aplicadas} linha(s) preenchida(s) com regras salvas.` : 'Nenhuma regra salva encontrada para as linhas pendentes.', aplicadas > 0 ? 'ok' : 'warn');
+}
+
 function montarLinhasDominioProvisaoRateio() {
   return provisaoRateioTemp.map(r => linhaDominio(
     r.data,
-    r.debitoSugerido,
-    r.credito,
+    obterCodigoContaParaDominio(r.debitoConta),
+    obterCodigoContaParaDominio(r.creditoConta),
     r.valor,
     r.complemento,
     r.empresa,
@@ -1258,6 +1341,11 @@ function exportarProvisaoRateio() {
   if (!provisaoRateioTemp.length) {
     mostrarMsgProvisaoRateio('Importe uma planilha de provisão antes de exportar.', 'warn');
     return;
+  }
+  const semCodigo = provisaoRateioTemp.filter(r => !r.debitoConta || !r.creditoConta).length;
+  if (semCodigo > 0) {
+    const continuar = confirm(`${semCodigo} linha(s) sem débito e/ou crédito preenchido. Exportar mesmo assim?`);
+    if (!continuar) return;
   }
   const linhas = montarLinhasDominioProvisaoRateio();
   if (linhas.length) linhas[0][6] = 1;
