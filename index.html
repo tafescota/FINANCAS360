@@ -473,6 +473,7 @@ let mostrarLancamentosConciliados = false;
 let mostrarPendenciasPreenchidas = false;
 let filtroPendenciasConciliacaoTemp = '';
 let timerFiltroPendenciasConciliacao = null;
+let selecaoFiltroPendenciasConciliacao = { start: 0, end: 0 };
 let pendenciasConciliacaoSelecionadas = new Set();
 let recebimentosRateioTemp = [];
 let infoRecebimentosRateioTemp = null;
@@ -2364,8 +2365,12 @@ function textoBuscaPendenciaConciliacao(item) {
 
 function atualizarFiltroPendenciasConciliacao(input) {
   filtroPendenciasConciliacaoTemp = input.value || '';
+  selecaoFiltroPendenciasConciliacao = {
+    start: input.selectionStart ?? filtroPendenciasConciliacaoTemp.length,
+    end: input.selectionEnd ?? filtroPendenciasConciliacaoTemp.length
+  };
   clearTimeout(timerFiltroPendenciasConciliacao);
-  timerFiltroPendenciasConciliacao = setTimeout(() => abrirModalPendenciasConciliacao(), 180);
+  timerFiltroPendenciasConciliacao = setTimeout(() => abrirModalPendenciasConciliacao(), 320);
 }
 
 function alternarPendenciaConciliacao(id, marcado) {
@@ -2420,7 +2425,7 @@ function abrirModalPendenciasConciliacao() {
   if (modalAnterior) modalAnterior.remove();
   const modal = document.createElement('div');
   modal.id = 'modal-pendencias-conciliacao';
-  modal.style.cssText = 'position:fixed;inset:0;background:rgba(15,23,42,0.55);display:flex;align-items:center;justify-content:center;z-index:9999;padding:24px';
+  modal.style.cssText = 'position:fixed;inset:0;background:rgba(15,23,42,0.55);display:flex;align-items:center;justify-content:center;z-index:9999;padding:10px';
   const saidasPendentes = conciliacaoItensTemp.filter(item => item.movimento === 'saida-pendente');
   const itensModal = conciliacaoItensTemp
     .filter(item => item.movimento !== 'saida-pendente')
@@ -2513,7 +2518,7 @@ function abrirModalPendenciasConciliacao() {
       <td>${campoAcao}</td>
     </tr>`;  }).join('');
   modal.innerHTML = `
-    <div style="background:var(--bg);border-radius:var(--radius);box-shadow:0 16px 48px rgba(0,0,0,0.25);width:min(1440px,98vw);max-height:88vh;display:flex;flex-direction:column">
+    <div style="background:var(--bg);border-radius:var(--radius);box-shadow:0 16px 48px rgba(0,0,0,0.25);width:min(1960px,calc(100vw - 28px));max-height:90vh;display:flex;flex-direction:column">
       <div style="padding:18px 22px;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between;gap:12px">
         <div>
           <h3 style="margin-bottom:2px">Preencher pendências da conciliação</h3>
@@ -2548,8 +2553,15 @@ function abrirModalPendenciasConciliacao() {
     </div>`;
   document.body.appendChild(modal);
   setTimeout(() => {
-    if (filtroPendenciasConciliacaoTemp) modal.querySelector('#filtro-pendencias-conciliacao')?.focus();
-    else modal.querySelector('input[data-conciliacao-modal-id]')?.focus();
+    const campoFiltro = modal.querySelector('#filtro-pendencias-conciliacao');
+    if (filtroPendenciasConciliacaoTemp && campoFiltro) {
+      campoFiltro.focus();
+      const posInicio = Math.min(selecaoFiltroPendenciasConciliacao.start ?? filtroPendenciasConciliacaoTemp.length, campoFiltro.value.length);
+      const posFim = Math.min(selecaoFiltroPendenciasConciliacao.end ?? posInicio, campoFiltro.value.length);
+      campoFiltro.setSelectionRange(posInicio, posFim);
+    } else {
+      modal.querySelector('input[data-conciliacao-modal-id]')?.focus();
+    }
   }, 0);
 }
 
@@ -4247,6 +4259,7 @@ iniciarSincronizacaoAutomatica();
 </script>
 </body>
 </html>
+
 
 
 
