@@ -1307,6 +1307,65 @@ input[type=search]:focus {
 }
 
 /* Detalhamento expansível das diferenças de conferência */
+.conciliacao-check-alert {
+  display: block;
+}
+
+.conciliacao-check-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 8px;
+}
+
+.conciliacao-check-head strong {
+  display: block;
+  margin-bottom: 2px;
+  font-size: 14px;
+}
+
+.conciliacao-check-head span:not(.conciliacao-check-status) {
+  display: block;
+  color: #64748b;
+  font-size: 12.5px;
+}
+
+.conciliacao-check-status {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 auto;
+  min-height: 30px;
+  padding: 6px 10px;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 800;
+  white-space: nowrap;
+}
+
+.conciliacao-check-status.ok {
+  background: #dcfce7;
+  color: #166534;
+}
+
+.conciliacao-check-status.warn {
+  background: #ffedd5;
+  color: #9a3412;
+}
+
+.conciliacao-check-totals {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 18px;
+  color: #475569;
+  font-size: 13px;
+}
+
+.conciliacao-diff-note {
+  margin: 8px 0 10px;
+}
+
 .conciliacao-diff-details {
   margin-top: 10px;
   padding-top: 8px;
@@ -1397,4 +1456,64 @@ input[type=search]:focus {
 .pendencias-conciliacao-table td:nth-child(3) .badge {
   max-width: 110px;
   white-space: normal;
+}
+
+/* Aproveitar largura total no modal de pendências */
+#modal-pendencias-conciliacao .table-wrap {
+  overflow-x: auto;
+}
+
+#modal-pendencias-conciliacao .pendencias-conciliacao-table {
+  min-width: 1760px;
+  table-layout: fixed;
+}
+
+#modal-pendencias-conciliacao .pendencias-conciliacao-table th,
+#modal-pendencias-conciliacao .pendencias-conciliacao-table td {
+  padding: 8px 10px;
+  overflow-wrap: normal;
+  word-break: normal;
+}
+
+#modal-pendencias-conciliacao .pendencias-conciliacao-table th:nth-child(1),
+#modal-pendencias-conciliacao .pendencias-conciliacao-table td:nth-child(1) { width: 34px; }
+#modal-pendencias-conciliacao .pendencias-conciliacao-table th:nth-child(2),
+#modal-pendencias-conciliacao .pendencias-conciliacao-table td:nth-child(2) { width: 98px; }
+#modal-pendencias-conciliacao .pendencias-conciliacao-table th:nth-child(3),
+#modal-pendencias-conciliacao .pendencias-conciliacao-table td:nth-child(3) { width: 120px; }
+#modal-pendencias-conciliacao .pendencias-conciliacao-table th:nth-child(4),
+#modal-pendencias-conciliacao .pendencias-conciliacao-table td:nth-child(4) { width: 145px; }
+#modal-pendencias-conciliacao .pendencias-conciliacao-table th:nth-child(5),
+#modal-pendencias-conciliacao .pendencias-conciliacao-table td:nth-child(5) { width: 145px; }
+#modal-pendencias-conciliacao .pendencias-conciliacao-table th:nth-child(6),
+#modal-pendencias-conciliacao .pendencias-conciliacao-table td:nth-child(6) { width: 300px; }
+#modal-pendencias-conciliacao .pendencias-conciliacao-table th:nth-child(7),
+#modal-pendencias-conciliacao .pendencias-conciliacao-table td:nth-child(7) { width: 160px; }
+#modal-pendencias-conciliacao .pendencias-conciliacao-table th:nth-child(8),
+#modal-pendencias-conciliacao .pendencias-conciliacao-table td:nth-child(8) { width: 430px; }
+#modal-pendencias-conciliacao .pendencias-conciliacao-table th:nth-child(9),
+#modal-pendencias-conciliacao .pendencias-conciliacao-table td:nth-child(9) { width: 95px; }
+#modal-pendencias-conciliacao .pendencias-conciliacao-table th:nth-child(10),
+#modal-pendencias-conciliacao .pendencias-conciliacao-table td:nth-child(10) { width: 110px; }
+#modal-pendencias-conciliacao .pendencias-conciliacao-table th:nth-child(11),
+#modal-pendencias-conciliacao .pendencias-conciliacao-table td:nth-child(11) { width: 190px; }
+
+#modal-pendencias-conciliacao .pendencias-conciliacao-table td:nth-child(6),
+#modal-pendencias-conciliacao .pendencias-conciliacao-table td:nth-child(8) {
+  line-height: 1.35;
+}
+
+#modal-pendencias-conciliacao .pendencias-conciliacao-table td:nth-child(6) .cell-main,
+#modal-pendencias-conciliacao .pendencias-conciliacao-table td:nth-child(8) {
+  overflow-wrap: normal;
+  word-break: normal;
+}
+
+#modal-pendencias-conciliacao .pendencia-orientacao {
+  max-width: 100%;
+  margin-bottom: 4px;
+}
+
+#modal-pendencias-conciliacao .historico-regra-label {
+  white-space: nowrap;
 }
