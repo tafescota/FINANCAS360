@@ -2502,8 +2502,8 @@ function abrirModalPendenciasConciliacao() {
   modal.style.cssText = 'position:fixed;inset:0;background:rgba(15,23,42,0.55);display:flex;align-items:center;justify-content:center;z-index:9999;padding:10px';
   const saidasPendentes = conciliacaoItensTemp.filter(item => item.movimento === 'saida-pendente');
   const itensModal = conciliacaoItensTemp
-    .filter(item => item.movimento !== 'saida-pendente')
     .filter(item => {
+      if (item.movimento === 'saida-pendente') return true;
       if (item.movimento === 'pagamento-pendente') return !vinculosPagamentoConciliacaoTemp[item.id];
       if (item.movimento === 'recebimento') return !obterCodigoContaParaDominio(codigosConciliacaoTemp[item.id]);
       if (item.movimento === 'numerario-rateio') return !obterCodigoContaParaDominio(codigosConciliacaoTemp[item.id]);
@@ -2542,6 +2542,7 @@ function abrirModalPendenciasConciliacao() {
       .slice(0, 20);
     const ehNumerarioPendencia = item.movimento === 'numerario-rateio';
     const ehRecebimentoPendencia = item.movimento === 'recebimento';
+    const ehSaidaPendente = item.movimento === 'saida-pendente';
     const naturezaConta = (item.naturezaNumerario || item.tipo || '').toString().toLowerCase();
     const contaAlvo = ehNumerarioPendencia
       ? `Numerários ${naturezaConta}`
@@ -2577,6 +2578,9 @@ function abrirModalPendenciasConciliacao() {
           </optgroup>
         </select>
         <div class="conciliacao-note" style="margin-top:4px">${mesmasSaidas.length} opção${mesmasSaidas.length !== 1 ? 'ões' : ''} com o mesmo valor de R$ ${fmtValor(item.total)}${saidasCentavos.length ? ` · ${saidasCentavos.length} provável${saidasCentavos.length !== 1 ? 'is' : ''} com diferença de centavos` : ''}</div>`
+      : ehSaidaPendente
+        ? `<span class="conciliacao-status warn">Sem pagamento correspondente</span>
+          <div class="conciliacao-note" style="margin-top:4px">Esta saída está no extrato, mas não existe pagamento pendente para amarrar. Confira se faltou importar algum relatório ou se o lançamento deve ser tratado manualmente.</div>`
       : `<input type="text" class="conta-autocomplete" data-conciliacao-modal-id="${escapeAttr(item.id)}" value="${escapeAttr(valor)}" placeholder="${escapeAttr(placeholderConta)}" oninput="atualizarCodigoConciliacaoModal(this); criarAutocompleteConta(this)" style="width:100%">`;
     const empresaCol = item.empresaBanco || item.empresa || '';
     const centroCol = item.centroCusto || item.empresaLancamento || '';
@@ -2589,11 +2593,13 @@ function abrirModalPendenciasConciliacao() {
     const fornecedorCol = ehNumerarioPendencia
       ? (item.pontaNumerario === 'EMPRESA DO BANCO' ? 'Numerários da empresa do banco' : 'Numerários do centro de custo')
       : (item.fornecedor || item.descricao || item.historico || '');
-    const planoCol = ehNumerarioPendencia ? contaAlvo : (item.plano || item.tipo || '');
+    const planoCol = ehNumerarioPendencia ? contaAlvo : ehSaidaPendente ? 'Pagamento não encontrado' : (item.plano || item.tipo || '');
     const orientacaoItem = ehNumerarioPendencia
       ? `Preencha ${contaAlvo}. Não é banco nem cliente.`
       : ehRecebimentoPendencia
         ? 'Preencha a conta do cliente/recebimento. O banco vem do extrato.'
+        : ehSaidaPendente
+          ? 'Saída do extrato sem pagamento correspondente.'
         : '';
     const historicoItem = ehRecebimentoPendencia
       ? `<div class="pendencia-orientacao">${escapeHtml(orientacaoItem)}</div><div class="historico-regra-label">Clique nas palavras da regra:</div>${renderPalavrasRecebimentoConciliacao(item)}`
@@ -2614,12 +2620,16 @@ function abrirModalPendenciasConciliacao() {
       <td style="text-align:right;white-space:nowrap">R$ ${fmtValor(item.total)}</td>
       <td>${campoAcao}</td>
     </tr>`;  }).join('');
+  const qtdSaidasNoModal = itensModal.filter(item => item.movimento === 'saida-pendente').length;
+  const textoAjudaModal = qtdSaidasNoModal
+    ? `${qtdSaidasNoModal} saída${qtdSaidasNoModal !== 1 ? 's' : ''} do extrato não encontrou${qtdSaidasNoModal !== 1 ? 'ram' : ''} pagamento correspondente. Confira se faltou importar relatório ou se precisa tratar manualmente.`
+    : 'As saídas pendentes aparecem como opções dos pagamentos.';
   modal.innerHTML = `
     <div style="background:var(--bg);border-radius:var(--radius);box-shadow:0 16px 48px rgba(0,0,0,0.25);width:min(1960px,calc(100vw - 28px));max-height:90vh;display:flex;flex-direction:column">
       <div style="padding:18px 22px;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between;gap:12px">
         <div>
           <h3 style="margin-bottom:2px">Preencher pendências da conciliação</h3>
-          <div class="conciliacao-note">${itensModal.length} item${itensModal.length !== 1 ? 's' : ''} visíve${itensModal.length !== 1 ? 'is' : 'l'} para revisar. As saídas pendentes aparecem como opções dos pagamentos.</div>
+          <div class="conciliacao-note">${itensModal.length} item${itensModal.length !== 1 ? 's' : ''} visíve${itensModal.length !== 1 ? 'is' : 'l'} para revisar. ${textoAjudaModal}</div>
         </div>
         <div style="display:flex;gap:8px;align-items:center">
           <button class="btn btn-sm" onclick="atualizarModalPendenciasConciliacao()">Atualizar pendências</button>
