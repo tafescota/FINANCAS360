@@ -2087,6 +2087,36 @@ function gerarSugestoesConciliacao(opcoes = {}) {
     }
   });
 
+  pagamentos.forEach(pag => {
+    if (sugestoesPorPagamento.has(pag.idx)) return;
+    const candidatos = movimentos
+      .map((mov, idxMov) => ({ mov, idxMov, movTexto: movimentoTextoConciliacao(mov) }))
+      .filter(({ mov, idxMov, movTexto }) => {
+        const doc = String(mov.documento || '').trim();
+        const diferencaCentavos = Math.abs(arredondarMoeda(pag.valor - Math.abs(mov.valor)));
+        return !usadosMov.has(idxMov)
+          && mesmaContaConciliacao(pag, mov)
+          && doc
+          && pag.numero === doc
+          && pag.dataKey === dataKey(mov.data)
+          && diferencaCentavos >= 0.01
+          && diferencaCentavos <= 0.10
+          && fornecedorBatePagamentoMovimento(pag, movTexto);
+      });
+    if (candidatos.length === 1) {
+      const diferenca = arredondarMoeda(pag.valor - Math.abs(candidatos[0].mov.valor));
+      usadosMov.add(candidatos[0].idxMov);
+      sugestoesPorPagamento.set(pag.idx, {
+        pag,
+        mov: candidatos[0].mov,
+        idxMov: candidatos[0].idxMov,
+        status: 'provável',
+        regra: 'Documento + data + diferença de centavos',
+        diferenca
+      });
+    }
+  });
+
   pagamentos.filter(p => !sugestoesPorPagamento.has(p.idx)).forEach(pag => {
     const candidatos = movimentos
       .map((mov, idxMov) => ({ mov, idxMov, movTexto: movimentoTextoConciliacao(mov) }))
@@ -2495,7 +2525,21 @@ function abrirModalPendenciasConciliacao() {
       && (item.movimento !== 'pagamento-pendente' || !item.conta || !saida.conta || normalizarTexto(item.conta) === normalizarTexto(saida.conta))
     );
     const mesmasSaidas = saidasDisponiveis.filter(saida => Math.abs(saida.total - item.total) < 0.01);
-    const outrasSaidas = saidasDisponiveis.filter(saida => Math.abs(saida.total - item.total) >= 0.01).slice(0, 20);
+    const saidasCentavos = item.movimento === 'pagamento-pendente'
+      ? saidasDisponiveis
+        .filter(saida => {
+          const diferenca = Math.abs(saida.total - item.total);
+          return diferenca >= 0.01
+            && diferenca <= 0.10
+            && item.data === saida.data
+            && (!item.historico || movimentoTextoConciliacao(saida).includes(normalizarTexto(item.historico)));
+        })
+        .slice(0, 8)
+      : [];
+    const idsCentavos = new Set(saidasCentavos.map(saida => String(saida.idxOriginal)));
+    const outrasSaidas = saidasDisponiveis
+      .filter(saida => Math.abs(saida.total - item.total) >= 0.01 && !idsCentavos.has(String(saida.idxOriginal)))
+      .slice(0, 20);
     const ehNumerarioPendencia = item.movimento === 'numerario-rateio';
     const ehRecebimentoPendencia = item.movimento === 'recebimento';
     const naturezaConta = (item.naturezaNumerario || item.tipo || '').toString().toLowerCase();
@@ -2517,13 +2561,22 @@ function abrirModalPendenciasConciliacao() {
             .map(saida => `<option value="${saida.idxOriginal}" ${String(vinculosPagamentoConciliacaoTemp[item.id] || '') === String(saida.idxOriginal) ? 'selected' : ''}>${escapeHtml(saida.data)} - R$ ${fmtValor(saida.total)} - ${escapeHtml(saida.historico)}</option>`)
             .join('')}
           </optgroup>
+          <optgroup label="Diferença de centavos / provável">
+          ${saidasCentavos
+            .map(saida => {
+              const diferenca = arredondarMoeda(saida.total - item.total);
+              const sinal = diferenca >= 0 ? '+' : '-';
+              return `<option value="${saida.idxOriginal}" ${String(vinculosPagamentoConciliacaoTemp[item.id] || '') === String(saida.idxOriginal) ? 'selected' : ''}>${escapeHtml(saida.data)} - R$ ${fmtValor(saida.total)} (${sinal} R$ ${fmtValor(Math.abs(diferenca))}) - ${escapeHtml(saida.historico)}</option>`;
+            })
+            .join('')}
+          </optgroup>
           <optgroup label="Outras saídas disponíveis">
           ${outrasSaidas
             .map(saida => `<option value="${saida.idxOriginal}" ${String(vinculosPagamentoConciliacaoTemp[item.id] || '') === String(saida.idxOriginal) ? 'selected' : ''}>${escapeHtml(saida.data)} - R$ ${fmtValor(saida.total)} - ${escapeHtml(saida.historico)}</option>`)
             .join('')}
           </optgroup>
         </select>
-        <div class="conciliacao-note" style="margin-top:4px">${mesmasSaidas.length} opção${mesmasSaidas.length !== 1 ? 'ões' : ''} com o mesmo valor de R$ ${fmtValor(item.total)}</div>`
+        <div class="conciliacao-note" style="margin-top:4px">${mesmasSaidas.length} opção${mesmasSaidas.length !== 1 ? 'ões' : ''} com o mesmo valor de R$ ${fmtValor(item.total)}${saidasCentavos.length ? ` · ${saidasCentavos.length} provável${saidasCentavos.length !== 1 ? 'is' : ''} com diferença de centavos` : ''}</div>`
       : `<input type="text" class="conta-autocomplete" data-conciliacao-modal-id="${escapeAttr(item.id)}" value="${escapeAttr(valor)}" placeholder="${escapeAttr(placeholderConta)}" oninput="atualizarCodigoConciliacaoModal(this); criarAutocompleteConta(this)" style="width:100%">`;
     const empresaCol = item.empresaBanco || item.empresa || '';
     const centroCol = item.centroCusto || item.empresaLancamento || '';
