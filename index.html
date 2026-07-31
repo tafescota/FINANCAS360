@@ -1240,7 +1240,7 @@ function htmlDetalheDiferencaConferencia(pagamentos, saidas) {
       <td title="${escapeAttr(item.exemplosExtrato.join(' | '))}">${escapeHtml(item.exemplosExtrato.join(' | '))}</td>
     </tr>`).join('');
   const avisoRateio = linhasImportadasModo === 'rateio'
-    ? '<div class="conciliacao-note conciliacao-diff-note">No rateio, descontos/acréscimos já entram como linhas próprias do relatório. Linhas negativas reduzem o total conciliável do pagamento.</div>'
+    ? '<div class="conciliacao-note conciliacao-diff-note"><strong>Rateio:</strong> descontos/acréscimos são identificados pelas linhas negativas do próprio relatório e reduzem o total conciliável do pagamento. Linhas com valor exatamente R$ 0,00 são ignoradas na exportação.</div>'
     : '';
   return `<details class="conciliacao-diff-details">
     <summary>Ver diferença por dia</summary>
@@ -3894,6 +3894,7 @@ function gerarLancamentos(dados, regras) {
     const linhaRateioNegativa = !!r.__rateio && valorLiq < 0;
     const intercompanyRateio = rateioIntercompanyLinha(r);
     const valorLancamento = linhaRateioNegativa ? Math.abs(valorLiq) : valorLiq;
+    if (valorLancamento === 0) return;
     const complemento = [forn, tipoDoc, num, plano, historico].filter(Boolean).join(' - ');
     const complementoIntercompany = [complemento, 'TRANSFERENCIA DE NUMERARIOS'].filter(Boolean).join(' - ');
     const tipoRateioAtual = tipoRateioLinha(r);
