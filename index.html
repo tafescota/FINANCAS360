@@ -3573,9 +3573,9 @@ function renderLinhaAjustePar(linha) {
   const chavesParEncoded = encodeURIComponent(JSON.stringify(chavesPar));
   const selecionado = chavesPar.length > 0 && chavesPar.every(k => selecionadasLote.has(k));
   const inputAjuste = (item, ponta, placeholder) => item
-    ? `<label style="display:grid;gap:4px;font-size:11px;font-weight:800;color:var(--text2);text-transform:uppercase;letter-spacing:.04em">
-        ${escapeHtml(ponta)}
-        <input type="text" class="conta-autocomplete" placeholder="${escapeAttr(placeholder)}" value="${escapeAttr(codigosTemp[item.chave] || '')}" data-chave="${escapeAttr(item.chave)}" oninput="atualizarCodigoNovaChave(this); criarAutocompleteConta(this)" style="width:100%">
+    ? `<label class="ajuste-par-field">
+        <span>${escapeHtml(ponta)}</span>
+        <input type="text" class="conta-autocomplete" placeholder="${escapeAttr(placeholder)}" value="${escapeAttr(codigosTemp[item.chave] || '')}" data-chave="${escapeAttr(item.chave)}" oninput="atualizarCodigoNovaChave(this); criarAutocompleteConta(this)">
       </label>`
     : '';
   return `<tr class="ajuste-par-row">
@@ -3590,11 +3590,12 @@ function renderLinhaAjustePar(linha) {
     </td>
     <td title="${escapeAttr([tipoRateioTitulo, tipoRateioSub].filter(Boolean).join(' - '))}" style="color:var(--text2)">${tipoRateioTitulo ? `<span class="badge ${tipoRateio === 'PROPRIO' ? 'badge-blue' : ''}">${escapeHtml(tipoRateioTitulo)}</span>${tipoRateioSub ? `<div class="cell-subtle">${escapeHtml(tipoRateioSub)}</div>` : ''}` : ''}</td>
     <td title="${escapeAttr(infoDoc.numero || '')}" style="color:var(--text2)">${escapeHtml(infoDoc.numero || '')}</td>
-    <td title="${escapeAttr(linha.ajuste)}" style="color:var(--text2)"><span class="tipo-ajuste-badge">${escapeHtml(linha.ajuste)}</span></td>
+    <td title="${escapeAttr(linha.ajuste + ' - débito/crédito')}" style="color:var(--text2)"><span class="tipo-ajuste-badge tipo-ajuste-dc">D/C</span></td>
     <td>
       <div class="ajuste-par-inputs">
-        ${inputAjuste(linha.debito, 'Débito', 'Conta de débito')}
-        ${inputAjuste(linha.credito, 'Crédito', 'Conta de crédito')}
+        ${inputAjuste(linha.debito, 'D', 'Débito')}
+        <span class="ajuste-par-separador">/</span>
+        ${inputAjuste(linha.credito, 'C', 'Crédito')}
       </div>
     </td>
   </tr>`;
