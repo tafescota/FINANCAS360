@@ -325,10 +325,24 @@
       <button class="btn" onclick="aplicarRegrasSalvasProvisao()">🔁 Reaplicar regras salvas</button>
       <button class="btn" onclick="limparProvisaoRateio()">Limpar provisão</button>
     </div>
+    <div id="lote-provisao-rateio" class="card" style="display:none;margin-bottom:16px">
+      <div class="metric-label" style="margin-bottom:8px">Pesquisar e aplicar em lote</div>
+      <input type="search" id="filtro-provisao" placeholder="Filtrar por fornecedor, plano, histórico, documento, empresa..." oninput="renderProvisaoRateio()" style="margin-bottom:10px">
+      <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
+        <label style="display:flex;align-items:center;gap:6px;font-size:12.5px;color:var(--text2)"><input type="checkbox" id="chk-todas-provisao" onchange="alternarTodasVisiveisProvisao(this.checked)"> Selecionar todas filtradas</label>
+        <span id="contador-selecao-provisao" class="metric-label">0 selecionada(s)</span>
+      </div>
+      <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:10px">
+        <input type="text" id="lote-debito-provisao" class="conta-autocomplete" placeholder="Débito para aplicar nas selecionadas" oninput="criarAutocompleteConta(this)" style="width:260px">
+        <input type="text" id="lote-credito-provisao" class="conta-autocomplete" placeholder="Crédito para aplicar nas selecionadas" oninput="criarAutocompleteConta(this)" style="width:260px">
+        <button class="btn btn-sm btn-primary" onclick="aplicarContasLoteProvisao()">Aplicar às selecionadas</button>
+        <button class="btn btn-sm" onclick="limparSelecaoProvisao()">Limpar seleção</button>
+      </div>
+    </div>
     <div class="table-wrap table-scroll" id="preview-provisao-rateio" style="display:none;margin-bottom:16px">
       <table>
         <thead>
-          <tr><th>Emissão</th><th>Débito</th><th>Crédito</th><th style="text-align:right">Valor</th><th>Empresa</th><th>Fornecedor</th><th>Documento</th><th>Complemento</th></tr>
+          <tr><th></th><th>Emissão</th><th>Débito</th><th>Crédito</th><th style="text-align:right">Valor</th><th>Empresa</th><th>Fornecedor</th><th>Documento</th><th>Complemento</th></tr>
         </thead>
         <tbody id="tbody-provisao-rateio"></tbody>
       </table>
@@ -517,6 +531,7 @@ let recebimentosRateioTemp = [];
 let infoRecebimentosRateioTemp = null;
 let provisaoRateioTemp = [];
 let infoProvisaoRateioTemp = null;
+let provisaoSelecionadas = new Set();
 
 const COLS = { TIPO:0, NUMERO:1, PARCELA:2, EMPRESA:3, FORNECEDOR:4, EMISSAO:5, VENCIMENTO:6, LIQUIDACAO:7, VALOR_BRUTO:8, COMPETENCIA:9, PLANO:10, CC:11, ACRESCIMO:12, VALOR_LIQ:13, CONTA:14, MEIO_PAG:15, TIPO_DOC:16, APROVADA:17, STATUS:18, HISTORICO:19 };
 
@@ -1227,8 +1242,30 @@ function mostrarMsgProvisaoRateio(texto, tipo = 'ok') {
 function limparProvisaoRateio() {
   provisaoRateioTemp = [];
   infoProvisaoRateioTemp = null;
+  provisaoSelecionadas.clear();
   renderProvisaoRateio();
   mostrarMsgProvisaoRateio('Provisão limpa nesta sessão.', 'ok');
+}
+
+function textoBuscaProvisao(r) {
+  return normalizarTexto([r.fornecedor, r.plano, r.documento, r.historico, r.complemento, r.empresa].filter(Boolean).join(' '));
+}
+
+function obterProvisaoFiltradas() {
+  const termo = normalizarTexto(document.getElementById('filtro-provisao')?.value || '');
+  return provisaoRateioTemp
+    .map((r, i) => ({ r, i }))
+    .filter(({ r }) => !termo || textoBuscaProvisao(r).includes(termo));
+}
+
+function atualizarContadorSelecaoProvisao() {
+  const contador = document.getElementById('contador-selecao-provisao');
+  if (contador) contador.textContent = `${provisaoSelecionadas.size} selecionada(s)`;
+  const chkTodas = document.getElementById('chk-todas-provisao');
+  if (chkTodas) {
+    const visiveis = obterProvisaoFiltradas();
+    chkTodas.checked = visiveis.length > 0 && visiveis.every(({ i }) => provisaoSelecionadas.has(i));
+  }
 }
 
 function renderProvisaoRateio() {
@@ -1236,18 +1273,21 @@ function renderProvisaoRateio() {
   if (titulo) titulo.textContent = 'Provisão por rateio — ' + (grupoAtivo || '');
   const resumo = document.getElementById('resumo-provisao-rateio');
   const acoes = document.getElementById('acoes-provisao-rateio');
+  const lote = document.getElementById('lote-provisao-rateio');
   const preview = document.getElementById('preview-provisao-rateio');
   const tbody = document.getElementById('tbody-provisao-rateio');
   if (!resumo || !acoes || !preview || !tbody) return;
   if (modoImportacaoDoGrupo(grupoAtivo) !== 'rateio') {
     resumo.innerHTML = `<div class="alert alert-warn">Esta tela é usada somente para grupos configurados como Rateio de Títulos.</div>`;
     acoes.style.display = 'none';
+    if (lote) lote.style.display = 'none';
     preview.style.display = 'none';
     return;
   }
   if (provisaoRateioTemp.length === 0) {
     resumo.innerHTML = `<div class="card" style="margin-bottom:16px"><div class="empty">Nenhuma provisão importada nesta sessão.</div></div>`;
     acoes.style.display = 'none';
+    if (lote) lote.style.display = 'none';
     preview.style.display = 'none';
     return;
   }
@@ -1264,9 +1304,12 @@ function renderProvisaoRateio() {
     <div class="conciliacao-note" style="margin-bottom:14px">Arquivos: ${escapeHtml((infoProvisaoRateioTemp?.arquivos || []).join(', '))}</div>
   `;
   acoes.style.display = 'flex';
+  if (lote) lote.style.display = '';
   preview.style.display = '';
-  tbody.innerHTML = provisaoRateioTemp.slice(0, 250).map((r, i) => `
+  const visiveis = obterProvisaoFiltradas();
+  tbody.innerHTML = visiveis.slice(0, 250).map(({ r, i }) => `
     <tr class="${(!r.debitoConta || !r.creditoConta) ? 'sem-codigo' : ''}">
+      <td><input type="checkbox" ${provisaoSelecionadas.has(i) ? 'checked' : ''} onchange="alternarSelecionadaProvisao(${i}, this.checked)"></td>
       <td style="white-space:nowrap">${escapeHtml(r.data)}</td>
       <td><input type="text" class="conta-autocomplete" style="width:110px" placeholder="${escapeAttr(r.debitoSugerido || 'Débito')}" value="${escapeAttr(r.debitoConta || '')}" data-idx="${i}" data-campo="debito" oninput="atualizarContaProvisao(this); criarAutocompleteConta(this)" onblur="salvarRegraProvisaoLinha(${i})"></td>
       <td><input type="text" class="conta-autocomplete" style="width:110px" placeholder="Crédito" value="${escapeAttr(r.creditoConta || '')}" data-idx="${i}" data-campo="credito" oninput="atualizarContaProvisao(this); criarAutocompleteConta(this)" onblur="salvarRegraProvisaoLinha(${i})"></td>
@@ -1277,6 +1320,7 @@ function renderProvisaoRateio() {
       <td title="${escapeAttr(r.complemento)}">${escapeHtml(r.complemento)}</td>
     </tr>
   `).join('');
+  atualizarContadorSelecaoProvisao();
 }
 
 function atualizarContaProvisao(input) {
@@ -1323,6 +1367,57 @@ function aplicarRegrasSalvasProvisao() {
   });
   renderProvisaoRateio();
   mostrarMsgProvisaoRateio(aplicadas > 0 ? `${aplicadas} linha(s) preenchida(s) com regras salvas.` : 'Nenhuma regra salva encontrada para as linhas pendentes.', aplicadas > 0 ? 'ok' : 'warn');
+}
+
+function alternarSelecionadaProvisao(idx, marcado) {
+  if (marcado) provisaoSelecionadas.add(idx); else provisaoSelecionadas.delete(idx);
+  atualizarContadorSelecaoProvisao();
+}
+
+function alternarTodasVisiveisProvisao(checked) {
+  obterProvisaoFiltradas().forEach(({ i }) => {
+    if (checked) provisaoSelecionadas.add(i); else provisaoSelecionadas.delete(i);
+  });
+  renderProvisaoRateio();
+}
+
+function limparSelecaoProvisao() {
+  provisaoSelecionadas.clear();
+  renderProvisaoRateio();
+}
+
+function aplicarContasLoteProvisao() {
+  if (!provisaoSelecionadas.size) {
+    mostrarMsgProvisaoRateio('Selecione ao menos uma linha (use o filtro e marque as caixinhas) antes de aplicar.', 'warn');
+    return;
+  }
+  const debitoInput = document.getElementById('lote-debito-provisao');
+  const creditoInput = document.getElementById('lote-credito-provisao');
+  const debito = obterCodigoContaParaDominio(debitoInput?.value || '');
+  const credito = obterCodigoContaParaDominio(creditoInput?.value || '');
+  if (!debito && !credito) {
+    mostrarMsgProvisaoRateio('Informe ao menos a conta de débito ou de crédito para aplicar.', 'warn');
+    return;
+  }
+  let aplicadas = 0;
+  provisaoSelecionadas.forEach(idx => {
+    const item = provisaoRateioTemp[idx];
+    if (!item) return;
+    if (debito) item.debitoConta = debito;
+    if (credito) item.creditoConta = credito;
+    if (item.debitoConta && item.creditoConta && grupoAtivo) {
+      deparaProvisao[grupoAtivo] = deparaProvisao[grupoAtivo] || {};
+      deparaProvisao[grupoAtivo][item.chave] = { debito: item.debitoConta, credito: item.creditoConta };
+    }
+    aplicadas++;
+  });
+  salvarStorage();
+  salvarBaseCompartilhada();
+  if (debitoInput) debitoInput.value = '';
+  if (creditoInput) creditoInput.value = '';
+  provisaoSelecionadas.clear();
+  renderProvisaoRateio();
+  mostrarMsgProvisaoRateio(`Conta aplicada a ${aplicadas} linha(s).`, 'ok');
 }
 
 function montarLinhasDominioProvisaoRateio() {
