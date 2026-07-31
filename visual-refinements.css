@@ -1136,7 +1136,7 @@ input[type=search]:focus {
 /* Refinamento da tela de novas combinações: tabela mais compacta e legível */
 #tela-novas-chaves .container {
   max-width: none;
-  width: min(1500px, calc(100vw - 44px));
+  width: calc(100vw - 44px);
 }
 
 #tela-novas-chaves .bulk-tool-top {
@@ -1156,15 +1156,15 @@ input[type=search]:focus {
 }
 
 #tela-novas-chaves .table-novas-wrap {
-  overflow-x: hidden;
+  overflow-x: auto;
   max-height: calc(100vh - 310px);
 }
 
 #tela-novas-chaves .table-novas {
   table-layout: fixed;
   width: 100%;
-  min-width: 0;
-  font-size: 11.5px;
+  min-width: 1680px;
+  font-size: 11px;
 }
 
 #tela-novas-chaves .table-novas th,
@@ -1176,23 +1176,23 @@ input[type=search]:focus {
 #tela-novas-chaves .table-novas th:nth-child(1),
 #tela-novas-chaves .table-novas td:nth-child(1) { width: 34px; }
 #tela-novas-chaves .table-novas th:nth-child(2),
-#tela-novas-chaves .table-novas td:nth-child(2) { width: 9%; }
+#tela-novas-chaves .table-novas td:nth-child(2) { width: 8%; }
 #tela-novas-chaves .table-novas th:nth-child(3),
-#tela-novas-chaves .table-novas td:nth-child(3) { width: 10%; }
+#tela-novas-chaves .table-novas td:nth-child(3) { width: 9%; }
 #tela-novas-chaves .table-novas th:nth-child(4),
 #tela-novas-chaves .table-novas td:nth-child(4) { width: 15%; }
 #tela-novas-chaves .table-novas th:nth-child(5),
-#tela-novas-chaves .table-novas td:nth-child(5) { width: 16%; }
+#tela-novas-chaves .table-novas td:nth-child(5) { width: 14%; }
 #tela-novas-chaves .table-novas th:nth-child(6),
-#tela-novas-chaves .table-novas td:nth-child(6) { width: 23%; }
+#tela-novas-chaves .table-novas td:nth-child(6) { width: 19%; }
 #tela-novas-chaves .table-novas th:nth-child(7),
-#tela-novas-chaves .table-novas td:nth-child(7) { width: 88px; }
+#tela-novas-chaves .table-novas td:nth-child(7) { width: 82px; }
 #tela-novas-chaves .table-novas th:nth-child(8),
-#tela-novas-chaves .table-novas td:nth-child(8) { width: 76px; }
+#tela-novas-chaves .table-novas td:nth-child(8) { width: 66px; }
 #tela-novas-chaves .table-novas th:nth-child(9),
-#tela-novas-chaves .table-novas td:nth-child(9) { width: 90px; }
+#tela-novas-chaves .table-novas td:nth-child(9) { width: 82px; }
 #tela-novas-chaves .table-novas th:nth-child(10),
-#tela-novas-chaves .table-novas td:nth-child(10) { width: 154px; }
+#tela-novas-chaves .table-novas td:nth-child(10) { width: 310px; }
 
 #tela-novas-chaves .table-novas td:nth-child(2),
 #tela-novas-chaves .table-novas td:nth-child(3),
@@ -1239,6 +1239,27 @@ input[type=search]:focus {
   padding-left: 8px;
   padding-right: 8px;
   font-size: 11.5px;
+}
+
+#tela-novas-chaves .tipo-ajuste-badge {
+  max-width: 74px;
+  padding: 3px 7px;
+  font-size: 9.5px;
+  line-height: 1.15;
+  white-space: normal;
+  overflow-wrap: anywhere;
+  text-align: center;
+}
+
+#tela-novas-chaves .ajuste-par-inputs {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: 8px;
+  align-items: end;
+}
+
+#tela-novas-chaves .ajuste-par-inputs label {
+  min-width: 0;
 }
 
 @media (max-width: 980px) {
