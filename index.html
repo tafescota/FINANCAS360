@@ -300,6 +300,40 @@
     <input type="file" id="file-input-plano" accept=".xlsx,.xls" style="display:none" onchange="onFileChangePlano(event)">
   </div>
 
+  <!-- TELA PROVISAO RATEIO -->
+  <div class="tela" id="tela-provisao-rateio">
+    <div class="section-header">
+      <button class="btn btn-sm" onclick="voltarTela()">← Voltar</button>
+      <h2 id="titulo-provisao-rateio">Provisão por rateio</h2>
+    </div>
+    <div id="msg-provisao-rateio"></div>
+    <div class="card" style="margin-bottom:16px">
+      <div class="metric-label" style="margin-bottom:8px">Módulo isolado de provisão</div>
+      <p class="conciliacao-note" style="margin-bottom:14px">
+        Use para importar o relatório de rateio e gerar uma planilha no modelo Domínio para provisão. Esta tela não altera de-para, conciliação, pagamentos ou regras salvas.
+      </p>
+      <div class="drop-area" id="drop-area-provisao" onclick="document.getElementById('file-input-provisao-rateio').click()" ondragover="dragOver(event)" ondragleave="dragLeave(event)" ondrop="onDropProvisaoRateio(event)">
+        <div class="drop-icon">📄</div>
+        <div class="drop-title">Arraste a planilha de provisão aqui ou clique para selecionar</div>
+        <div class="drop-sub">Arquivo no padrão Rateio de Títulos (.xlsx, .xlsm ou .xls)</div>
+      </div>
+      <input type="file" id="file-input-provisao-rateio" accept=".xlsx,.xlsm,.xls" multiple style="display:none" onchange="onFileChangeProvisaoRateio(event)">
+    </div>
+    <div id="resumo-provisao-rateio"></div>
+    <div id="acoes-provisao-rateio" style="display:none;gap:10px;flex-wrap:wrap;margin:0 0 16px">
+      <button class="btn btn-blue" onclick="exportarProvisaoRateio()">⬇ Exportar provisão Domínio (.xlsx)</button>
+      <button class="btn" onclick="limparProvisaoRateio()">Limpar provisão</button>
+    </div>
+    <div class="table-wrap table-scroll" id="preview-provisao-rateio" style="display:none;margin-bottom:16px">
+      <table>
+        <thead>
+          <tr><th>Emissão</th><th>Débito sugerido</th><th>Crédito</th><th style="text-align:right">Valor</th><th>Empresa</th><th>Fornecedor</th><th>Documento</th><th>Complemento</th></tr>
+        </thead>
+        <tbody id="tbody-provisao-rateio"></tbody>
+      </table>
+    </div>
+  </div>
+
   <!-- TELA NOVAS CHAVES -->
   <div class="tela" id="tela-novas-chaves">
     <div class="section-header">
@@ -478,6 +512,8 @@ let selecaoFiltroPendenciasConciliacao = { start: 0, end: 0 };
 let pendenciasConciliacaoSelecionadas = new Set();
 let recebimentosRateioTemp = [];
 let infoRecebimentosRateioTemp = null;
+let provisaoRateioTemp = [];
+let infoProvisaoRateioTemp = null;
 
 const COLS = { TIPO:0, NUMERO:1, PARCELA:2, EMPRESA:3, FORNECEDOR:4, EMISSAO:5, VENCIMENTO:6, LIQUIDACAO:7, VALOR_BRUTO:8, COMPETENCIA:9, PLANO:10, CC:11, ACRESCIMO:12, VALOR_LIQ:13, CONTA:14, MEIO_PAG:15, TIPO_DOC:16, APROVADA:17, STATUS:18, HISTORICO:19 };
 
@@ -868,6 +904,7 @@ function mostrarTela(id, registrarHistorico = true) {
   if (id === 'tela-plano-contas') renderResumoPlanoContas();
   if (id === 'tela-conciliacao-bancaria') renderConciliacaoBancaria();
   if (id === 'tela-resultado') renderResumoConferenciaResultado();
+  if (id === 'tela-provisao-rateio') renderProvisaoRateio();
   if (id === 'tela-importar' && grupoAtivo) {
     document.getElementById('titulo-importar').textContent = 'Importar planilha — ' + grupoAtivo;
     selecionarModoImportacaoPagamentos(modoImportacaoDoGrupo(grupoAtivo));
@@ -1079,6 +1116,156 @@ function linhasPlanilhaRateio(wb) {
     .filter(r => r && r[col.tipo] && String(r[col.tipo]).trim() !== '')
     .map(r => normalizarLinhaRateio(r, col));
   return { dados, nomePlanilha };
+}
+
+function linhaProvisaoRateio(r, arquivoOrigem = '') {
+  const forn = limparTextoECD(r[COLS.FORNECEDOR]);
+  const plano = limparTextoECD(r[COLS.PLANO]);
+  const tipoDoc = limparTextoECD(r[COLS.TIPO_DOC]);
+  const infoDoc = separarNumeroDoHistorico(tipoDoc, r[COLS.NUMERO], r[COLS.HISTORICO]);
+  const historico = infoDoc.historico;
+  const numero = infoDoc.numero;
+  const valor = Math.abs(arredondarMoeda(r[COLS.VALOR_LIQ] || r[COLS.VALOR_BRUTO]));
+  if (!valor) return null;
+  const empresa = centroCustoLinha(r) || empresaLancamentoLinha(r) || empresaOrigemLinha(r);
+  const complemento = [forn, tipoDoc, numero, plano, historico].filter(Boolean).join(' - ');
+  return {
+    data: fmtDate(r[COLS.EMISSAO]),
+    debitoSugerido: plano,
+    credito: '',
+    valor,
+    empresa,
+    fornecedor: forn,
+    documento: tipoDoc,
+    numero,
+    complemento,
+    arquivoOrigem
+  };
+}
+
+async function processarProvisaoRateio(files) {
+  if (!grupoAtivo) {
+    mostrarMsgProvisaoRateio('Selecione um grupo antes de importar a provisão.', 'warn');
+    return;
+  }
+  if (modoImportacaoDoGrupo(grupoAtivo) !== 'rateio') {
+    mostrarMsgProvisaoRateio('A provisão por rateio fica disponível apenas para grupos em Rateio de Títulos.', 'warn');
+    return;
+  }
+  try {
+    const resultados = await Promise.all(files.map(async file => {
+      const wb = await lerWorkbookArquivoAsync(file);
+      const leitura = linhasPlanilhaRateio(wb);
+      return {
+        arquivo: file.name,
+        linhas: leitura.dados.map(r => linhaProvisaoRateio(r, file.name)).filter(Boolean)
+      };
+    }));
+    provisaoRateioTemp = resultados.flatMap(r => r.linhas);
+    infoProvisaoRateioTemp = { arquivos: resultados.map(r => r.arquivo) };
+    renderProvisaoRateio();
+    mostrarMsgProvisaoRateio(`${provisaoRateioTemp.length} linhas de provisão carregadas.`, 'ok');
+  } catch (err) {
+    mostrarMsgProvisaoRateio('Erro ao importar provisão: ' + err.message, 'warn');
+  }
+}
+
+function onFileChangeProvisaoRateio(e) {
+  const files = Array.from(e.target.files || []);
+  e.target.value = '';
+  if (files.length > 0) processarProvisaoRateio(files);
+}
+
+function onDropProvisaoRateio(e) {
+  e.preventDefault();
+  e.currentTarget.classList.remove('drag');
+  const files = Array.from(e.dataTransfer.files || []);
+  if (files.length > 0) processarProvisaoRateio(files);
+}
+
+function mostrarMsgProvisaoRateio(texto, tipo = 'ok') {
+  const el = document.getElementById('msg-provisao-rateio');
+  if (!el) return;
+  el.innerHTML = `<div class="alert alert-${tipo}" style="margin-bottom:16px">${escapeHtml(texto)}</div>`;
+}
+
+function limparProvisaoRateio() {
+  provisaoRateioTemp = [];
+  infoProvisaoRateioTemp = null;
+  renderProvisaoRateio();
+  mostrarMsgProvisaoRateio('Provisão limpa nesta sessão.', 'ok');
+}
+
+function renderProvisaoRateio() {
+  const titulo = document.getElementById('titulo-provisao-rateio');
+  if (titulo) titulo.textContent = 'Provisão por rateio — ' + (grupoAtivo || '');
+  const resumo = document.getElementById('resumo-provisao-rateio');
+  const acoes = document.getElementById('acoes-provisao-rateio');
+  const preview = document.getElementById('preview-provisao-rateio');
+  const tbody = document.getElementById('tbody-provisao-rateio');
+  if (!resumo || !acoes || !preview || !tbody) return;
+  if (modoImportacaoDoGrupo(grupoAtivo) !== 'rateio') {
+    resumo.innerHTML = `<div class="alert alert-warn">Esta tela é usada somente para grupos configurados como Rateio de Títulos.</div>`;
+    acoes.style.display = 'none';
+    preview.style.display = 'none';
+    return;
+  }
+  if (provisaoRateioTemp.length === 0) {
+    resumo.innerHTML = `<div class="card" style="margin-bottom:16px"><div class="empty">Nenhuma provisão importada nesta sessão.</div></div>`;
+    acoes.style.display = 'none';
+    preview.style.display = 'none';
+    return;
+  }
+  const total = provisaoRateioTemp.reduce((s, r) => s + r.valor, 0);
+  const empresas = new Set(provisaoRateioTemp.map(r => r.empresa).filter(Boolean));
+  resumo.innerHTML = `
+    <div class="conciliacao-grid">
+      <div class="metric"><div class="metric-label">Linhas de provisão</div><div class="metric-value">${provisaoRateioTemp.length}</div></div>
+      <div class="metric"><div class="metric-label">Total</div><div class="metric-value" style="font-size:18px">R$ ${fmtValor(total)}</div></div>
+      <div class="metric"><div class="metric-label">Empresas / centros</div><div class="metric-value" style="font-size:18px">${empresas.size}</div></div>
+    </div>
+    <div class="conciliacao-note" style="margin-bottom:14px">Arquivos: ${escapeHtml((infoProvisaoRateioTemp?.arquivos || []).join(', '))}</div>
+  `;
+  acoes.style.display = 'flex';
+  preview.style.display = '';
+  tbody.innerHTML = provisaoRateioTemp.slice(0, 250).map(r => `
+    <tr>
+      <td>${escapeHtml(r.data)}</td>
+      <td><strong>${escapeHtml(r.debitoSugerido || '')}</strong></td>
+      <td class="cell-subtle">preencher</td>
+      <td style="text-align:right;white-space:nowrap">R$ ${fmtValor(r.valor)}</td>
+      <td>${escapeHtml(r.empresa || '')}</td>
+      <td>${escapeHtml(r.fornecedor || '')}</td>
+      <td>${escapeHtml([r.documento, r.numero].filter(Boolean).join(' - '))}</td>
+      <td title="${escapeAttr(r.complemento)}">${escapeHtml(r.complemento)}</td>
+    </tr>
+  `).join('');
+}
+
+function montarLinhasDominioProvisaoRateio() {
+  return provisaoRateioTemp.map(r => linhaDominio(
+    r.data,
+    r.debitoSugerido,
+    r.credito,
+    r.valor,
+    r.complemento,
+    r.empresa,
+    ''
+  ));
+}
+
+function exportarProvisaoRateio() {
+  if (!provisaoRateioTemp.length) {
+    mostrarMsgProvisaoRateio('Importe uma planilha de provisão antes de exportar.', 'warn');
+    return;
+  }
+  const linhas = montarLinhasDominioProvisaoRateio();
+  if (linhas.length) linhas[0][6] = 1;
+  const ws = XLSX.utils.aoa_to_sheet([CABECALHO_DOMINIO, ...linhas]);
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, 'Provisão Rateio');
+  const data = new Date().toLocaleDateString('pt-BR').replace(/\//g,'-');
+  XLSX.writeFile(wb, `Dominio_Provisao_Rateio_${grupoAtivo}_${data}.xlsx`);
 }
 
 function prepararPagamentosImportados(dados, abrirTelaPendencias = true) {
@@ -3004,7 +3191,7 @@ function renderGrupos() {
     return;
   }
 
-  el.innerHTML = `<div class="grupo-lista">${itens.map(({ g, qtd, qtdRecebimentos, qtdContas, isAtivo, modoLabel }) => `
+  el.innerHTML = `<div class="grupo-lista">${itens.map(({ g, qtd, qtdRecebimentos, qtdContas, isAtivo, modoGrupo, modoLabel }) => `
     <div class="grupo-row ${isAtivo ? 'ativo' : ''}">
       <div class="grupo-row-main">
         <div class="grupo-nome"><a href="#" class="grupo-nome-editavel" title="Editar nome e formato do grupo" onclick="event.preventDefault(); editarGrupoCadastro('${escapeAttr(g)}')">${escapeHtml(g)}</a> ${isAtivo ? '<span class="badge badge-blue">ativo</span>' : ''}</div>
@@ -3016,6 +3203,7 @@ function renderGrupos() {
           <button class="btn btn-sm" onclick="mostrarTela('tela-regras')">📋 Regras</button>
           <button class="btn btn-sm" onclick="mostrarTela('tela-plano-contas')">📑 Plano de Contas</button>
           <button class="btn btn-sm btn-blue" onclick="mostrarTela('tela-importar')">⬆ Importar planilha</button>
+          ${modoGrupo === 'rateio' ? `<button class="btn btn-sm" onclick="mostrarTela('tela-provisao-rateio')">Provisão</button>` : ''}
         ` : ''}
         <button class="btn btn-sm btn-danger" onclick="excluirGrupo('${g}')">🗑</button>
       </div>
