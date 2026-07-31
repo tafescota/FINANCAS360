@@ -4025,6 +4025,8 @@ function gerarLancamentos(dados, regras) {
     const tipoAjusteRateio = r.__rateio ? tipoAjusteRateioPlano(plano, valorLiq) : '';
     if (tipoAjusteRateio) {
       const valorAjusteRateio = Math.abs(valorLiq);
+      if (tipoAjusteRateio === 'DESCONTO') totalDesconto += valorAjusteRateio;
+      if (tipoAjusteRateio === 'ACRÉSCIMO') totalAcrescimo += valorAjusteRateio;
       const complementoAjusteRateio = `${tipoAjusteRateio} - ${complemento}`;
       const chaveDebitoAjuste = montarChave(forn, plano, tipoAjustePonta(tipoAjusteRateio, 'DÉBITO'), historico, escopoRegra);
       const chaveCreditoAjuste = montarChave(forn, plano, tipoAjustePonta(tipoAjusteRateio, 'CRÉDITO'), historico, escopoRegra);
@@ -4182,7 +4184,7 @@ function gerarLancamentos(dados, regras) {
       <td style="text-align:right;white-space:nowrap">${l.valorFmt}</td>
       <td style="color:var(--text2);white-space:nowrap">${l.empresa}</td>
       <td style="color:var(--text2);white-space:nowrap">${l.tipoRateio || ''}</td>
-      <td style="color:var(--text2);max-width:220px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${l.complemento}</td>
+      <td class="resultado-complemento" title="${escapeAttr(l.complemento || '')}">${escapeHtml(l.complemento || '')}</td>
     </tr>
   `).join('');
 
