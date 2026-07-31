@@ -332,6 +332,12 @@
         <label style="display:flex;align-items:center;gap:6px;font-size:12.5px;color:var(--text2)"><input type="checkbox" id="chk-todas-provisao" onchange="alternarTodasVisiveisProvisao(this.checked)"> Selecionar todas filtradas</label>
         <span id="contador-selecao-provisao" class="metric-label">0 selecionada(s)</span>
       </div>
+      <div class="bulk-tool-options">
+        <label class="compact-check">
+          <input type="checkbox" id="somente-pendentes-provisao" onchange="renderProvisaoRateio()">
+          Mostrar somente pendentes
+        </label>
+      </div>
       <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:10px">
         <input type="text" id="lote-debito-provisao" class="conta-autocomplete" placeholder="Débito para aplicar nas selecionadas" oninput="criarAutocompleteConta(this)" style="width:260px">
         <input type="text" id="lote-credito-provisao" class="conta-autocomplete" placeholder="Crédito para aplicar nas selecionadas" oninput="criarAutocompleteConta(this)" style="width:260px">
@@ -1253,8 +1259,10 @@ function textoBuscaProvisao(r) {
 
 function obterProvisaoFiltradas() {
   const termo = normalizarTexto(document.getElementById('filtro-provisao')?.value || '');
+  const somentePendentes = document.getElementById('somente-pendentes-provisao')?.checked ?? false;
   return provisaoRateioTemp
     .map((r, i) => ({ r, i }))
+    .filter(({ r }) => !somentePendentes || !r.debitoConta || !r.creditoConta)
     .filter(({ r }) => !termo || textoBuscaProvisao(r).includes(termo));
 }
 
@@ -1351,7 +1359,7 @@ function salvarRegraProvisaoLinha(idx) {
   });
   salvarStorage();
   salvarBaseCompartilhada();
-  if (aplicouOutras) renderProvisaoRateio();
+  renderProvisaoRateio();
 }
 
 function aplicarRegrasSalvasProvisao() {
