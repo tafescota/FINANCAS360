@@ -422,7 +422,7 @@
       <button class="btn btn-sm btn-primary" id="btn-regras-pagamentos" onclick="alterarTipoRegras('pagamentos')">Pagamentos</button>
       <button class="btn btn-sm" id="btn-regras-recebimentos" onclick="alterarTipoRegras('recebimentos')">Recebimentos</button>
     </div>
-    <input type="search" id="filtro-regras" placeholder="Filtrar fornecedor ou plano..." oninput="renderRegras()" style="margin-bottom:14px">
+    <input type="search" id="filtro-regras" placeholder="Filtrar fornecedor, plano, histórico ou código..." oninput="coletarInputsEdicaoRegras(); renderRegras()" style="margin-bottom:14px">
     <div id="container-regras"></div>
   </div>
 
@@ -454,6 +454,7 @@ let filtrosNovasChaves = { empresa: '', centroCusto: '', fornecedor: '', plano: 
 let lancamentosGerados = [];
 let editandoRegras = false;
 let editTemp = {};
+let regrasSelecionadasEdicao = new Set();
 let tipoRegrasAtivo = 'pagamentos';
 let telaAtual = 'tela-home';
 let pilhaTelas = [];
@@ -4364,6 +4365,7 @@ function alterarTipoRegras(tipo) {
   tipoRegrasAtivo = tipo;
   editandoRegras = false;
   editTemp = {};
+  regrasSelecionadasEdicao.clear();
   renderRegras();
 }
 
@@ -4374,6 +4376,23 @@ function obterBaseRegrasAtiva() {
 function definirBaseRegrasAtiva(regras) {
   if (tipoRegrasAtivo === 'recebimentos') deparaRecebimentos[grupoAtivo] = regras;
   else depara[grupoAtivo] = regras;
+}
+
+function coletarInputsEdicaoRegras() {
+  if (!editandoRegras) return;
+  document.querySelectorAll('#container-regras input[data-chave]').forEach(inp => {
+    editTemp[inp.dataset.chave] = obterCodigoContaParaDominio(inp.value);
+    inp.value = editTemp[inp.dataset.chave];
+  });
+}
+
+function chavesRegrasFiltradas() {
+  if (!grupoAtivo) return [];
+  const regras = editandoRegras ? editTemp : (obterBaseRegrasAtiva()[grupoAtivo] || {});
+  const filtro = (document.getElementById('filtro-regras')?.value || '').toLowerCase();
+  let chaves = Object.keys(regras);
+  if (filtro) chaves = chaves.filter(c => c.toLowerCase().includes(filtro));
+  return chaves;
 }
 
 function parseRegraParaTela(chave) {
@@ -4447,9 +4466,22 @@ function renderRegras() {
   }
 
   const dados = editandoRegras ? editTemp : regrasSalvas;
+  const selecionadasVisiveis = chaves.filter(chave => regrasSelecionadasEdicao.has(chave)).length;
+  const barraLote = editandoRegras ? `
+    <div class="card" style="padding:12px;margin-bottom:12px">
+      <div style="display:grid;grid-template-columns:minmax(220px,1fr) auto auto auto;gap:10px;align-items:center">
+        <input type="text" id="codigo-lote-regras" class="conta-autocomplete" placeholder="Novo código para aplicar nas regras selecionadas" oninput="criarAutocompleteConta(this)">
+        <button class="btn btn-sm" onclick="selecionarRegrasFiltradas()">Selecionar filtradas</button>
+        <button class="btn btn-sm btn-primary" onclick="aplicarCodigoRegrasSelecionadas()">Aplicar código</button>
+        <button class="btn btn-sm" onclick="limparSelecaoRegras()">Limpar seleção</button>
+      </div>
+      <div class="conciliacao-note" style="margin-top:8px">${regrasSelecionadasEdicao.size} regra${regrasSelecionadasEdicao.size !== 1 ? 's' : ''} selecionada${regrasSelecionadasEdicao.size !== 1 ? 's' : ''}. ${selecionadasVisiveis} visíve${selecionadasVisiveis !== 1 ? 'is' : 'l'} neste filtro.</div>
+    </div>` : '';
   container.innerHTML = `<div class="conciliacao-note" style="margin-bottom:10px">Mostrando ${chaves.length} regra${chaves.length !== 1 ? 's' : ''} de ${ehRecebimentos ? 'recebimentos/conciliação bancária' : 'pagamentos'}.</div>
+  ${barraLote}
   <div class="table-wrap"><table>
     <thead><tr>
+      ${editandoRegras ? '<th style="width:38px"><input type="checkbox" title="Selecionar regras filtradas" onchange="this.checked ? selecionarRegrasFiltradas() : limparSelecaoRegrasFiltradas()"></th>' : ''}
       <th style="width:26%">${ehRecebimentos ? 'Origem' : 'Fornecedor'}</th>
       <th style="width:22%">${ehRecebimentos ? 'Módulo' : 'Plano de contas'}</th>
       <th style="width:16%">Tipo de documento</th>
@@ -4461,6 +4493,7 @@ function renderRegras() {
       const regra = parseRegraParaTela(chave);
       const cod = dados[chave] || '';
       return `<tr>
+        ${editandoRegras ? `<td><input type="checkbox" data-regra-chave="${escapeAttr(chave)}" ${regrasSelecionadasEdicao.has(chave) ? 'checked' : ''} onchange="alternarRegraSelecionada(this.dataset.regraChave, this.checked)"></td>` : ''}
         <td style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:180px">${escapeHtml(regra.fornecedor)}</td>
         <td style="color:var(--text2);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:160px">${escapeHtml(regra.plano)}</td>
         <td style="color:var(--text2);white-space:nowrap">${escapeHtml(regra.tipoDoc)}</td>
@@ -4486,10 +4519,61 @@ function limparTodasRegras() {
   });
 }
 
+function alternarRegraSelecionada(chave, selecionada) {
+  if (!chave) return;
+  if (selecionada) regrasSelecionadasEdicao.add(chave);
+  else regrasSelecionadasEdicao.delete(chave);
+  const nota = document.querySelector('#container-regras .conciliacao-note');
+  if (nota && editandoRegras) {
+    const visiveis = chavesRegrasFiltradas().filter(c => regrasSelecionadasEdicao.has(c)).length;
+    const total = regrasSelecionadasEdicao.size;
+    const info = document.querySelector('#container-regras .card .conciliacao-note');
+    if (info) info.textContent = `${total} regra${total !== 1 ? 's' : ''} selecionada${total !== 1 ? 's' : ''}. ${visiveis} visíve${visiveis !== 1 ? 'is' : 'l'} neste filtro.`;
+  }
+}
+
+function selecionarRegrasFiltradas() {
+  if (!editandoRegras) return;
+  coletarInputsEdicaoRegras();
+  chavesRegrasFiltradas().forEach(chave => regrasSelecionadasEdicao.add(chave));
+  renderRegras();
+}
+
+function limparSelecaoRegrasFiltradas() {
+  if (!editandoRegras) return;
+  coletarInputsEdicaoRegras();
+  chavesRegrasFiltradas().forEach(chave => regrasSelecionadasEdicao.delete(chave));
+  renderRegras();
+}
+
+function limparSelecaoRegras() {
+  regrasSelecionadasEdicao.clear();
+  renderRegras();
+}
+
+function aplicarCodigoRegrasSelecionadas() {
+  if (!editandoRegras) return;
+  coletarInputsEdicaoRegras();
+  const codigo = obterCodigoContaParaDominio(document.getElementById('codigo-lote-regras')?.value || '');
+  if (!codigo) {
+    alert('Informe o código que será aplicado nas regras selecionadas.');
+    return;
+  }
+  const selecionadas = [...regrasSelecionadasEdicao].filter(chave => chave in editTemp);
+  if (selecionadas.length === 0) {
+    alert('Selecione ao menos uma regra para alterar.');
+    return;
+  }
+  if (!confirm(`Aplicar o código ${codigo} em ${selecionadas.length} regra${selecionadas.length !== 1 ? 's' : ''} selecionada${selecionadas.length !== 1 ? 's' : ''}? A alteração só será gravada ao clicar em Salvar.`)) return;
+  selecionadas.forEach(chave => { editTemp[chave] = codigo; });
+  renderRegras();
+}
+
 function ativarEdicaoRegras() {
   pedirSenha(() => {
     editandoRegras = true;
     editTemp = Object.assign({}, obterBaseRegrasAtiva()[grupoAtivo] || {});
+    regrasSelecionadasEdicao.clear();
     document.getElementById('btn-editar-regras').style.display = 'none';
     document.getElementById('btn-salvar-regras').style.display = '';
     document.getElementById('btn-cancelar-regras').style.display = '';
@@ -4499,13 +4583,11 @@ function ativarEdicaoRegras() {
 
 function salvarEdicaoRegras() {
   // Coletar inputs
-  document.querySelectorAll('#container-regras input[data-chave]').forEach(inp => {
-    editTemp[inp.dataset.chave] = obterCodigoContaParaDominio(inp.value);
-    inp.value = editTemp[inp.dataset.chave];
-  });
+  coletarInputsEdicaoRegras();
   definirBaseRegrasAtiva(Object.assign({}, editTemp));
   salvarStorage();
   editandoRegras = false;
+  regrasSelecionadasEdicao.clear();
   document.getElementById('btn-editar-regras').style.display = '';
   document.getElementById('btn-salvar-regras').style.display = 'none';
   document.getElementById('btn-cancelar-regras').style.display = 'none';
@@ -4516,6 +4598,7 @@ function salvarEdicaoRegras() {
 function cancelarEdicaoRegras() {
   editandoRegras = false;
   editTemp = {};
+  regrasSelecionadasEdicao.clear();
   document.getElementById('btn-editar-regras').style.display = '';
   document.getElementById('btn-salvar-regras').style.display = 'none';
   document.getElementById('btn-cancelar-regras').style.display = 'none';
@@ -4524,6 +4607,7 @@ function cancelarEdicaoRegras() {
 
 function excluirRegra(chave) {
   delete editTemp[chave];
+  regrasSelecionadasEdicao.delete(chave);
   renderRegras();
 }
 
