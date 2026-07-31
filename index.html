@@ -533,6 +533,13 @@ function tipoAjustePonta(tipoAjuste, ponta) {
   return `${tipoAjuste} - ${ponta}`;
 }
 
+function tipoAjusteRateioPlano(plano, valor) {
+  const planoNorm = normalizarTexto(plano);
+  if (valor < 0 && (planoNorm.includes('descontos sobre despesas') || planoNorm.includes('desconto sobre despesas'))) return 'DESCONTO';
+  if (valor > 0 && (planoNorm.includes('acrescimos') || planoNorm.includes('acrescimo'))) return 'ACRÉSCIMO';
+  return '';
+}
+
 function escopoRegraPagamento(empresaOrigem, centroCusto, rateio = false) {
   if (!rateio) return '';
   return `RATEIO: ${limparTextoECD(empresaOrigem)} / ${limparTextoECD(centroCusto)}`;
@@ -1089,7 +1096,20 @@ function prepararPagamentosImportados(dados, abrirTelaPendencias = true) {
     const empresaOrigem = empresaOrigemLinha(r);
     const centroCusto = centroCustoLinha(r);
     const escopoRegra = escopoRegraLinha(r);
+    const valorRateio = arredondarMoeda(r[COLS.VALOR_LIQ]);
+    const tipoAjusteRateio = r.__rateio ? tipoAjusteRateioPlano(plano, valorRateio) : '';
     if (!forn && !plano) return;
+    if (tipoAjusteRateio) {
+      ['DÉBITO', 'CRÉDITO'].forEach(ponta => {
+        const tipoPonta = tipoAjustePonta(tipoAjusteRateio, ponta);
+        const chaveAjuste = montarChave(forn, plano, tipoPonta, historico, escopoRegra);
+        if (!encontrarCodigoRegraAjuste(regrasSalvas, forn, plano, tipoAjusteRateio, ponta, historico, escopoRegra) && !vistas.has(chaveAjuste)) {
+          vistas.add(chaveAjuste);
+          novas.push({ chave: chaveAjuste, fornecedor: forn, plano, tipoDoc: tipoPonta, historico, trechoHistorico: '', trechoHistoricoIndices: [], numero, empresa: empresaOrigem, empresaOrigem, centroCusto, empresaLancamento: empresaLancamentoLinha(r), rateio: !!r.__rateio, escopoRegra });
+        }
+      });
+      return;
+    }
     const chave = montarChave(forn, plano, tipoDoc, historico, escopoRegra);
     if (!encontrarCodigoRegra(regrasSalvas, forn, plano, tipoDoc, historico, escopoRegra) && !vistas.has(chave)) {
       vistas.add(chave);
@@ -3903,6 +3923,35 @@ function gerarLancamentos(dados, regras) {
     totalBruto += valorBruto;
     if (acrescimoDesconto < 0) totalDesconto += Math.abs(acrescimoDesconto);
     if (acrescimoDesconto > 0) totalAcrescimo += acrescimoDesconto;
+    const tipoAjusteRateio = r.__rateio ? tipoAjusteRateioPlano(plano, valorLiq) : '';
+    if (tipoAjusteRateio) {
+      const valorAjusteRateio = Math.abs(valorLiq);
+      const complementoAjusteRateio = `${tipoAjusteRateio} - ${complemento}`;
+      const chaveDebitoAjuste = montarChave(forn, plano, tipoAjustePonta(tipoAjusteRateio, 'DÉBITO'), historico, escopoRegra);
+      const chaveCreditoAjuste = montarChave(forn, plano, tipoAjustePonta(tipoAjusteRateio, 'CRÉDITO'), historico, escopoRegra);
+      const codDebitoAjuste = obterCodigoContaParaDominio(encontrarCodigoRegraAjuste(regras, forn, plano, tipoAjusteRateio, 'DÉBITO', historico, escopoRegra));
+      const codCreditoAjuste = obterCodigoContaParaDominio(encontrarCodigoRegraAjuste(regras, forn, plano, tipoAjusteRateio, 'CRÉDITO', historico, escopoRegra));
+      if (!codDebitoAjuste) pendentes.add(chaveDebitoAjuste);
+      if (!codCreditoAjuste) pendentes.add(chaveCreditoAjuste);
+      ajustes.push({ empresa, fornecedor: forn, plano, historico, acrescimoDesconto: valorLiq, valorLiq });
+      lancamentosGerados.push({
+        idx,
+        data: dataLiq,
+        codDebito: codDebitoAjuste,
+        codCredito: codCreditoAjuste,
+        valorLiq: valorAjusteRateio,
+        valorFmt: fmtValor(valorAjusteRateio),
+        complemento: complementoAjusteRateio,
+        empresa,
+        plano,
+        acrescimoDesconto: valorLiq,
+        tipoAjuste: tipoAjusteRateio,
+        semCodigo: !codDebitoAjuste || !codCreditoAjuste,
+        rateioNegativo: linhaRateioNegativa,
+        tipoRateio: tipoRateioAtual
+      });
+      return;
+    }
     if (!codDeparaPrincipal) pendentes.add(chave);
 
 
