@@ -1240,7 +1240,7 @@ function htmlDetalheDiferencaConferencia(pagamentos, saidas) {
       <td title="${escapeAttr(item.exemplosExtrato.join(' | '))}">${escapeHtml(item.exemplosExtrato.join(' | '))}</td>
     </tr>`).join('');
   const avisoRateio = linhasImportadasModo === 'rateio'
-    ? '<div class="conciliacao-note" style="margin:8px 0 10px">No rateio, descontos/acréscimos já entram como linhas próprias do relatório. Linhas negativas reduzem o total conciliável do pagamento.</div>'
+    ? '<div class="conciliacao-note conciliacao-diff-note">No rateio, descontos/acréscimos já entram como linhas próprias do relatório. Linhas negativas reduzem o total conciliável do pagamento.</div>'
     : '';
   return `<details class="conciliacao-diff-details">
     <summary>Ver diferença por dia</summary>
@@ -1276,11 +1276,17 @@ function htmlResumoConferenciaBancaria() {
       <div class="metric metric-muted"><div class="metric-label">Entradas</div><div class="metric-value metric-text">R$ ${fmtValor(entradas.reduce((s, m) => s + m.valor, 0))}</div><div class="metric-sub">${entradas.length} movimentos</div></div>
       <div class="metric metric-muted"><div class="metric-label">Saídas</div><div class="metric-value metric-text">R$ ${fmtValor(Math.abs(saidas.reduce((s, m) => s + m.valor, 0)))}</div><div class="metric-sub">${saidas.length} movimentos</div></div>
     </div>
-    <div class="alert ${valoresBatem ? 'alert-ok' : 'alert-warn'}">
-      <div>
-        <strong>Conferência de pagamentos:</strong>
-        pagamentos totais R$ ${fmtValor(totalPagamentos)} · pagamentos bancários R$ ${fmtValor(totalSaidasPagamentos)}
-        · ${valoresBatem ? 'valores batem' : 'diferença de R$ ' + fmtValor(Math.abs(diferencaConferencia))}
+    <div class="alert ${valoresBatem ? 'alert-ok' : 'alert-warn'} conciliacao-check-alert">
+      <div class="conciliacao-check-head">
+        <div>
+          <strong>Conferência de pagamentos</strong>
+          <span>Validação das saídas do extrato contra o relatório de pagamentos importado.</span>
+        </div>
+        <span class="conciliacao-check-status ${valoresBatem ? 'ok' : 'warn'}">${valoresBatem ? 'Valores batem' : 'Diferença R$ ' + fmtValor(Math.abs(diferencaConferencia))}</span>
+      </div>
+      <div class="conciliacao-check-totals">
+        <span>Relatório: <strong>R$ ${fmtValor(totalPagamentos)}</strong></span>
+        <span>Extrato: <strong>R$ ${fmtValor(totalSaidasPagamentos)}</strong></span>
       </div>
       ${detalheDiferenca}
     </div>`;
