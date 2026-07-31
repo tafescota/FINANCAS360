@@ -1361,3 +1361,40 @@ input[type=search]:focus {
   text-overflow: ellipsis;
   white-space: nowrap;
 }
+
+/* Modal de pendências: tipo Próprio/Numerários e renderização mais leve */
+.pendencias-limite-aviso {
+  margin-bottom: 10px;
+  padding: 8px 10px;
+  border: 1px solid #dbeafe;
+  border-radius: 8px;
+  background: #eff6ff;
+  color: #1e3a8a;
+  font-weight: 600;
+}
+
+.pendencias-conciliacao-table th:nth-child(2),
+.pendencias-conciliacao-table td:nth-child(2) { width: 92px; }
+.pendencias-conciliacao-table th:nth-child(3),
+.pendencias-conciliacao-table td:nth-child(3) { width: 118px; }
+.pendencias-conciliacao-table th:nth-child(4),
+.pendencias-conciliacao-table td:nth-child(4) { width: 115px; }
+.pendencias-conciliacao-table th:nth-child(5),
+.pendencias-conciliacao-table td:nth-child(5) { width: 115px; }
+.pendencias-conciliacao-table th:nth-child(6),
+.pendencias-conciliacao-table td:nth-child(6) { width: 195px; }
+.pendencias-conciliacao-table th:nth-child(7),
+.pendencias-conciliacao-table td:nth-child(7) { width: 140px; }
+.pendencias-conciliacao-table th:nth-child(8),
+.pendencias-conciliacao-table td:nth-child(8) { width: auto; }
+.pendencias-conciliacao-table th:nth-child(9),
+.pendencias-conciliacao-table td:nth-child(9) { width: 90px; }
+.pendencias-conciliacao-table th:nth-child(10),
+.pendencias-conciliacao-table td:nth-child(10) { width: 92px; }
+.pendencias-conciliacao-table th:nth-child(11),
+.pendencias-conciliacao-table td:nth-child(11) { width: 190px; }
+
+.pendencias-conciliacao-table td:nth-child(3) .badge {
+  max-width: 110px;
+  white-space: normal;
+}
