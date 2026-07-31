@@ -1931,6 +1931,7 @@ function criarItensRecebimentosRateioAgrupados() {
   if (!grupoPodeRecebimentosRateio() || recebimentosRateioTemp.length === 0) return [];
   const gruposRateio = new Map();
   recebimentosRateioTemp.forEach((r, idx) => {
+    if (arredondarMoeda(r.valor) <= 0) return;
     const escopoRegra = escopoRecebimentoRateio(r);
     const chave = [r.dataKey, r.conta, r.empresaBanco, r.centroCusto, r.tipo, r.historico, r.valor < 0 ? 'NEG' : 'POS'].map(v => normalizarTexto(v)).join('|');
     const atual = gruposRateio.get(chave) || {
