@@ -1990,7 +1990,7 @@ function linhasRateioCartoesReceber(wb, arquivoOrigem) {
     bandeira: idx('bandeira'),
     modalidade: idx('modalidade'),
     produto: idx('produto'),
-    valor: idx('valor bruto'),
+    valor: idx('valor liquido') >= 0 ? idx('valor liquido') : idx('valor bruto'),
     conta: idx('conta'),
     liquidacao: idx('dt. liquidacao'),
     centroCusto: idx('centro de custo'),
@@ -4511,7 +4511,12 @@ async function processarArquivosImportacao(files) {
   }
 
   try {
-    const resultados = await Promise.all(files.map(classificarArquivoRateioImportacao));
+    const leituras = await Promise.allSettled(files.map(classificarArquivoRateioImportacao));
+    const resultados = leituras.filter(r => r.status === 'fulfilled').map(r => r.value);
+    const errosLeitura = leituras.filter(r => r.status === 'rejected').map(r => r.reason?.message || String(r.reason || 'Erro ao ler arquivo.'));
+    if (resultados.length === 0) {
+      throw new Error(errosLeitura[0] || 'Nenhum arquivo reconhecido.');
+    }
     const pagamentos = resultados.filter(r => r.tipo === 'pagamento').flatMap(r => r.dados || []);
     const recebimentos = resultados.filter(r => r.tipo === 'recebimento');
     const qtdRecebimentos = recebimentos.length ? adicionarRecebimentosRateio(recebimentos) : 0;
@@ -4521,7 +4526,10 @@ async function processarArquivosImportacao(files) {
     }
     linhasImportadasModo = 'rateio';
     prepararPagamentosImportados(pagamentos, true);
-    if (qtdRecebimentos > 0) showMsg(`${pagamentos.length} pagamento${pagamentos.length !== 1 ? 's' : ''} e ${qtdRecebimentos} recebimento${qtdRecebimentos !== 1 ? 's' : ''} por rateio importado${qtdRecebimentos !== 1 ? 's' : ''}.`, 'ok');
+    if (qtdRecebimentos > 0) {
+      const aviso = errosLeitura.length ? ` ${errosLeitura.length} arquivo${errosLeitura.length !== 1 ? 's' : ''} não reconhecido${errosLeitura.length !== 1 ? 's' : ''}.` : '';
+      showMsg(`${pagamentos.length} pagamento${pagamentos.length !== 1 ? 's' : ''} e ${qtdRecebimentos} recebimento${qtdRecebimentos !== 1 ? 's' : ''} por rateio importado${qtdRecebimentos !== 1 ? 's' : ''}.${aviso}`, errosLeitura.length ? 'warn' : 'ok');
+    }
   } catch(err) {
     alert('Erro ao ler os arquivos: ' + err.message);
   }
