@@ -418,6 +418,7 @@
     <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:12px;margin-bottom:16px">
       <div class="metric"><div class="metric-label">Total de lançamentos</div><div class="metric-value" id="met-total">0</div><div class="metric-sub"><div id="met-linhas-originais">0 linhas originais</div><div id="met-linhas-extras">0 linhas extras</div></div></div>
       <div class="metric"><div class="metric-label">Sem código</div><div class="metric-value" id="met-sem" class="">0</div></div>
+      <div class="metric" id="metric-mapa-codigos" style="display:none"><div class="metric-label">Mapa de códigos pendente</div><div class="metric-value warn" id="met-mapa-codigos">0</div><div class="metric-sub"><button class="btn btn-sm" onclick="mostrarTela('tela-mapa-codigos')">Preencher agora</button></div></div>
       <div class="metric"><div class="metric-label">Totais para validação</div><div class="metric-value" style="font-size:16px" id="met-valor">R$ 0,00</div><div class="metric-sub"><div id="met-total-bruto">Bruto: R$ 0,00</div><div id="met-total-liquido">Líquido: R$ 0,00</div><div id="met-total-desconto">Descontos: R$ 0,00</div><div id="met-total-acrescimo">Acréscimos: R$ 0,00</div></div></div>
     </div>
     <div id="alert-pendentes"></div>
@@ -5018,6 +5019,13 @@ function gerarLancamentos(dados, regras) {
   const metSem = document.getElementById('met-sem');
   metSem.textContent = semCod;
   metSem.className = 'metric-value ' + (semCod > 0 ? 'warn' : 'ok');
+  const { contasFaltando, empresasFaltando } = pendenciasMapaCodigos();
+  const totalMapaFaltando = contasFaltando.length + empresasFaltando.length;
+  const cardMapa = document.getElementById('metric-mapa-codigos');
+  if (cardMapa) {
+    cardMapa.style.display = totalMapaFaltando > 0 ? '' : 'none';
+    document.getElementById('met-mapa-codigos').textContent = totalMapaFaltando;
+  }
   document.getElementById('met-valor').textContent = 'R$ ' + fmtValor(totalLiquido);
   document.getElementById('met-total-bruto').textContent = 'Bruto: R$ ' + fmtValor(totalBruto);
   document.getElementById('met-total-liquido').textContent = 'Líquido: R$ ' + fmtValor(totalLiquido);
@@ -5086,6 +5094,27 @@ function gerarLancamentos(dados, regras) {
   mostrarTela('tela-resultado');
 }
 
+function pendenciasMapaCodigos() {
+  const contas = coletarContasParaMapa();
+  const empresas = coletarEmpresasParaMapa();
+  const regrasContas = contasSemConciliacao[grupoAtivo] || {};
+  const regrasEmpresas = mapaEmpresas[grupoAtivo] || {};
+  const contasFaltando = contas.filter(c => !obterCodigoContaParaDominio(regrasContas[c] || ''));
+  const empresasFaltando = empresas.filter(e => !String(regrasEmpresas[e] || '').trim());
+  return { contasFaltando, empresasFaltando };
+}
+
+function bloquearExportacaoPorMapaCodigos() {
+  const { contasFaltando, empresasFaltando } = pendenciasMapaCodigos();
+  if (contasFaltando.length === 0 && empresasFaltando.length === 0) return false;
+  const partes = [];
+  if (contasFaltando.length) partes.push(`Conta(s) sem código: ${contasFaltando.join(', ')}`);
+  if (empresasFaltando.length) partes.push(`Empresa(s)/filial(is) sem código: ${empresasFaltando.join(', ')}`);
+  alert(`Antes de exportar, preencha o Mapa de Códigos (Regras → Mapa de códigos):\n\n${partes.join('\n')}`);
+  mostrarTela('tela-mapa-codigos');
+  return true;
+}
+
 function montarLinhasDominioPagamentos() {
   const lancamentosPagamentos = lancamentosGerados.filter(l => !l.origemConciliacao);
   return lancamentosPagamentos.map(l => [
@@ -5095,6 +5124,7 @@ function montarLinhasDominioPagamentos() {
 }
 
 function exportarDominioPagamentos() {
+  if (bloquearExportacaoPorMapaCodigos()) return;
   const linhas = montarLinhasDominioPagamentos();
   if (linhas.length === 0) {
     alert('Gere os lançamentos antes de exportar.');
@@ -5111,6 +5141,7 @@ function exportarDominioPagamentos() {
 }
 
 function exportarDominioFinal() {
+  if (bloquearExportacaoPorMapaCodigos()) return;
   const linhasPagamentos = montarLinhasDominioPagamentos();
   if (linhasPagamentos.length === 0) {
     alert('Gere os lançamentos de pagamentos antes de exportar.');
