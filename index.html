@@ -473,6 +473,7 @@
       <button class="btn btn-sm btn-danger" id="btn-limpar-regras" onclick="limparTodasRegras()">🗑 Limpar tudo</button>
       <button class="btn btn-sm btn-blue" id="btn-importar-regras" onclick="mostrarTela('tela-importar')">Importar planilha</button>
       <button class="btn btn-sm" onclick="exportarRegrasNumerarioRateio()">⬇ Exportar regras de numerário (.xlsx)</button>
+      <button class="btn btn-sm btn-blue" onclick="mostrarTela('tela-mapa-codigos')">🏷 Mapa de códigos (banco/caixa/empresas)</button>
       <button class="btn btn-sm" onclick="mostrarTela('tela-home')">Grupos</button>
     </div>
     <div style="display:flex;gap:8px;margin-bottom:12px;flex-wrap:wrap">
@@ -481,6 +482,15 @@
     </div>
     <input type="search" id="filtro-regras" placeholder="Filtrar fornecedor, plano, histórico ou código..." oninput="coletarInputsEdicaoRegras(); renderRegras()" style="margin-bottom:14px">
     <div id="container-regras"></div>
+  </div>
+
+  <div class="tela" id="tela-mapa-codigos">
+    <div class="section-header">
+      <button class="btn btn-sm" onclick="voltarTela()">← Voltar</button>
+      <h2>Mapa de códigos — <span id="titulo-mapa-codigos"></span></h2>
+    </div>
+    <p class="conciliacao-note" style="margin-bottom:14px">Preencha uma vez o código numérico do Domínio pra cada conta (banco/caixa) e cada empresa/filial. A partir daí, toda exportação já sai com os códigos certos — sem precisar substituir na mão.</p>
+    <div id="container-mapa-codigos"></div>
   </div>
 
 </div>
@@ -492,6 +502,7 @@ const STORAGE_DEPARA_RECEBIMENTOS = 'zip_depara_regras_recebimentos';
 const STORAGE_DEPARA_PROVISAO = 'zip_depara_regras_provisao';
 const STORAGE_PLANO_CONTAS = 'zip_depara_plano_contas';
 const STORAGE_CONTAS_SEM_CONCILIACAO = 'zip_depara_contas_sem_conciliacao';
+const STORAGE_MAPA_EMPRESAS = 'zip_depara_mapa_empresas';
 const STORAGE_CONFIG_GRUPOS = 'zip_depara_config_grupos';
 const API_BASE_DEPARA = '/.netlify/functions/depara-base';
 
@@ -501,6 +512,7 @@ let deparaRecebimentos = JSON.parse(localStorage.getItem(STORAGE_DEPARA_RECEBIME
 let deparaProvisao = JSON.parse(localStorage.getItem(STORAGE_DEPARA_PROVISAO) || '{}');
 let planoContas = JSON.parse(localStorage.getItem(STORAGE_PLANO_CONTAS) || '{}');
 let contasSemConciliacao = JSON.parse(localStorage.getItem(STORAGE_CONTAS_SEM_CONCILIACAO) || '{}');
+let mapaEmpresas = JSON.parse(localStorage.getItem(STORAGE_MAPA_EMPRESAS) || '{}');
 let configGrupos = JSON.parse(localStorage.getItem(STORAGE_CONFIG_GRUPOS) || '{}');
 let grupoAtivo = null;
 let linhasImportadas = [];
@@ -542,6 +554,7 @@ let infoProvisaoRateioTemp = null;
 let provisaoSelecionadas = new Set();
 let exportacoesRealizadas = { pagamentos: false, conciliacao: false, final: false };
 let avisosRecebimentoRateioDia = [];
+let avisosPlanilhaMaiorQueExtrato = [];
 
 const COLS = { TIPO:0, NUMERO:1, PARCELA:2, EMPRESA:3, FORNECEDOR:4, EMISSAO:5, VENCIMENTO:6, LIQUIDACAO:7, VALOR_BRUTO:8, COMPETENCIA:9, PLANO:10, CC:11, ACRESCIMO:12, VALOR_LIQ:13, CONTA:14, MEIO_PAG:15, TIPO_DOC:16, APROVADA:17, STATUS:18, HISTORICO:19 };
 
@@ -811,6 +824,7 @@ function salvarStorage() {
   localStorage.setItem(STORAGE_DEPARA_PROVISAO, JSON.stringify(deparaProvisao));
   localStorage.setItem(STORAGE_PLANO_CONTAS, JSON.stringify(planoContas));
   localStorage.setItem(STORAGE_CONTAS_SEM_CONCILIACAO, JSON.stringify(contasSemConciliacao));
+  localStorage.setItem(STORAGE_MAPA_EMPRESAS, JSON.stringify(mapaEmpresas));
   localStorage.setItem(STORAGE_CONFIG_GRUPOS, JSON.stringify(configGrupos));
   salvarBaseCompartilhada();
 }
@@ -837,6 +851,7 @@ async function carregarBaseCompartilhada(mostrarMensagem = false) {
     deparaProvisao = data.deparaProvisao && typeof data.deparaProvisao === 'object' ? data.deparaProvisao : {};
     planoContas = data.planoContas && typeof data.planoContas === 'object' ? data.planoContas : {};
     contasSemConciliacao = data.contasSemConciliacao && typeof data.contasSemConciliacao === 'object' ? data.contasSemConciliacao : {};
+    mapaEmpresas = data.mapaEmpresas && typeof data.mapaEmpresas === 'object' ? data.mapaEmpresas : {};
     configGrupos = data.configGrupos && typeof data.configGrupos === 'object' ? data.configGrupos : {};
     ultimaSyncLocal = remoteUpdatedAt || Date.now();
     localStorage.setItem(STORAGE_GRUPOS, JSON.stringify(grupos));
@@ -845,6 +860,7 @@ async function carregarBaseCompartilhada(mostrarMensagem = false) {
     localStorage.setItem(STORAGE_DEPARA_PROVISAO, JSON.stringify(deparaProvisao));
     localStorage.setItem(STORAGE_PLANO_CONTAS, JSON.stringify(planoContas));
     localStorage.setItem(STORAGE_CONTAS_SEM_CONCILIACAO, JSON.stringify(contasSemConciliacao));
+    localStorage.setItem(STORAGE_MAPA_EMPRESAS, JSON.stringify(mapaEmpresas));
     localStorage.setItem(STORAGE_CONFIG_GRUPOS, JSON.stringify(configGrupos));
     if (grupoAtivo && !grupos.includes(grupoAtivo)) grupoAtivo = null;
     renderGrupos();
@@ -865,7 +881,7 @@ async function salvarBaseCompartilhada(forcar = false) {
   try {
     salvandoBaseCompartilhada = true;
     ultimaSyncLocal = Date.now();
-    const payload = { grupos, depara, deparaRecebimentos, deparaProvisao, planoContas, contasSemConciliacao, configGrupos };
+    const payload = { grupos, depara, deparaRecebimentos, deparaProvisao, planoContas, contasSemConciliacao, mapaEmpresas, configGrupos };
     const resp = await fetch(API_BASE_DEPARA, {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
@@ -890,6 +906,7 @@ function exportarBaseDePara() {
     deparaRecebimentos,
     deparaProvisao,
     contasSemConciliacao,
+    mapaEmpresas,
     configGrupos
   };
   const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json;charset=utf-8' });
@@ -920,6 +937,7 @@ function importarBaseDePara(event) {
       deparaRecebimentos = payload.deparaRecebimentos && typeof payload.deparaRecebimentos === 'object' ? payload.deparaRecebimentos : {};
       deparaProvisao = payload.deparaProvisao && typeof payload.deparaProvisao === 'object' ? payload.deparaProvisao : {};
       contasSemConciliacao = payload.contasSemConciliacao && typeof payload.contasSemConciliacao === 'object' ? payload.contasSemConciliacao : {};
+      mapaEmpresas = payload.mapaEmpresas && typeof payload.mapaEmpresas === 'object' ? payload.mapaEmpresas : {};
       configGrupos = payload.configGrupos && typeof payload.configGrupos === 'object' ? payload.configGrupos : {};
       grupoAtivo = grupos.includes(grupoAtivo) ? grupoAtivo : null;
       salvarStorage();
@@ -954,6 +972,7 @@ function mostrarTela(id, registrarHistorico = true) {
   if (id === 'tela-plano-contas') renderResumoPlanoContas();
   if (id === 'tela-conciliacao-bancaria') renderConciliacaoBancaria();
   if (id === 'tela-resultado') renderResumoConferenciaResultado();
+  if (id === 'tela-mapa-codigos') renderMapaCodigos();
   if (id === 'tela-provisao-rateio') renderProvisaoRateio();
   if (id === 'tela-importar' && grupoAtivo) {
     document.getElementById('titulo-importar').textContent = 'Importar planilha — ' + grupoAtivo;
@@ -2469,6 +2488,7 @@ function rotuloCategoriaRecebimento(categoria) {
 
 function criarItensRecebimentosRateioPorDia() {
   avisosRecebimentoRateioDia = [];
+  avisosPlanilhaMaiorQueExtrato = [];
   if (!grupoPodeRecebimentosRateio() || recebimentosRateioTemp.length === 0) return [];
   // Período coberto pela planilha importada, só para exibição
   const datasPlanilha = recebimentosRateioTemp.map(r => r.data).filter(Boolean);
@@ -2517,9 +2537,12 @@ function criarItensRecebimentosRateioPorDia() {
     if (!totalPlanilhaPeriodo) return;
     const [contaNormStr] = chaveContaTipo.split('|');
     const diferencaPeriodo = arredondarMoeda(totalExtratoPeriodo - totalPlanilhaPeriodo);
+    const extratoMaiorQuePlanilha = diferencaPeriodo > 0;
     const diferencaGrande = Math.abs(diferencaPeriodo) > LIMITE_DIFERENCA_ABSOLUTA && Math.abs(diferencaPeriodo) > Math.abs(totalPlanilhaPeriodo) * LIMITE_DIFERENCA_PROPORCIONAL;
-    const valorParaRatear = diferencaGrande ? totalPlanilhaPeriodo : totalExtratoPeriodo;
-    if (diferencaGrande) {
+    // O extrato manda: se a planilha mostra mais do que o banco confirmou, isso não é "sobra de caixa" —
+    // é só receita ainda não liquidada. Nesse caso usamos sempre o valor do extrato (o menor) e NÃO lançamos nada extra.
+    const valorParaRatear = (diferencaGrande && extratoMaiorQuePlanilha) ? totalPlanilhaPeriodo : totalExtratoPeriodo;
+    if (diferencaGrande && extratoMaiorQuePlanilha) {
       const sobraItem = {
         data: dataLancamento,
         periodo: periodoLabel,
@@ -2529,6 +2552,14 @@ function criarItensRecebimentosRateioPorDia() {
         diferenca: diferencaPeriodo
       };
       avisosRecebimentoRateioDia.push(sobraItem);
+    } else if (diferencaGrande && !extratoMaiorQuePlanilha) {
+      avisosPlanilhaMaiorQueExtrato.push({
+        periodo: periodoLabel,
+        conta: Array.from(porGrupo.values())[0]?.conta || contaNormStr,
+        totalExtrato: totalExtratoPeriodo,
+        totalPlanilha: totalPlanilhaPeriodo,
+        diferenca: Math.abs(diferencaPeriodo)
+      });
     }
     porGrupo.forEach(dadosGrupo => {
       const proporcao = dadosGrupo.total / totalPlanilhaPeriodo;
@@ -3030,6 +3061,12 @@ function renderSugestoesConciliacao(sugestoes, qtdPagamentos, qtdMovimentos, ent
         ${avisosRecebimentoRateioDia.map(a => `<div>${escapeHtml(a.periodo || a.data)} · conta ${escapeHtml(a.conta)} — extrato: <strong>R$ ${fmtValor(a.totalExtrato)}</strong>, planilha explica: <strong>R$ ${fmtValor(a.totalPlanilha)}</strong>, sobra não lançada: <strong>R$ ${fmtValor(a.diferenca)}</strong></div>`).join('')}
       </div>
     </div>` : ''}
+    ${avisosPlanilhaMaiorQueExtrato.length ? `<div class="alert alert-warn" style="margin-bottom:12px">
+      <strong>ℹ️ ${avisosPlanilhaMaiorQueExtrato.length} caso(s) em que a planilha de recebimentos mostra mais do que o extrato confirmou</strong> — isso normalmente é receita ainda não liquidada no banco (não é dinheiro faltando). O sistema usou só o valor do extrato pro rateio e <strong>não lançou nada extra</strong> pra essa diferença:
+      <div style="margin-top:8px;display:flex;flex-direction:column;gap:4px">
+        ${avisosPlanilhaMaiorQueExtrato.map(a => `<div>${escapeHtml(a.periodo)} · conta ${escapeHtml(a.conta)} — extrato: <strong>R$ ${fmtValor(a.totalExtrato)}</strong>, planilha mostra: <strong>R$ ${fmtValor(a.totalPlanilha)}</strong>, ainda não liquidado: <strong>R$ ${fmtValor(a.diferenca)}</strong></div>`).join('')}
+      </div>
+    </div>` : ''}
     ${itensRecebimentoRateio.length || itensSobraRecebimento.length ? `<div class="alert ${Math.abs(diferencaRefinadaRecebimentos) < 1 ? 'alert-ok' : 'alert-warn'}" style="margin-bottom:12px">
       <strong>Diferença refinada pós-rateio (recebimentos)</strong> — depois de ratear pelo extrato e considerar as sobras já identificadas: extrato relevante (cartões/títulos): <strong>R$ ${fmtValor(totalExtratoRelevanteRecebimentos)}</strong>, rateado + sobra: <strong>R$ ${fmtValor(totalRateadoMaisSobra)}</strong>, diferença: <strong>R$ ${fmtValor(diferencaRefinadaRecebimentos)}</strong>${Math.abs(diferencaRefinadaRecebimentos) >= 1 ? ' — a sobra costuma ser dia/conta do extrato sem nenhuma linha correspondente na planilha (cai direto como recebimento avulso, fora do rateio).' : ''}
     </div>` : ''}
@@ -3501,6 +3538,8 @@ function salvarModalPendenciasConciliacao() {
 const CABECALHO_DOMINIO = ['Data','Cód. Conta Débito','Cód. Conta Crédito','Valor','Cód. Histórico','Complemento Histórico','Inicia Lote','Código Matriz/Filial','Centro de Custo Débito','Centro de Custo Crédito','Tipo do Rateio'];
 
 function linhaDominio(data, debito, credito, valor, complemento, empresa, tipoRateio = '') {
+  const empresaFinal = empresa || grupoAtivo || '';
+  const empresaCodigo = codigoEmpresaMatrizFilial(empresaFinal) || empresaFinal;
   return [
     data || '',
     limparTextoExportacaoDominio(debito || ''),
@@ -3509,7 +3548,7 @@ function linhaDominio(data, debito, credito, valor, complemento, empresa, tipoRa
     '',
     limparTextoExportacaoDominio(complemento || ''),
     '',
-    limparTextoExportacaoDominio(empresa || grupoAtivo || ''),
+    limparTextoExportacaoDominio(empresaCodigo),
     '',
     '',
     limparTextoExportacaoDominio(tipoRateio || '')
@@ -4143,6 +4182,26 @@ function codigoContaSemConciliacao(conta) {
     || contasSemConciliacao[chaveNormalizada]
     || '';
   return obterCodigoContaParaDominio(valor);
+}
+
+function codigoEmpresaMatrizFilial(empresa) {
+  const texto = limparTextoECD(empresa);
+  if (!texto || !grupoAtivo) return '';
+  const chaveNormalizada = normalizarTexto(texto);
+  const regrasGrupo = mapaEmpresas[grupoAtivo] || {};
+  const valor = regrasGrupo[texto] || regrasGrupo[chaveNormalizada] || '';
+  return String(valor || '').trim();
+}
+
+function salvarMapaEmpresaInput(input) {
+  if (!input?.dataset?.empresaMapa || !grupoAtivo) return;
+  const empresa = limparTextoECD(input.dataset.empresaMapa);
+  const codigo = String(input.value || '').trim();
+  mapaEmpresas[grupoAtivo] = mapaEmpresas[grupoAtivo] || {};
+  mapaEmpresas[grupoAtivo][empresa] = codigo;
+  mapaEmpresas[grupoAtivo][normalizarTexto(empresa)] = codigo;
+  input.value = codigo;
+  salvarStorage();
 }
 
 function salvarContaSemConciliacaoInput(input) {
@@ -4848,7 +4907,7 @@ function gerarLancamentos(dados, regras) {
     totalBruto += valorBruto;
     if (acrescimoDesconto < 0) totalDesconto += Math.abs(acrescimoDesconto);
     if (acrescimoDesconto > 0) totalAcrescimo += acrescimoDesconto;
-    const tipoAjusteRateio = r.__rateio ? tipoAjusteRateioPlano(plano, valorLiq) : '';
+    const tipoAjusteRateio = (r.__rateio && !intercompanyRateio) ? tipoAjusteRateioPlano(plano, valorLiq) : '';
     if (tipoAjusteRateio) {
       const valorAjusteRateio = Math.abs(valorLiq);
       if (tipoAjusteRateio === 'DESCONTO') totalDesconto += valorAjusteRateio;
@@ -5031,7 +5090,7 @@ function montarLinhasDominioPagamentos() {
   const lancamentosPagamentos = lancamentosGerados.filter(l => !l.origemConciliacao);
   return lancamentosPagamentos.map(l => [
     l.data, l.codDebito, limparTextoExportacaoDominio(l.codCredito), l.valorLiq, '', limparTextoExportacaoDominio(l.complemento),
-    '', limparTextoExportacaoDominio(l.empresa), '', '', limparTextoExportacaoDominio(l.tipoRateio || '')
+    '', limparTextoExportacaoDominio(codigoEmpresaMatrizFilial(l.empresa) || l.empresa), '', '', limparTextoExportacaoDominio(l.tipoRateio || '')
   ]);
 }
 
@@ -5101,6 +5160,87 @@ function exportarRegrasNumerarioRateio() {
   XLSX.utils.book_append_sheet(wb, ws, 'Regras Numerário');
   const data = new Date().toLocaleDateString('pt-BR').replace(/\//g, '-');
   XLSX.writeFile(wb, `Regras_Numerario_${grupoAtivo}_${data}.xlsx`);
+}
+
+function coletarContasParaMapa() {
+  const mapa = new Map(); // normalizado -> nome original
+  const add = v => {
+    const nome = limparTextoECD(v);
+    if (!nome) return;
+    const k = normalizarTexto(nome);
+    if (!mapa.has(k)) mapa.set(k, nome);
+  };
+  extratoBancarioTemp.forEach(m => add(m.conta));
+  linhasImportadas.forEach(r => add(r[COLS.CONTA]));
+  recebimentosRateioTemp.forEach(r => add(r.conta));
+  const salvas = contasSemConciliacao[grupoAtivo] || {};
+  Object.keys(salvas).forEach(k => {
+    // pula chaves puramente normalizadas ja cobertas por uma chave "bonita" equivalente
+    if (!mapa.has(normalizarTexto(k))) add(k);
+  });
+  return Array.from(mapa.values()).sort((a, b) => a.localeCompare(b, 'pt-BR'));
+}
+
+function coletarEmpresasParaMapa() {
+  const mapa = new Map();
+  const add = v => {
+    const nome = limparTextoECD(v);
+    if (!nome) return;
+    const k = normalizarTexto(nome);
+    if (!mapa.has(k)) mapa.set(k, nome);
+  };
+  linhasImportadas.forEach(r => {
+    add(r[COLS.EMPRESA]);
+    add(centroCustoLinha(r));
+    add(empresaOrigemLinha(r));
+  });
+  recebimentosRateioTemp.forEach(r => {
+    add(r.centroCusto);
+    add(r.empresaBanco);
+  });
+  const salvas = mapaEmpresas[grupoAtivo] || {};
+  Object.keys(salvas).forEach(k => {
+    if (!mapa.has(normalizarTexto(k))) add(k);
+  });
+  return Array.from(mapa.values()).sort((a, b) => a.localeCompare(b, 'pt-BR'));
+}
+
+function renderMapaCodigos() {
+  const tituloEl = document.getElementById('titulo-mapa-codigos');
+  if (tituloEl) tituloEl.textContent = grupoAtivo || '';
+  const el = document.getElementById('container-mapa-codigos');
+  if (!el) return;
+  if (!grupoAtivo) {
+    el.innerHTML = `<div class="alert alert-warn">Selecione um grupo primeiro.</div>`;
+    return;
+  }
+  const contas = coletarContasParaMapa();
+  const empresas = coletarEmpresasParaMapa();
+  const regrasContas = contasSemConciliacao[grupoAtivo] || {};
+  const regrasEmpresas = mapaEmpresas[grupoAtivo] || {};
+  const linhaConta = nome => `<tr>
+    <td>${escapeHtml(nome)}</td>
+    <td><input type="text" style="width:160px" placeholder="Código no Domínio" value="${escapeAttr(regrasContas[nome] || '')}" data-conta-sem-conciliacao="${escapeAttr(nome)}" onchange="salvarContaSemConciliacaoInput(this)"></td>
+  </tr>`;
+  const linhaEmpresa = nome => `<tr>
+    <td>${escapeHtml(nome)}</td>
+    <td><input type="text" style="width:160px" placeholder="Código Matriz/Filial" value="${escapeAttr(regrasEmpresas[nome] || '')}" data-empresa-mapa="${escapeAttr(nome)}" onchange="salvarMapaEmpresaInput(this)"></td>
+  </tr>`;
+  el.innerHTML = `
+    <div class="card" style="margin-bottom:16px">
+      <h3 style="margin-top:0">Contas (bancos e caixas)</h3>
+      ${contas.length ? `<div class="table-wrap table-scroll"><table>
+        <thead><tr><th>Nome da conta (como aparece nas planilhas/extrato)</th><th>Código no Domínio</th></tr></thead>
+        <tbody>${contas.map(linhaConta).join('')}</tbody>
+      </table></div>` : `<div class="empty">Nenhuma conta detectada ainda — importe o extrato ou os pagamentos/recebimentos desse grupo primeiro.</div>`}
+    </div>
+    <div class="card">
+      <h3 style="margin-top:0">Empresas / Filiais</h3>
+      ${empresas.length ? `<div class="table-wrap table-scroll"><table>
+        <thead><tr><th>Nome da empresa (como aparece nas planilhas)</th><th>Código Matriz/Filial no Domínio</th></tr></thead>
+        <tbody>${empresas.map(linhaEmpresa).join('')}</tbody>
+      </table></div>` : `<div class="empty">Nenhuma empresa detectada ainda — importe os pagamentos/recebimentos desse grupo primeiro.</div>`}
+    </div>`;
 }
 
 function alterarTipoRegras(tipo) {
