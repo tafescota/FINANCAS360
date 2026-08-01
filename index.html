@@ -3696,7 +3696,7 @@ function montarLinhasDominioConciliacao({ validarPendencias = true } = {}) {
       if (idxMov >= 0 && transferenciasPareadas.has(idxMov)) return;
       linhas.push(linhaDominio(
         fmtDate(mov.data || item.data),
-        mov.conta || item.conta || infoExtratoBancarioTemp?.conta || '',
+        codigoBancoConciliacao(mov.conta || item.conta || infoExtratoBancarioTemp?.conta || ''),
         codigo,
         Math.abs(mov.valor || item.total),
         descricaoMovimentoExtrato(mov) || item.historico,
