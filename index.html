@@ -216,6 +216,10 @@
   <span class="topbar-logo"><img src="zip-logo-topbar.webp?v=2" alt="Zip Contabilidade" class="topbar-logo-img"></span>
   <span class="topbar-sub">Conciliação F360</span>
   <span class="topbar-grupo" id="topbar-grupo" style="display:none"></span>
+  <span id="topbar-sync-status" style="display:none;margin-left:8px;background:#7c2d12;color:#fff;font-size:12px;padding:4px 12px;border-radius:20px;align-items:center;gap:8px">
+    <span>⚠️ Regras não sincronizaram com a base compartilhada</span>
+    <button onclick="tentarSincronizarNovamente()" style="background:#fff;color:#7c2d12;border:none;border-radius:12px;padding:2px 10px;font-size:11px;cursor:pointer;font-weight:600">Tentar de novo</button>
+  </span>
 </div>
 
 <div class="container">
@@ -866,6 +870,7 @@ async function carregarBaseCompartilhada(mostrarMensagem = false) {
     if (grupoAtivo && !grupos.includes(grupoAtivo)) grupoAtivo = null;
     renderGrupos();
     atualizarStatusBanco('Base compartilhada do site conectada. Todos usam os mesmos grupos e regras.', 'ok');
+    ocultarAvisoSyncGlobal();
     if (mostrarMensagem) showMsg('Base sincronizada com o site.', 'ok');
   } catch (err) {
     const local = location.hostname === '127.0.0.1' || location.hostname === 'localhost';
@@ -875,6 +880,7 @@ async function carregarBaseCompartilhada(mostrarMensagem = false) {
         : 'Base compartilhada indisponível. Verifique se a pasta completa foi publicada no Netlify.',
       'orange'
     );
+    if (!local) mostrarAvisoSyncGlobal();
   }
 }
 
@@ -890,12 +896,31 @@ async function salvarBaseCompartilhada(forcar = false) {
     });
     if (!resp.ok) throw new Error('não foi possível salvar');
     atualizarStatusBanco('Base compartilhada salva no site.', 'ok');
+    ocultarAvisoSyncGlobal();
     if (forcar) renderGrupos();
   } catch (err) {
     atualizarStatusBanco('Não consegui salvar na base compartilhada agora. Mantive uma cópia local neste navegador.', 'warn');
+    mostrarAvisoSyncGlobal();
   } finally {
     salvandoBaseCompartilhada = false;
   }
+}
+
+function mostrarAvisoSyncGlobal() {
+  const el = document.getElementById('topbar-sync-status');
+  if (el) el.style.display = 'flex';
+}
+
+function ocultarAvisoSyncGlobal() {
+  const el = document.getElementById('topbar-sync-status');
+  if (el) el.style.display = 'none';
+}
+
+async function tentarSincronizarNovamente() {
+  // Primeiro tenta buscar o que está no site (mais seguro, não sobrescreve o trabalho de outra pessoa).
+  await carregarBaseCompartilhada(true);
+  // Depois garante que qualquer alteração feita aqui neste navegador também suba.
+  await salvarBaseCompartilhada(true);
 }
 
 function exportarBaseDePara() {
