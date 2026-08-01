@@ -630,7 +630,13 @@ function ehDescontoComercial(plano, valor) {
 // a Recolher) já é lançada no sistema contábil por outro processo (provisão feita à parte).
 function ehRetencaoFolhaSemLancamento(plano, valor) {
   const planoNorm = normalizarTexto(plano);
-  return valor < 0 && (planoNorm.includes('inss') || planoNorm.includes('fgts'));
+  return valor < 0 && (
+    planoNorm.includes('inss')
+    || planoNorm.includes('fgts')
+    || planoNorm.includes('descontos gerais sobre folha')
+    || planoNorm.includes('desconto ferias pagas')
+    || planoNorm.includes('desconto férias pagas')
+  );
 }
 
 // Usado só para agrupar/absorver no lado do banco: os dois tipos acima reduzem o valor
@@ -1564,7 +1570,7 @@ function prepararPagamentosImportados(dados, abrirTelaPendencias = true) {
   const gruposAbsorverPreviewPend = new Map();
   dados.forEach(r => {
     if (!r.__rateio || rateioIntercompanyLinha(r)) return;
-    const chave = chaveMovimentoRealPagamentoRateio(r);
+    const chave = chaveGuiaAbsorverRateio(r);
     const valor = arredondarMoeda(r[COLS.VALOR_LIQ]);
     const planoLinha = limparTextoECD(r[COLS.PLANO]);
     if (!gruposAbsorverPreviewPend.has(chave)) gruposAbsorverPreviewPend.set(chave, []);
@@ -1596,7 +1602,7 @@ function prepararPagamentosImportados(dados, abrirTelaPendencias = true) {
     const valorRateio = arredondarMoeda(r[COLS.VALOR_LIQ]);
     const tipoAjusteRateio = (r.__rateio && !rateioIntercompanyLinha(r)) ? tipoAjusteRateioPlano(plano, valorRateio) : '';
     if (!forn && !plano) return;
-    if (r.__rateio && !rateioIntercompanyLinha(r) && ehRetencaoFolhaSemLancamento(plano, valorRateio) && gruposComAbsorvedorPend.has(chaveMovimentoRealPagamentoRateio(r))) {
+    if (r.__rateio && !rateioIntercompanyLinha(r) && ehRetencaoFolhaSemLancamento(plano, valorRateio) && gruposComAbsorvedorPend.has(chaveGuiaAbsorverRateio(r))) {
       return; // retenção (INSS/FGTS) absorvida no banco, não precisa de código próprio
     }
     if (tipoAjusteRateio) {
@@ -2620,6 +2626,10 @@ function criarItensRecebimentosRateioPorDia() {
   //    dentro de cada grupo, subdivide por categoria (cartão/boleto/dinheiro) + empresa (centro de custo) — tudo somado no período inteiro, não por dia
   const planilhaPorContaTipo = new Map(); // chave "conta|tipoExtrato" -> Map("categoria|empresaNorm" -> {total, qtd, conta, centroCusto, empresaBanco, categoria})
   recebimentosRateioTemp.forEach(r => {
+    // Taxas/ajustes negativos de recebimentos por rateio não são apropriados aqui:
+    // a conciliação/exportação segue o que entrou no extrato, e as taxas são tratadas
+    // por competência em outro processo. Elas ficam no resumo, mas não viram lançamento.
+    if (arredondarMoeda(r.valor) <= 0) return;
     const tipoExtrato = tipoExtratoDaCategoria(r.categoria);
     const chaveContaTipo = `${normalizarTexto(r.conta)}|${tipoExtrato}`;
     if (!planilhaPorContaTipo.has(chaveContaTipo)) planilhaPorContaTipo.set(chaveContaTipo, new Map());
@@ -5001,6 +5011,21 @@ function chaveMovimentoRealPagamentoRateio(r) {
   ].join('|');
 }
 
+// Guia/título que uma mesma "Número" cobre pode ser rateada entre VÁRIAS empresas do grupo
+// (ex.: uma guia de INSS/IRPJ/CSLL única, dividida por centro de custo entre as filiais).
+// Para decidir se um desconto/retenção cabe na linha principal sem ficar negativo, é preciso
+// olhar a guia inteira (todas as empresas), não só a fatia de uma empresa — por isso essa
+// chave NÃO inclui empresa/centro de custo, diferente de chaveMovimentoRealPagamentoRateio
+// (que precisa da empresa/centro para separar corretamente o lado do banco no intercompany).
+function chaveGuiaAbsorverRateio(r) {
+  return [
+    dataKey(r[COLS.LIQUIDACAO]),
+    normalizarTexto(limparTextoECD(r[COLS.CONTA])),
+    normalizarTexto(String(r[COLS.NUMERO] ?? '')),
+    normalizarTexto(String(r[COLS.PARCELA] ?? ''))
+  ].join('|');
+}
+
 function gerarLancamentos(dados, regras) {
   lancamentosGerados = [];
   const totaisMovimentoRateioBanco = new Map();
@@ -5018,7 +5043,7 @@ function gerarLancamentos(dados, regras) {
   const gruposAbsorverPreview = new Map();
   dados.forEach((r, idx) => {
     if (!r.__rateio || rateioIntercompanyLinha(r)) return;
-    const chave = chaveMovimentoRealPagamentoRateio(r);
+    const chave = chaveGuiaAbsorverRateio(r);
     const valor = arredondarMoeda(r[COLS.VALOR_LIQ]);
     const plano = limparTextoECD(r[COLS.PLANO]);
     if (!gruposAbsorverPreview.has(chave)) gruposAbsorverPreview.set(chave, []);
@@ -5055,7 +5080,7 @@ function gerarLancamentos(dados, regras) {
     if (!forn && !plano && !tipoDoc && !historico) return;
     if (r.__rateio && !rateioIntercompanyLinha(r)) {
       const valorRateioAtual = arredondarMoeda(r[COLS.VALOR_LIQ]);
-      if (ehRetencaoFolhaSemLancamento(plano, valorRateioAtual) && absorvedorPorGrupo.has(chaveMovimentoRealPagamentoRateio(r))) {
+      if (ehRetencaoFolhaSemLancamento(plano, valorRateioAtual) && absorvedorPorGrupo.has(chaveGuiaAbsorverRateio(r))) {
         return; // retenção (INSS/FGTS) absorvida no banco, sem lançamento próprio (obrigação já lançada à parte)
       }
     }
@@ -5078,7 +5103,7 @@ function gerarLancamentos(dados, regras) {
     let valorLancamento = linhaRateioNegativa ? Math.abs(valorLiq) : valorLiq;
     let notaDescontoAbsorvido = '';
     if (r.__rateio && !intercompanyRateio) {
-      const chaveMovAbsorver = chaveMovimentoRealPagamentoRateio(r);
+      const chaveMovAbsorver = chaveGuiaAbsorverRateio(r);
       if (absorvedorPorGrupo.get(chaveMovAbsorver) === idx) {
         const totalAbsorvido = valorAbsorverPorGrupo.get(chaveMovAbsorver) || 0;
         valorLancamento = arredondarMoeda(valorLancamento + totalAbsorvido);
