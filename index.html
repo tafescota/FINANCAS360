@@ -1167,12 +1167,12 @@ function selecionarModoImportacaoPagamentos(modo) {
   if (status) status.textContent = nomeModoImportacao(modoImportacaoPagamentos);
   if (nota) {
     nota.textContent = modoImportacaoPagamentos === 'rateio'
-      ? 'Usa Rateio de Títulos: selecione juntos pagamentos e recebimentos. A regra considera Empresa + Centro de Custo e identifica operação própria ou transferência de numerários.'
+      ? 'Usa as planilhas normais de títulos: anexe pagamentos, títulos a receber e cartões a receber juntos. A regra usa o Centro de Custo para identificar a empresa e cria transferência de numerários quando o banco for de outra unidade.'
       : 'Usa o formato atual de Parcelas de Títulos, com empresa na coluna D e acréscimo/desconto próprio.';
   }
   if (sub) {
     sub.textContent = modoImportacaoPagamentos === 'rateio'
-      ? 'Anexe aqui as planilhas de PAGAMENTOS e RECEBIMENTOS por rateio juntas (.xlsx ou .xlsm)'
+      ? 'Anexe as planilhas normais de pagamentos e recebimentos: ParcelaDeTituloAPagar, ParcelaDeTituloAReceber e ParcelasDeCartoesAReceber'
       : 'Arquivo de Parcelas de Títulos exportado do financeiro (.xlsx ou .xlsm)';
   }
   if (dropTitle) {
@@ -4443,10 +4443,6 @@ async function classificarArquivoRateioImportacao(file) {
       if (recebimento) return recebimento;
     } catch (errRecebimento) {}
   }
-  try {
-    const leituraPagamento = linhasPlanilhaRateio(wb);
-    if (leituraPagamento?.dados?.length) return { tipo: 'pagamento', arquivo: file.name, dados: leituraPagamento.dados };
-  } catch (errPagamento) {}
   try {
     const leituraTitulos = linhasPlanilhaTitulos(wb);
     if (leituraTitulos?.dados?.length) {
