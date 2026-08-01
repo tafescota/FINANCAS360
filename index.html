@@ -540,6 +540,7 @@ let provisaoRateioTemp = [];
 let infoProvisaoRateioTemp = null;
 let provisaoSelecionadas = new Set();
 let exportacoesRealizadas = { pagamentos: false, conciliacao: false, final: false };
+let avisosRecebimentoRateioDia = [];
 
 const COLS = { TIPO:0, NUMERO:1, PARCELA:2, EMPRESA:3, FORNECEDOR:4, EMISSAO:5, VENCIMENTO:6, LIQUIDACAO:7, VALOR_BRUTO:8, COMPETENCIA:9, PLANO:10, CC:11, ACRESCIMO:12, VALOR_LIQ:13, CONTA:14, MEIO_PAG:15, TIPO_DOC:16, APROVADA:17, STATUS:18, HISTORICO:19 };
 
@@ -1668,6 +1669,25 @@ function htmlResumoConferenciaBancaria() {
   const diferencaConferencia = arredondarMoeda(totalPagamentos - totalSaidasPagamentos);
   const valoresBatem = Math.abs(diferencaConferencia) < 0.01;
   const detalheDiferenca = valoresBatem ? '' : htmlDetalheDiferencaConferencia(pagamentosConciliaveis, saidasPagamentos);
+  const totalEntradas = arredondarMoeda(entradas.reduce((s, m) => s + m.valor, 0));
+  const temRecebimentosRateio = grupoPodeRecebimentosRateio() && recebimentosRateioTemp.length > 0;
+  const totalRecebimentosRateio = arredondarMoeda(recebimentosRateioTemp.reduce((s, r) => s + r.valor, 0));
+  const diferencaRecebimentos = arredondarMoeda(totalRecebimentosRateio - totalEntradas);
+  const recebimentosBatem = Math.abs(diferencaRecebimentos) < 0.01;
+  const blocoConferenciaRecebimentos = temRecebimentosRateio ? `
+    <div class="alert ${recebimentosBatem ? 'alert-ok' : 'alert-warn'} conciliacao-check-alert">
+      <div class="conciliacao-check-head">
+        <div>
+          <strong>Conferência de recebimentos</strong>
+          <span>Validação do total das entradas do extrato contra o total das planilhas de recebimento por rateio (cartões + títulos a receber) do mês.</span>
+        </div>
+        <span class="conciliacao-check-status ${recebimentosBatem ? 'ok' : 'warn'}">${recebimentosBatem ? 'Valores batem' : 'Diferença R$ ' + fmtValor(Math.abs(diferencaRecebimentos))}</span>
+      </div>
+      <div class="conciliacao-check-totals">
+        <span>Planilhas de recebimento: <strong>R$ ${fmtValor(totalRecebimentosRateio)}</strong></span>
+        <span>Extrato (entradas): <strong>R$ ${fmtValor(totalEntradas)}</strong></span>
+      </div>
+    </div>` : '';
   return `
     <div class="conciliacao-grid conciliacao-summary-grid">
       <div class="metric metric-muted"><div class="metric-label">Grupo ativo</div><div class="metric-value metric-text">${escapeHtml(grupoAtivo || 'Nenhum')}</div></div>
@@ -1690,7 +1710,8 @@ function htmlResumoConferenciaBancaria() {
         <span>Extrato: <strong>R$ ${fmtValor(totalSaidasPagamentos)}</strong></span>
       </div>
       ${detalheDiferenca}
-    </div>`;
+    </div>
+    ${blocoConferenciaRecebimentos}`;
 }
 
 function renderResumoConferenciaResultado() {
@@ -2374,6 +2395,112 @@ function criarItensRecebimentosRateioAgrupados() {
   return Array.from(gruposRateio.values()).filter(item => arredondarMoeda(item.total) !== 0);
 }
 
+function extratoRelevantePlanilhaRecebimentos(m) {
+  const tipoNorm = normalizarTexto(m.tipoConciliacao || '');
+  return tipoNorm.includes('parcelas de cartoes') || tipoNorm.includes('parcelas de titulos');
+}
+
+function criarItensRecebimentosRateioPorDia() {
+  avisosRecebimentoRateioDia = [];
+  if (!grupoPodeRecebimentosRateio() || recebimentosRateioTemp.length === 0) return [];
+  // 1) Planilhas de recebimento agrupadas por dia + conta + empresa (centro de custo)
+  const planilhaPorDiaConta = new Map(); // chave "dia|conta" -> Map(empresaNorm -> {total, qtd, conta, centroCusto, empresaBanco})
+  recebimentosRateioTemp.forEach(r => {
+    const chaveDiaConta = `${r.dataKey}|${normalizarTexto(r.conta)}`;
+    if (!planilhaPorDiaConta.has(chaveDiaConta)) planilhaPorDiaConta.set(chaveDiaConta, new Map());
+    const porEmpresa = planilhaPorDiaConta.get(chaveDiaConta);
+    const chaveEmpresa = normalizarTexto(r.centroCusto);
+    const atual = porEmpresa.get(chaveEmpresa) || { total: 0, qtd: 0, conta: r.conta, centroCusto: r.centroCusto, empresaBanco: r.empresaBanco };
+    atual.total = arredondarMoeda(atual.total + r.valor);
+    atual.qtd += 1;
+    porEmpresa.set(chaveEmpresa, atual);
+  });
+  // 2) Extrato: total de entradas relevantes (cartões/títulos) por dia + conta — é a âncora
+  const extratoPorDiaConta = new Map();
+  extratoBancarioTemp.forEach(m => {
+    if (m.valor <= 0 || !extratoRelevantePlanilhaRecebimentos(m)) return;
+    const chave = `${dataKey(m.data)}|${normalizarTexto(m.conta)}`;
+    extratoPorDiaConta.set(chave, arredondarMoeda((extratoPorDiaConta.get(chave) || 0) + m.valor));
+  });
+  // 3) Ratear o total do dia/conta entre as empresas, na mesma proporção da planilha
+  const LIMITE_DIFERENCA_ABSOLUTA = 1000; // R$1.000
+  const LIMITE_DIFERENCA_PROPORCIONAL = 0.5; // 50% do que a planilha explica
+  const itens = [];
+  planilhaPorDiaConta.forEach((porEmpresa, chaveDiaConta) => {
+    const totalExtratoDia = extratoPorDiaConta.get(chaveDiaConta);
+    if (!totalExtratoDia) return; // esse dia/conta não tem entrada correspondente no extrato — planilha fica pendente, não lança
+    const totalPlanilhaDia = arredondarMoeda(Array.from(porEmpresa.values()).reduce((s, e) => s + e.total, 0));
+    if (!totalPlanilhaDia) return;
+    const [diaStr, contaNormStr] = chaveDiaConta.split('|');
+    const diferencaDia = arredondarMoeda(totalExtratoDia - totalPlanilhaDia);
+    const diferencaGrande = Math.abs(diferencaDia) > LIMITE_DIFERENCA_ABSOLUTA && Math.abs(diferencaDia) > Math.abs(totalPlanilhaDia) * LIMITE_DIFERENCA_PROPORCIONAL;
+    const valorParaRatear = diferencaGrande ? totalPlanilhaDia : totalExtratoDia;
+    if (diferencaGrande) {
+      avisosRecebimentoRateioDia.push({
+        data: diaStr,
+        conta: Array.from(porEmpresa.values())[0]?.conta || contaNormStr,
+        totalExtrato: totalExtratoDia,
+        totalPlanilha: totalPlanilhaDia,
+        diferenca: diferencaDia
+      });
+    }
+    porEmpresa.forEach(dadosEmpresa => {
+      const proporcao = dadosEmpresa.total / totalPlanilhaDia;
+      const valorAlocado = arredondarMoeda(proporcao * valorParaRatear);
+      if (!valorAlocado) return;
+      const empresaBanco = dadosEmpresa.empresaBanco;
+      const centroCusto = dadosEmpresa.centroCusto;
+      const intercompany = grupoUsaNumerariosRateio() && normalizarTexto(empresaBanco) !== normalizarTexto(centroCusto);
+      itens.push({
+        id: `rec-rateio-dia-${itens.length}`,
+        movimento: 'recebimento',
+        rateioRecebimento: true,
+        tipo: 'Recebimentos do dia (rateado pelo extrato)',
+        historico: `Recebimentos ${centroCusto} - rateio proporcional do dia ${diaStr}`,
+        plano: '',
+        qtd: dadosEmpresa.qtd,
+        total: valorAlocado,
+        data: diaStr,
+        conta: dadosEmpresa.conta,
+        empresa: empresaBanco,
+        empresaBanco,
+        centroCusto,
+        intercompany,
+        tipoRateio: intercompany ? 'TRANSFERENCIA DE NUMERARIOS' : 'PROPRIO',
+        escopoRegra: escopoRegraPagamento(empresaBanco, centroCusto, true),
+        movimentos: []
+      });
+    });
+  });
+  return itens;
+}
+
+function validacaoRecebimentosPorUnidade(itensGerados) {
+  const porUnidadePlanilha = new Map();
+  recebimentosRateioTemp.forEach(r => {
+    const chave = normalizarTexto(r.centroCusto);
+    porUnidadePlanilha.set(chave, { nome: r.centroCusto, total: arredondarMoeda((porUnidadePlanilha.get(chave)?.total || 0) + r.valor) });
+  });
+  const porUnidadeLancado = new Map();
+  (itensGerados || []).forEach(item => {
+    const chave = normalizarTexto(item.centroCusto);
+    porUnidadeLancado.set(chave, { nome: item.centroCusto, total: arredondarMoeda((porUnidadeLancado.get(chave)?.total || 0) + item.total) });
+  });
+  const todasChaves = new Set([...porUnidadePlanilha.keys(), ...porUnidadeLancado.keys()]);
+  return Array.from(todasChaves).map(chave => {
+    const planilha = porUnidadePlanilha.get(chave);
+    const lancado = porUnidadeLancado.get(chave);
+    const totalPlanilha = planilha?.total || 0;
+    const totalLancado = lancado?.total || 0;
+    return {
+      nome: planilha?.nome || lancado?.nome || chave,
+      totalPlanilha,
+      totalLancado,
+      diferenca: arredondarMoeda(totalLancado - totalPlanilha)
+    };
+  }).sort((a, b) => Math.abs(b.diferenca) - Math.abs(a.diferenca));
+}
+
 function itensNumerarioRecebimentosRateio(itensRateio) {
   if (!grupoUsaNumerariosRateio()) return [];
   const vistos = new Set();
@@ -2439,21 +2566,12 @@ function gerarSugestoesConciliacao(opcoes = {}) {
   const pagamentos = pagamentosImportadosConciliacao(contasBanco);
   const movimentos = extratoBancarioTemp
     .filter(m => m.valor < 0 && normalizarTexto(m.tipoConciliacao).includes('parcelas de titulos'));
-  const itensRecebimentoRateioPrevia = criarItensRecebimentosRateioAgrupados();
-  const movimentosClaimedPorRateio = new Set();
-  itensRecebimentoRateioPrevia.forEach(item => {
-    const valorAlvo = Math.abs(arredondarMoeda(item.total));
-    if (!valorAlvo) return;
-    const dataAlvo = dataKey((item.movimentos && item.movimentos[0] && item.movimentos[0].data) || item.data);
-    const contaAlvo = normalizarTexto(item.conta);
-    extratoBancarioTemp.forEach((m, idx) => {
-      if (movimentosClaimedPorRateio.has(idx) || m.valor <= 0) return;
-      if (normalizarTexto(m.conta) !== contaAlvo) return;
-      if (dataKey(m.data) !== dataAlvo) return;
-      if (Math.abs(arredondarMoeda(Math.abs(m.valor) - valorAlvo)) < 0.02) movimentosClaimedPorRateio.add(idx);
-    });
+  const diasContaClaimedPorRateio = new Set(recebimentosRateioTemp.map(r => `${r.dataKey}|${normalizarTexto(r.conta)}`));
+  const entradas = extratoBancarioTemp.filter((m, idx) => {
+    if (m.valor <= 0 || transferenciasPareadas.has(idx)) return false;
+    if (!extratoRelevantePlanilhaRecebimentos(m)) return true;
+    return !diasContaClaimedPorRateio.has(`${dataKey(m.data)}|${normalizarTexto(m.conta)}`);
   });
-  const entradas = extratoBancarioTemp.filter((m, idx) => m.valor > 0 && !transferenciasPareadas.has(idx) && !movimentosClaimedPorRateio.has(idx));
   const usadosMov = new Set();
   const sugestoesPorPagamento = new Map();
 
@@ -2646,7 +2764,8 @@ function renderSugestoesConciliacao(sugestoes, qtdPagamentos, qtdMovimentos, ent
   const linhasPagamentosPendentes = pendentesPagamento.map(renderLinhaPagamento).join('');
   const regrasRecebimentos = deparaRecebimentos[grupoAtivo] || {};
   const itensRecebimentoExtrato = Array.from(entradasAgrupadas.values()).slice(0, 60).map((r, idx) => ({ ...r, id: `rec-${idx}`, movimento: 'recebimento', escopoRegra: '' }));
-  const itensRecebimentoRateio = criarItensRecebimentosRateioAgrupados();
+  const itensRecebimentoRateio = criarItensRecebimentosRateioPorDia();
+  const validacaoUnidades = validacaoRecebimentosPorUnidade(itensRecebimentoRateio);
   const itensRecebimento = [...itensRecebimentoExtrato, ...itensRecebimentoRateio];
   const itensNumerarioRateio = itensNumerarioRecebimentosRateio(itensRecebimentoRateio);
   const itensSaidaExtra = saidasExtras.slice(0, 80).map(({ mov, idxMov }) => ({
@@ -2792,6 +2911,26 @@ function renderSugestoesConciliacao(sugestoes, qtdPagamentos, qtdMovimentos, ent
       ${itensRecebimentoRateio.length ? `<div class="metric metric-muted"><div class="metric-label">Recebimentos rateio</div><div class="metric-value metric-text">${itensRecebimentoRateio.length}</div><div class="metric-sub">${numerariosPendentes.length} numerário${numerariosPendentes.length !== 1 ? 's' : ''} pendente${numerariosPendentes.length !== 1 ? 's' : ''}</div></div>` : ''}
     </div>
     <p class="conciliacao-note" style="margin-bottom:10px">Pagamentos são validados contra as saídas do extrato. As pendências devem ser conciliadas manualmente quando não houver sugestão automática.</p>
+    ${avisosRecebimentoRateioDia.length ? `<div class="alert alert-warn" style="margin-bottom:12px">
+      <strong>⚠️ ${avisosRecebimentoRateioDia.length} dia(s) com movimento no extrato muito maior do que a planilha de recebimentos explica</strong> — o rateio desses dias foi limitado ao que a planilha realmente cobre; a diferença abaixo NÃO foi lançada e precisa da sua revisão manual:
+      <div style="margin-top:8px;display:flex;flex-direction:column;gap:4px">
+        ${avisosRecebimentoRateioDia.map(a => `<div>${escapeHtml(a.data)} · conta ${escapeHtml(a.conta)} — extrato: <strong>R$ ${fmtValor(a.totalExtrato)}</strong>, planilha explica: <strong>R$ ${fmtValor(a.totalPlanilha)}</strong>, sobra não lançada: <strong>R$ ${fmtValor(a.diferenca)}</strong></div>`).join('')}
+      </div>
+    </div>` : ''}
+    ${validacaoUnidades.length ? `<div class="alert ${validacaoUnidades.every(u => Math.abs(u.diferenca) < 1) ? 'alert-ok' : 'alert-warn'}" style="margin-bottom:12px">
+      <strong>Validação de recebimentos por unidade (centro de custo)</strong> — total da planilha de rateio × total efetivamente rateado pelo extrato, por unidade:
+      <table style="width:100%;margin-top:8px;border-collapse:collapse;font-size:13px">
+        <thead><tr><th style="text-align:left;padding:4px 8px">Unidade</th><th style="text-align:right;padding:4px 8px">Planilha</th><th style="text-align:right;padding:4px 8px">Rateado (extrato)</th><th style="text-align:right;padding:4px 8px">Diferença</th></tr></thead>
+        <tbody>
+          ${validacaoUnidades.map(u => `<tr class="${Math.abs(u.diferenca) < 1 ? '' : 'sem-codigo'}">
+            <td style="padding:4px 8px">${escapeHtml(u.nome)}</td>
+            <td style="text-align:right;padding:4px 8px">R$ ${fmtValor(u.totalPlanilha)}</td>
+            <td style="text-align:right;padding:4px 8px">R$ ${fmtValor(u.totalLancado)}</td>
+            <td style="text-align:right;padding:4px 8px"><strong>R$ ${fmtValor(u.diferenca)}</strong></td>
+          </tr>`).join('')}
+        </tbody>
+      </table>
+    </div>` : ''}
     <div class="conciliation-actions">
       ${qtdParaResolver > 0 ? '<button class="btn btn-primary" onclick="abrirModalPendenciasConciliacao()">Preencher pendências</button>' : ''}
       <button class="btn" onclick="mostrarTela('tela-resultado')">Voltar aos lançamentos</button>
