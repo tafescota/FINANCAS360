@@ -1745,7 +1745,7 @@ function headerInfoRecebimentos(raw, obrigatorias) {
   return { headerIdx, idx };
 }
 
-function linhaRecebimentoRateioBase({ data, valor, conta, empresaBanco, centroCusto, tipo, historico, plano, origem, arquivoOrigem, linhaOrigem, tipoLancamento, chaveMovimentoReal }) {
+function linhaRecebimentoRateioBase({ data, valor, conta, empresaBanco, centroCusto, tipo, historico, plano, origem, arquivoOrigem, linhaOrigem, tipoLancamento, chaveMovimentoReal, categoria }) {
   const empresaBancoLimpa = limparTextoECD(empresaBanco || conta || '');
   const centroLimpo = limparTextoECD(centroCusto || empresaBancoLimpa);
   const valorMoeda = arredondarMoeda(valor);
@@ -1771,7 +1771,8 @@ function linhaRecebimentoRateioBase({ data, valor, conta, empresaBanco, centroCu
     rateio: true,
     intercompany: grupoUsaNumerariosRateio() && normalizarTexto(empresaBancoLimpa) !== normalizarTexto(centroLimpo),
     tipoRateio: grupoUsaNumerariosRateio() && normalizarTexto(empresaBancoLimpa) !== normalizarTexto(centroLimpo) ? 'TRANSFERENCIA DE NUMERARIOS' : 'PROPRIO',
-    chaveAgrupamento: [dk, normalizarTexto(conta), normalizarTexto(empresaBancoLimpa), normalizarTexto(centroLimpo), normalizarTexto(chaveMovimentoReal || '')].join('|')
+    chaveAgrupamento: [dk, normalizarTexto(conta), normalizarTexto(empresaBancoLimpa), normalizarTexto(centroLimpo), normalizarTexto(chaveMovimentoReal || '')].join('|'),
+    categoria: categoria || 'dinheiro'
   };
 }
 
@@ -1819,7 +1820,8 @@ function linhasRateioCartoesReceber(wb, arquivoOrigem) {
       arquivoOrigem,
       linhaOrigem: headerIdx + rowIdx + 2,
       tipoLancamento,
-      chaveMovimentoReal: [col.bandeira >= 0 ? row[col.bandeira] : '', col.adquirente >= 0 ? row[col.adquirente] : ''].join('|')
+      chaveMovimentoReal: [col.bandeira >= 0 ? row[col.bandeira] : '', col.adquirente >= 0 ? row[col.adquirente] : ''].join('|'),
+      categoria: (() => { const a = normalizarTexto(col.adquirente >= 0 ? row[col.adquirente] : ''); return a.includes('boleto') ? 'boleto' : a.includes('pix') ? 'dinheiro' : 'cartao'; })()
     });
   }).filter(Boolean);
   return { tipo: 'cartoes', nomePlanilha, linhas };
@@ -1877,7 +1879,8 @@ function linhasRateioTitulosReceber(wb, arquivoOrigem) {
       arquivoOrigem,
       linhaOrigem: headerIdx + rowIdx + 2,
       tipoLancamento: status,
-      chaveMovimentoReal: [col.numero >= 0 ? row[col.numero] : '', col.parcela >= 0 ? row[col.parcela] : ''].join('|')
+      chaveMovimentoReal: [col.numero >= 0 ? row[col.numero] : '', col.parcela >= 0 ? row[col.parcela] : ''].join('|'),
+      categoria: 'dinheiro'
     });
   }).filter(Boolean);
   return { tipo: 'titulos', nomePlanilha, linhas };
@@ -2400,79 +2403,119 @@ function extratoRelevantePlanilhaRecebimentos(m) {
   return tipoNorm.includes('parcelas de cartoes') || tipoNorm.includes('parcelas de titulos');
 }
 
+function tipoExtratoRecebimento(m) {
+  const tipoNorm = normalizarTexto(m.tipoConciliacao || '');
+  if (tipoNorm.includes('parcelas de cartoes')) return 'cartoes';
+  if (tipoNorm.includes('parcelas de titulos')) return 'titulos';
+  return null;
+}
+
+function tipoExtratoDaCategoria(categoria) {
+  return categoria === 'dinheiro' ? 'titulos' : 'cartoes';
+}
+
+function rotuloCategoriaRecebimento(categoria) {
+  if (categoria === 'cartao') return 'cartão';
+  if (categoria === 'boleto') return 'boleto';
+  return 'dinheiro/título';
+}
+
 function criarItensRecebimentosRateioPorDia() {
   avisosRecebimentoRateioDia = [];
   if (!grupoPodeRecebimentosRateio() || recebimentosRateioTemp.length === 0) return [];
-  // 1) Planilhas de recebimento agrupadas por dia + conta + empresa (centro de custo)
-  const planilhaPorDiaConta = new Map(); // chave "dia|conta" -> Map(empresaNorm -> {total, qtd, conta, centroCusto, empresaBanco})
+  // 1) Planilhas de recebimento agrupadas por dia + conta + tipo de extrato (cartões/boleto batem contra "Parcelas de Cartões"; dinheiro/título contra "Parcelas de Títulos")
+  //    dentro de cada grupo, subdivide por categoria (cartão/boleto/dinheiro) + empresa (centro de custo)
+  const planilhaPorDiaContaTipo = new Map(); // chave "dia|conta|tipoExtrato" -> Map("categoria|empresaNorm" -> {total, qtd, conta, centroCusto, empresaBanco, categoria})
   recebimentosRateioTemp.forEach(r => {
-    const chaveDiaConta = `${r.dataKey}|${normalizarTexto(r.conta)}`;
-    if (!planilhaPorDiaConta.has(chaveDiaConta)) planilhaPorDiaConta.set(chaveDiaConta, new Map());
-    const porEmpresa = planilhaPorDiaConta.get(chaveDiaConta);
-    const chaveEmpresa = normalizarTexto(r.centroCusto);
-    const atual = porEmpresa.get(chaveEmpresa) || { total: 0, qtd: 0, conta: r.conta, centroCusto: r.centroCusto, empresaBanco: r.empresaBanco };
+    const tipoExtrato = tipoExtratoDaCategoria(r.categoria);
+    const chaveDiaContaTipo = `${r.dataKey}|${normalizarTexto(r.conta)}|${tipoExtrato}`;
+    if (!planilhaPorDiaContaTipo.has(chaveDiaContaTipo)) planilhaPorDiaContaTipo.set(chaveDiaContaTipo, new Map());
+    const porGrupo = planilhaPorDiaContaTipo.get(chaveDiaContaTipo);
+    const chaveGrupo = `${r.categoria}|${normalizarTexto(r.centroCusto)}`;
+    const atual = porGrupo.get(chaveGrupo) || { total: 0, qtd: 0, conta: r.conta, centroCusto: r.centroCusto, empresaBanco: r.empresaBanco, categoria: r.categoria };
     atual.total = arredondarMoeda(atual.total + r.valor);
     atual.qtd += 1;
-    porEmpresa.set(chaveEmpresa, atual);
+    porGrupo.set(chaveGrupo, atual);
   });
-  // 2) Extrato: total de entradas relevantes (cartões/títulos) por dia + conta — é a âncora
-  const extratoPorDiaConta = new Map();
+  // 2) Extrato: total de entradas por dia + conta + tipo de extrato — é a âncora
+  const extratoPorDiaContaTipo = new Map();
   extratoBancarioTemp.forEach(m => {
-    if (m.valor <= 0 || !extratoRelevantePlanilhaRecebimentos(m)) return;
-    const chave = `${dataKey(m.data)}|${normalizarTexto(m.conta)}`;
-    extratoPorDiaConta.set(chave, arredondarMoeda((extratoPorDiaConta.get(chave) || 0) + m.valor));
+    if (m.valor <= 0) return;
+    const tipoExtrato = tipoExtratoRecebimento(m);
+    if (!tipoExtrato) return;
+    const chave = `${dataKey(m.data)}|${normalizarTexto(m.conta)}|${tipoExtrato}`;
+    extratoPorDiaContaTipo.set(chave, arredondarMoeda((extratoPorDiaContaTipo.get(chave) || 0) + m.valor));
   });
-  // 3) Ratear o total do dia/conta entre as empresas, na mesma proporção da planilha
+  // 3) Ratear o total do dia/conta/tipo entre categoria+empresa, na mesma proporção da planilha
   const LIMITE_DIFERENCA_ABSOLUTA = 1000; // R$1.000
   const LIMITE_DIFERENCA_PROPORCIONAL = 0.5; // 50% do que a planilha explica
   const itens = [];
-  planilhaPorDiaConta.forEach((porEmpresa, chaveDiaConta) => {
-    const totalExtratoDia = extratoPorDiaConta.get(chaveDiaConta);
-    if (!totalExtratoDia) return; // esse dia/conta não tem entrada correspondente no extrato — planilha fica pendente, não lança
-    const totalPlanilhaDia = arredondarMoeda(Array.from(porEmpresa.values()).reduce((s, e) => s + e.total, 0));
+  planilhaPorDiaContaTipo.forEach((porGrupo, chaveDiaContaTipo) => {
+    const totalExtratoDia = extratoPorDiaContaTipo.get(chaveDiaContaTipo);
+    if (!totalExtratoDia) return; // esse dia/conta/tipo não tem entrada correspondente no extrato — planilha fica pendente, não lança
+    const totalPlanilhaDia = arredondarMoeda(Array.from(porGrupo.values()).reduce((s, e) => s + e.total, 0));
     if (!totalPlanilhaDia) return;
-    const [diaStr, contaNormStr] = chaveDiaConta.split('|');
+    const [diaStr, contaNormStr] = chaveDiaContaTipo.split('|');
     const diferencaDia = arredondarMoeda(totalExtratoDia - totalPlanilhaDia);
     const diferencaGrande = Math.abs(diferencaDia) > LIMITE_DIFERENCA_ABSOLUTA && Math.abs(diferencaDia) > Math.abs(totalPlanilhaDia) * LIMITE_DIFERENCA_PROPORCIONAL;
     const valorParaRatear = diferencaGrande ? totalPlanilhaDia : totalExtratoDia;
     if (diferencaGrande) {
-      avisosRecebimentoRateioDia.push({
+      const sobraItem = {
         data: diaStr,
-        conta: Array.from(porEmpresa.values())[0]?.conta || contaNormStr,
+        conta: Array.from(porGrupo.values())[0]?.conta || contaNormStr,
         totalExtrato: totalExtratoDia,
         totalPlanilha: totalPlanilhaDia,
         diferenca: diferencaDia
-      });
+      };
+      avisosRecebimentoRateioDia.push(sobraItem);
     }
-    porEmpresa.forEach(dadosEmpresa => {
-      const proporcao = dadosEmpresa.total / totalPlanilhaDia;
+    porGrupo.forEach(dadosGrupo => {
+      const proporcao = dadosGrupo.total / totalPlanilhaDia;
       const valorAlocado = arredondarMoeda(proporcao * valorParaRatear);
       if (!valorAlocado) return;
-      const empresaBanco = dadosEmpresa.empresaBanco;
-      const centroCusto = dadosEmpresa.centroCusto;
+      const empresaBanco = dadosGrupo.empresaBanco;
+      const centroCusto = dadosGrupo.centroCusto;
       const intercompany = grupoUsaNumerariosRateio() && normalizarTexto(empresaBanco) !== normalizarTexto(centroCusto);
+      const rotulo = rotuloCategoriaRecebimento(dadosGrupo.categoria);
       itens.push({
         id: `rec-rateio-dia-${itens.length}`,
         movimento: 'recebimento',
         rateioRecebimento: true,
-        tipo: 'Recebimentos do dia (rateado pelo extrato)',
-        historico: `Recebimentos ${centroCusto} - rateio proporcional do dia ${diaStr}`,
+        tipo: `Recebimentos ${rotulo} do dia (rateado pelo extrato)`,
+        historico: `Recebimentos ${rotulo} ${centroCusto} - rateio proporcional do dia ${diaStr}`,
         plano: '',
-        qtd: dadosEmpresa.qtd,
+        qtd: dadosGrupo.qtd,
         total: valorAlocado,
         data: diaStr,
-        conta: dadosEmpresa.conta,
+        conta: dadosGrupo.conta,
         empresa: empresaBanco,
         empresaBanco,
         centroCusto,
+        categoria: dadosGrupo.categoria,
         intercompany,
         tipoRateio: intercompany ? 'TRANSFERENCIA DE NUMERARIOS' : 'PROPRIO',
-        escopoRegra: escopoRegraPagamento(empresaBanco, centroCusto, true),
+        escopoRegra: escopoRegraPagamento(empresaBanco, centroCusto, true) + ` | ${(dadosGrupo.categoria || '').toUpperCase()}`,
         movimentos: []
       });
     });
   });
   return itens;
+}
+
+
+function itensSobraRecebimentoRateio() {
+  return avisosRecebimentoRateioDia.map((a, idx) => ({
+    id: `rec-sobra-rateio-${idx}`,
+    movimento: 'recebimento',
+    tipo: 'Sobra não explicada pela planilha de recebimentos',
+    historico: `Sobra do dia ${a.data} (conta ${a.conta}): extrato mostrou R$ ${fmtValor(a.totalExtrato)}, a planilha só explica R$ ${fmtValor(a.totalPlanilha)}`,
+    qtd: 1,
+    total: Math.abs(a.diferenca),
+    data: a.data,
+    conta: a.conta,
+    empresa: '',
+    escopoRegra: ''
+  }));
 }
 
 function validacaoRecebimentosPorUnidade(itensGerados) {
@@ -2766,7 +2809,8 @@ function renderSugestoesConciliacao(sugestoes, qtdPagamentos, qtdMovimentos, ent
   const itensRecebimentoExtrato = Array.from(entradasAgrupadas.values()).slice(0, 60).map((r, idx) => ({ ...r, id: `rec-${idx}`, movimento: 'recebimento', escopoRegra: '' }));
   const itensRecebimentoRateio = criarItensRecebimentosRateioPorDia();
   const validacaoUnidades = validacaoRecebimentosPorUnidade(itensRecebimentoRateio);
-  const itensRecebimento = [...itensRecebimentoExtrato, ...itensRecebimentoRateio];
+  const itensSobraRecebimento = itensSobraRecebimentoRateio();
+  const itensRecebimento = [...itensRecebimentoExtrato, ...itensRecebimentoRateio, ...itensSobraRecebimento];
   const itensNumerarioRateio = itensNumerarioRecebimentosRateio(itensRecebimentoRateio);
   const itensSaidaExtra = saidasExtras.slice(0, 80).map(({ mov, idxMov }) => ({
     id: `saida-${idxMov}`,
@@ -2912,7 +2956,7 @@ function renderSugestoesConciliacao(sugestoes, qtdPagamentos, qtdMovimentos, ent
     </div>
     <p class="conciliacao-note" style="margin-bottom:10px">Pagamentos são validados contra as saídas do extrato. As pendências devem ser conciliadas manualmente quando não houver sugestão automática.</p>
     ${avisosRecebimentoRateioDia.length ? `<div class="alert alert-warn" style="margin-bottom:12px">
-      <strong>⚠️ ${avisosRecebimentoRateioDia.length} dia(s) com movimento no extrato muito maior do que a planilha de recebimentos explica</strong> — o rateio desses dias foi limitado ao que a planilha realmente cobre; a diferença abaixo NÃO foi lançada e precisa da sua revisão manual:
+      <strong>⚠️ ${avisosRecebimentoRateioDia.length} dia(s) com movimento no extrato muito maior do que a planilha de recebimentos explica</strong> — o rateio desses dias foi limitado ao que a planilha realmente cobre. A sobra abaixo virou pendência na lista de recebimentos (procure "Sobra não explicada..."), preencha a conta certa pra ela entrar na exportação:
       <div style="margin-top:8px;display:flex;flex-direction:column;gap:4px">
         ${avisosRecebimentoRateioDia.map(a => `<div>${escapeHtml(a.data)} · conta ${escapeHtml(a.conta)} — extrato: <strong>R$ ${fmtValor(a.totalExtrato)}</strong>, planilha explica: <strong>R$ ${fmtValor(a.totalPlanilha)}</strong>, sobra não lançada: <strong>R$ ${fmtValor(a.diferenca)}</strong></div>`).join('')}
       </div>
