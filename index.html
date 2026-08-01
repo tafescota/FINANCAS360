@@ -2238,7 +2238,7 @@ async function processarExtratosBancarios(files) {
     if (paresTransferencia > 0) partesMsg.push(`${paresTransferencia} transferência${paresTransferencia !== 1 ? 's' : ''} entre contas identificada${paresTransferencia !== 1 ? 's' : ''}`);
     mostrarMsgConciliacao(partesMsg.join('. ') + '.', 'ok');
     renderConciliacaoBancaria();
-    if (linhasImportadas.length > 0) {
+    if (extratoBancarioTemp.length > 0) {
       const resultado = gerarSugestoesConciliacao();
       if (resultado?.qtdParaResolver > 0) {
         setTimeout(() => abrirModalPendenciasConciliacao(), 0);
@@ -3294,7 +3294,7 @@ function abrirModalPendenciasConciliacao() {
       return true;
     })
     .filter(item => !filtroPendenciasConciliacaoTemp || textoBuscaPendenciaConciliacao(item).includes(normalizarTexto(filtroPendenciasConciliacaoTemp)));
-  const limitePendencias = filtroPendenciasConciliacaoTemp ? 650 : 280;
+  const limitePendencias = filtroPendenciasConciliacaoTemp ? 3000 : 1500;
   const itensRenderizados = itensModal.slice(0, limitePendencias);
   const avisoLimitePendencias = itensModal.length > itensRenderizados.length
     ? `<div class="conciliacao-note pendencias-limite-aviso">Mostrando ${itensRenderizados.length} de ${itensModal.length} pendências. Use a pesquisa para localizar itens específicos sem travar a tela.</div>`
@@ -5181,6 +5181,7 @@ function gerarLancamentos(dados, regras) {
     </tr>
   `).join('');
 
+  if (extratoBancarioTemp.length > 0) gerarSugestoesConciliacao({ redirecionarSeOk: false });
   mostrarTela('tela-resultado');
 }
 
@@ -5232,6 +5233,7 @@ function exportarDominioPagamentos() {
 
 function exportarDominioFinal() {
   if (bloquearExportacaoPorMapaCodigos()) return;
+  if (extratoBancarioTemp.length > 0) gerarSugestoesConciliacao({ redirecionarSeOk: false });
   const linhasPagamentos = montarLinhasDominioPagamentos();
   if (linhasPagamentos.length === 0) {
     alert('Gere os lançamentos de pagamentos antes de exportar.');
