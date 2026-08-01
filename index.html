@@ -2469,54 +2469,68 @@ function rotuloCategoriaRecebimento(categoria) {
 function criarItensRecebimentosRateioPorDia() {
   avisosRecebimentoRateioDia = [];
   if (!grupoPodeRecebimentosRateio() || recebimentosRateioTemp.length === 0) return [];
-  // 1) Planilhas de recebimento agrupadas por dia + conta + tipo de extrato (cartões/boleto batem contra "Parcelas de Cartões"; dinheiro/título contra "Parcelas de Títulos")
-  //    dentro de cada grupo, subdivide por categoria (cartão/boleto/dinheiro) + empresa (centro de custo)
-  const planilhaPorDiaContaTipo = new Map(); // chave "dia|conta|tipoExtrato" -> Map("categoria|empresaNorm" -> {total, qtd, conta, centroCusto, empresaBanco, categoria})
+  // Período coberto pela planilha importada, só para exibição
+  const datasPlanilha = recebimentosRateioTemp.map(r => r.data).filter(Boolean);
+  let periodoLabel = 'período importado';
+  let dataLancamento = fmtDate(new Date());
+  if (datasPlanilha.length) {
+    const ordenadas = [...datasPlanilha].sort((a, b) => new Date(a) - new Date(b));
+    const ini = fmtDate(ordenadas[0]);
+    const fim = fmtDate(ordenadas[ordenadas.length - 1]);
+    periodoLabel = ini === fim ? ini : `${ini} a ${fim}`;
+    dataLancamento = fim;
+  }
+  // 1) Planilhas de recebimento agrupadas por conta + tipo de extrato (cartões/boleto batem contra "Parcelas de Cartões"; dinheiro/título contra "Parcelas de Títulos")
+  //    dentro de cada grupo, subdivide por categoria (cartão/boleto/dinheiro) + empresa (centro de custo) — tudo somado no período inteiro, não por dia
+  const planilhaPorContaTipo = new Map(); // chave "conta|tipoExtrato" -> Map("categoria|empresaNorm" -> {total, qtd, conta, centroCusto, empresaBanco, categoria})
   recebimentosRateioTemp.forEach(r => {
     const tipoExtrato = tipoExtratoDaCategoria(r.categoria);
-    const chaveDiaContaTipo = `${r.dataKey}|${normalizarTexto(r.conta)}|${tipoExtrato}`;
-    if (!planilhaPorDiaContaTipo.has(chaveDiaContaTipo)) planilhaPorDiaContaTipo.set(chaveDiaContaTipo, new Map());
-    const porGrupo = planilhaPorDiaContaTipo.get(chaveDiaContaTipo);
+    const chaveContaTipo = `${normalizarTexto(r.conta)}|${tipoExtrato}`;
+    if (!planilhaPorContaTipo.has(chaveContaTipo)) planilhaPorContaTipo.set(chaveContaTipo, new Map());
+    const porGrupo = planilhaPorContaTipo.get(chaveContaTipo);
     const chaveGrupo = `${r.categoria}|${normalizarTexto(r.centroCusto)}`;
     const atual = porGrupo.get(chaveGrupo) || { total: 0, qtd: 0, conta: r.conta, centroCusto: r.centroCusto, empresaBanco: r.empresaBanco, categoria: r.categoria };
     atual.total = arredondarMoeda(atual.total + r.valor);
     atual.qtd += 1;
     porGrupo.set(chaveGrupo, atual);
   });
-  // 2) Extrato: total de entradas por dia + conta + tipo de extrato — é a âncora
-  const extratoPorDiaContaTipo = new Map();
+  // 2) Extrato: total de entradas por conta + tipo de extrato, no período coberto pela planilha — é a âncora
+  const diasCobertos = new Set(recebimentosRateioTemp.map(r => r.dataKey));
+  const extratoPorContaTipo = new Map();
   extratoBancarioTemp.forEach(m => {
     if (m.valor <= 0) return;
     const tipoExtrato = tipoExtratoRecebimento(m);
     if (!tipoExtrato) return;
-    const chave = `${dataKey(m.data)}|${normalizarTexto(m.conta)}|${tipoExtrato}`;
-    extratoPorDiaContaTipo.set(chave, arredondarMoeda((extratoPorDiaContaTipo.get(chave) || 0) + m.valor));
+    if (!diasCobertos.has(dataKey(m.data))) return; // só soma dias que a planilha realmente cobre
+    const chave = `${normalizarTexto(m.conta)}|${tipoExtrato}`;
+    extratoPorContaTipo.set(chave, arredondarMoeda((extratoPorContaTipo.get(chave) || 0) + m.valor));
   });
-  // 3) Ratear o total do dia/conta/tipo entre categoria+empresa, na mesma proporção da planilha
+  // 3) Ratear o total do período por conta/tipo entre categoria+empresa, na mesma proporção da planilha
   const LIMITE_DIFERENCA_ABSOLUTA = 1000; // R$1.000
   const LIMITE_DIFERENCA_PROPORCIONAL = 0.5; // 50% do que a planilha explica
   const itens = [];
-  planilhaPorDiaContaTipo.forEach((porGrupo, chaveDiaContaTipo) => {
-    const totalExtratoDia = extratoPorDiaContaTipo.get(chaveDiaContaTipo);
-    if (!totalExtratoDia) return; // esse dia/conta/tipo não tem entrada correspondente no extrato — planilha fica pendente, não lança
-    const totalPlanilhaDia = arredondarMoeda(Array.from(porGrupo.values()).reduce((s, e) => s + e.total, 0));
-    if (!totalPlanilhaDia) return;
-    const [diaStr, contaNormStr] = chaveDiaContaTipo.split('|');
-    const diferencaDia = arredondarMoeda(totalExtratoDia - totalPlanilhaDia);
-    const diferencaGrande = Math.abs(diferencaDia) > LIMITE_DIFERENCA_ABSOLUTA && Math.abs(diferencaDia) > Math.abs(totalPlanilhaDia) * LIMITE_DIFERENCA_PROPORCIONAL;
-    const valorParaRatear = diferencaGrande ? totalPlanilhaDia : totalExtratoDia;
+  planilhaPorContaTipo.forEach((porGrupo, chaveContaTipo) => {
+    const totalExtratoPeriodo = extratoPorContaTipo.get(chaveContaTipo);
+    if (!totalExtratoPeriodo) return; // essa conta/tipo não tem entrada correspondente no extrato — planilha fica pendente, não lança
+    const totalPlanilhaPeriodo = arredondarMoeda(Array.from(porGrupo.values()).reduce((s, e) => s + e.total, 0));
+    if (!totalPlanilhaPeriodo) return;
+    const [contaNormStr] = chaveContaTipo.split('|');
+    const diferencaPeriodo = arredondarMoeda(totalExtratoPeriodo - totalPlanilhaPeriodo);
+    const diferencaGrande = Math.abs(diferencaPeriodo) > LIMITE_DIFERENCA_ABSOLUTA && Math.abs(diferencaPeriodo) > Math.abs(totalPlanilhaPeriodo) * LIMITE_DIFERENCA_PROPORCIONAL;
+    const valorParaRatear = diferencaGrande ? totalPlanilhaPeriodo : totalExtratoPeriodo;
     if (diferencaGrande) {
       const sobraItem = {
-        data: diaStr,
+        data: dataLancamento,
+        periodo: periodoLabel,
         conta: Array.from(porGrupo.values())[0]?.conta || contaNormStr,
-        totalExtrato: totalExtratoDia,
-        totalPlanilha: totalPlanilhaDia,
-        diferenca: diferencaDia
+        totalExtrato: totalExtratoPeriodo,
+        totalPlanilha: totalPlanilhaPeriodo,
+        diferenca: diferencaPeriodo
       };
       avisosRecebimentoRateioDia.push(sobraItem);
     }
     porGrupo.forEach(dadosGrupo => {
-      const proporcao = dadosGrupo.total / totalPlanilhaDia;
+      const proporcao = dadosGrupo.total / totalPlanilhaPeriodo;
       const valorAlocado = arredondarMoeda(proporcao * valorParaRatear);
       if (!valorAlocado) return;
       const empresaBanco = dadosGrupo.empresaBanco;
@@ -2524,15 +2538,15 @@ function criarItensRecebimentosRateioPorDia() {
       const intercompany = grupoUsaNumerariosRateio() && normalizarTexto(empresaBanco) !== normalizarTexto(centroCusto);
       const rotulo = rotuloCategoriaRecebimento(dadosGrupo.categoria);
       itens.push({
-        id: `rec-rateio-dia-${itens.length}`,
+        id: `rec-rateio-mes-${itens.length}`,
         movimento: 'recebimento',
         rateioRecebimento: true,
-        tipo: `Recebimentos ${rotulo} do dia (rateado pelo extrato)`,
-        historico: `Recebimentos ${rotulo} ${centroCusto} - rateio proporcional do dia ${diaStr}`,
+        tipo: `Recebimentos ${rotulo} do período (rateado pelo extrato)`,
+        historico: `Recebimentos ${rotulo} ${centroCusto} - rateio proporcional ${periodoLabel}`,
         plano: '',
         qtd: dadosGrupo.qtd,
         total: valorAlocado,
-        data: diaStr,
+        data: dataLancamento,
         conta: dadosGrupo.conta,
         empresa: empresaBanco,
         empresaBanco,
@@ -2549,12 +2563,13 @@ function criarItensRecebimentosRateioPorDia() {
 }
 
 
+
 function itensSobraRecebimentoRateio() {
   return avisosRecebimentoRateioDia.map((a, idx) => ({
     id: `rec-sobra-rateio-${idx}`,
     movimento: 'recebimento',
     tipo: 'Sobra não explicada pela planilha de recebimentos',
-    historico: `Sobra do dia ${a.data} (conta ${a.conta}): extrato mostrou R$ ${fmtValor(a.totalExtrato)}, a planilha só explica R$ ${fmtValor(a.totalPlanilha)}`,
+    historico: `Sobra do período ${a.periodo || a.data} (conta ${a.conta}): extrato mostrou R$ ${fmtValor(a.totalExtrato)}, a planilha só explica R$ ${fmtValor(a.totalPlanilha)}`,
     qtd: 1,
     total: Math.abs(a.diferenca),
     data: a.data,
@@ -3011,7 +3026,7 @@ function renderSugestoesConciliacao(sugestoes, qtdPagamentos, qtdMovimentos, ent
     ${avisosRecebimentoRateioDia.length ? `<div class="alert alert-warn" style="margin-bottom:12px">
       <strong>⚠️ ${avisosRecebimentoRateioDia.length} dia(s) com movimento no extrato muito maior do que a planilha de recebimentos explica</strong> — o rateio desses dias foi limitado ao que a planilha realmente cobre. A sobra abaixo virou pendência na lista de recebimentos (procure "Sobra não explicada..."), preencha a conta certa pra ela entrar na exportação:
       <div style="margin-top:8px;display:flex;flex-direction:column;gap:4px">
-        ${avisosRecebimentoRateioDia.map(a => `<div>${escapeHtml(a.data)} · conta ${escapeHtml(a.conta)} — extrato: <strong>R$ ${fmtValor(a.totalExtrato)}</strong>, planilha explica: <strong>R$ ${fmtValor(a.totalPlanilha)}</strong>, sobra não lançada: <strong>R$ ${fmtValor(a.diferenca)}</strong></div>`).join('')}
+        ${avisosRecebimentoRateioDia.map(a => `<div>${escapeHtml(a.periodo || a.data)} · conta ${escapeHtml(a.conta)} — extrato: <strong>R$ ${fmtValor(a.totalExtrato)}</strong>, planilha explica: <strong>R$ ${fmtValor(a.totalPlanilha)}</strong>, sobra não lançada: <strong>R$ ${fmtValor(a.diferenca)}</strong></div>`).join('')}
       </div>
     </div>` : ''}
     ${itensRecebimentoRateio.length || itensSobraRecebimento.length ? `<div class="alert ${Math.abs(diferencaRefinadaRecebimentos) < 1 ? 'alert-ok' : 'alert-warn'}" style="margin-bottom:12px">
