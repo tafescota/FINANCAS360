@@ -1506,6 +1506,13 @@ function prepararPagamentosImportados(dados, abrirTelaPendencias = true) {
   linhasImportadas = dados;
 
   const regrasSalvas = depara[grupoAtivo] || {};
+  const totaisMovimentoRateioBancoPreview = new Map();
+  dados.forEach(r => {
+    if (!rateioIntercompanyLinha(r)) return;
+    const chaveMov = chaveMovimentoRealPagamentoRateio(r);
+    const valorLiqRow = arredondarMoeda(r[COLS.VALOR_LIQ]);
+    totaisMovimentoRateioBancoPreview.set(chaveMov, arredondarMoeda((totaisMovimentoRateioBancoPreview.get(chaveMov) || 0) + valorLiqRow));
+  });
   const novas = [];
   const vistas = new Set();
   dados.forEach(r => {
@@ -1539,8 +1546,11 @@ function prepararPagamentosImportados(dados, abrirTelaPendencias = true) {
     }
     if (rateioIntercompanyLinha(r)) {
       const linhaRateioNegativa = arredondarMoeda(r[COLS.VALOR_LIQ]) < 0;
+      const chaveMovReal = chaveMovimentoRealPagamentoRateio(r);
+      const grupoNegativo = arredondarMoeda(totaisMovimentoRateioBancoPreview.get(chaveMovReal) || 0) < 0;
       ['EMPRESA DO BANCO', 'CENTRO DE CUSTO'].forEach(lado => {
-        const naturezaNumerario = naturezaNumerarioPagamento(lado, linhaRateioNegativa);
+        const negativoParaLado = lado === 'EMPRESA DO BANCO' ? grupoNegativo : linhaRateioNegativa;
+        const naturezaNumerario = naturezaNumerarioPagamento(lado, negativoParaLado);
         const chaveNumerario = chaveNumerarioRateio(empresaOrigem, centroCusto, lado, naturezaNumerario);
         if (!codigoNumerarioRateio(regrasSalvas, empresaOrigem, centroCusto, lado, naturezaNumerario) && !vistas.has(chaveNumerario)) {
           vistas.add(chaveNumerario);
@@ -2933,7 +2943,7 @@ function renderSugestoesConciliacao(sugestoes, qtdPagamentos, qtdMovimentos, ent
   const pendentesPagamento = sugestoes.filter(s => !s.mov);
   const linhasPagamentosPendentes = pendentesPagamento.map(renderLinhaPagamento).join('');
   const regrasRecebimentos = deparaRecebimentos[grupoAtivo] || {};
-  const itensRecebimentoExtrato = Array.from(entradasAgrupadas.values()).slice(0, 60).map((r, idx) => ({ ...r, id: `rec-${idx}`, movimento: 'recebimento', escopoRegra: '' }));
+  const itensRecebimentoExtrato = Array.from(entradasAgrupadas.values()).map((r, idx) => ({ ...r, id: `rec-${idx}`, movimento: 'recebimento', escopoRegra: '' }));
   const itensRecebimentoRateio = criarItensRecebimentosRateioPorDia();
   const validacaoUnidades = validacaoRecebimentosPorUnidade(itensRecebimentoRateio);
   const itensSobraRecebimento = itensSobraRecebimentoRateio();
@@ -2946,7 +2956,7 @@ function renderSugestoesConciliacao(sugestoes, qtdPagamentos, qtdMovimentos, ent
   const diferencaRefinadaRecebimentos = arredondarMoeda(totalExtratoRelevanteRecebimentos - totalRateadoMaisSobra);
   const itensRecebimento = [...itensRecebimentoExtrato, ...itensRecebimentoRateio, ...itensSobraRecebimento];
   const itensNumerarioRateio = itensNumerarioRecebimentosRateio(itensRecebimentoRateio);
-  const itensSaidaExtra = saidasExtras.slice(0, 80).map(({ mov, idxMov }) => ({
+  const itensSaidaExtra = saidasExtras.map(({ mov, idxMov }) => ({
     id: `saida-${idxMov}`,
     movimento: 'saida-pendente',
     tipo: mov.tipoConciliacao || 'Saída não conciliada',
