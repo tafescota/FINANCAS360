@@ -472,6 +472,7 @@
       <button class="btn btn-sm" id="btn-cancelar-regras" style="display:none" onclick="cancelarEdicaoRegras()">Cancelar</button>
       <button class="btn btn-sm btn-danger" id="btn-limpar-regras" onclick="limparTodasRegras()">🗑 Limpar tudo</button>
       <button class="btn btn-sm btn-blue" id="btn-importar-regras" onclick="mostrarTela('tela-importar')">Importar planilha</button>
+      <button class="btn btn-sm" onclick="exportarRegrasNumerarioRateio()">⬇ Exportar regras de numerário (.xlsx)</button>
       <button class="btn btn-sm" onclick="mostrarTela('tela-home')">Grupos</button>
     </div>
     <div style="display:flex;gap:8px;margin-bottom:12px;flex-wrap:wrap">
@@ -5073,6 +5074,35 @@ function exportarDominioFinal() {
 }
 
 // ---------- REGRAS ----------
+function exportarRegrasNumerarioRateio() {
+  if (!grupoAtivo) { showMsg('Selecione um grupo primeiro.', 'warn'); return; }
+  const regras = depara[grupoAtivo] || {};
+  const linhas = Object.keys(regras)
+    .filter(chave => chave.startsWith('RATEIO NUMERARIOS'))
+    .map(chave => {
+      const partes = chave.split(' | ');
+      return {
+        empresaBanco: partes[1] || '',
+        centroCusto: partes[2] || '',
+        lado: partes[3] || '',
+        natureza: partes[4] || '',
+        codigo: regras[chave] || '',
+        chave
+      };
+    });
+  if (linhas.length === 0) {
+    showMsg('Nenhuma regra de numerário salva pra este grupo ainda.', 'warn');
+    return;
+  }
+  const cabecalho = ['Empresa do Banco', 'Centro de Custo', 'Lado', 'Natureza', 'Código da Conta', 'Chave completa'];
+  const dados = linhas.map(l => [l.empresaBanco, l.centroCusto, l.lado, l.natureza, l.codigo, l.chave]);
+  const ws = XLSX.utils.aoa_to_sheet([cabecalho, ...dados]);
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, 'Regras Numerário');
+  const data = new Date().toLocaleDateString('pt-BR').replace(/\//g, '-');
+  XLSX.writeFile(wb, `Regras_Numerario_${grupoAtivo}_${data}.xlsx`);
+}
+
 function alterarTipoRegras(tipo) {
   if (editandoRegras && !confirm('Descartar a edição atual e trocar de lista?')) return;
   tipoRegrasAtivo = tipo;
