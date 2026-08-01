@@ -1225,6 +1225,18 @@ function normalizarLinhaRateio(row, col) {
   return linha;
 }
 
+function marcarLinhasTitulosComoRateio(dados) {
+  return (dados || []).map(row => {
+    const linha = Array.isArray(row) ? row.slice() : row;
+    const empresaOrigem = limparTextoECD(linha[COLS.EMPRESA]);
+    const centroCusto = limparTextoECD(linha[COLS.CC]) || empresaOrigem;
+    linha.__rateio = true;
+    linha.__empresaOriginal = empresaOrigem;
+    linha.__centroCusto = centroCusto;
+    return linha;
+  });
+}
+
 function linhasPlanilhaRateio(wb) {
   const nomePlanilha = wb.SheetNames.find(n => /rateio|parcela|t[íi]tulo/i.test(n)) || wb.SheetNames[0];
   const ws = wb.Sheets[nomePlanilha];
@@ -1233,6 +1245,8 @@ function linhasPlanilhaRateio(wb) {
   if (headerIdx === -1) throw new Error('Não encontrei o cabeçalho do Rateio de Títulos.');
   const headers = raw[headerIdx].map(h => normalizarTexto(h));
   const idx = nome => headers.indexOf(normalizarTexto(nome));
+  const temColunasParcelas = headers.some(h => h.includes('valor liquido') || h.includes('v liquido') || h.includes('acres/desc') || h.includes('acresc/desc'));
+  if (temColunasParcelas) throw new Error('Arquivo no padrão Parcelas de Títulos; usar leitura normal com regra de rateio.');
   const col = {
     tipo: idx('tipo'),
     numero: idx('numero'),
@@ -4433,6 +4447,12 @@ async function classificarArquivoRateioImportacao(file) {
     const leituraPagamento = linhasPlanilhaRateio(wb);
     if (leituraPagamento?.dados?.length) return { tipo: 'pagamento', arquivo: file.name, dados: leituraPagamento.dados };
   } catch (errPagamento) {}
+  try {
+    const leituraTitulos = linhasPlanilhaTitulos(wb);
+    if (leituraTitulos?.dados?.length) {
+      return { tipo: 'pagamento', arquivo: file.name, dados: marcarLinhasTitulosComoRateio(leituraTitulos.dados), subtipo: 'titulos' };
+    }
+  } catch (errTitulos) {}
   try {
     const recebimento = tentarRecebimento();
     if (recebimento) return recebimento;
