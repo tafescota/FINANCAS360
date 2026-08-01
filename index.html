@@ -1775,7 +1775,6 @@ function linhasRateioCartoesReceber(wb, arquivoOrigem) {
     tipoLancamento: idx('tipo de lancamento')
   };
   const linhas = raw.slice(headerIdx + 1).map((row, rowIdx) => {
-    if (valorNegativo(row[col.valor])) return null; // taxas/ajustes de cartão ficam de fora aqui: tratadas depois por competência, fora deste sistema
     const tipoLancamento = limparTextoECD(col.tipoLancamento >= 0 ? row[col.tipoLancamento] : '');
     const plano = limparTextoECD(row[col.plano]);
     const partesHistorico = [
@@ -1792,7 +1791,7 @@ function linhasRateioCartoesReceber(wb, arquivoOrigem) {
       conta: row[col.conta],
       empresaBanco: empresaBancoRateioPorConta(row[col.conta], row[col.empresa]),
       centroCusto: row[col.centroCusto],
-      tipo: 'Recebimento de Cartões',
+      tipo: valorNegativo(row[col.valor]) ? 'Taxa/Ajuste de Cartões' : 'Recebimento de Cartões',
       historico: partesHistorico.join(' - '),
       plano,
       origem: 'Rateio de Cartões a Receber',
