@@ -618,9 +618,18 @@ function tipoAjustePonta(tipoAjuste, ponta) {
 
 function tipoAjusteRateioPlano(plano, valor) {
   const planoNorm = normalizarTexto(plano);
-  if (valor < 0 && (planoNorm.includes('descontos sobre despesas') || planoNorm.includes('desconto sobre despesas'))) return 'DESCONTO';
   if (valor > 0 && (planoNorm.includes('acrescimos') || planoNorm.includes('acrescimo'))) return 'ACRÉSCIMO';
+  if (valor < 0 && (planoNorm.includes('inss') || planoNorm.includes('fgts'))) return 'DESCONTO';
   return '';
+}
+
+// Desconto comercial de fornecedor/nota fiscal dentro de um rateio: é absorvido na linha
+// principal do mesmo movimento bancário (não gera lançamento nem código próprios).
+// Retenções legais de folha (INSS, FGTS) NÃO entram aqui — seguem via tipoAjusteRateioPlano
+// para manter linha própria e bater com a guia de recolhimento depois.
+function ehDescontoComercialAbsorvivel(plano, valor) {
+  const planoNorm = normalizarTexto(plano);
+  return valor < 0 && (planoNorm.includes('descontos sobre despesas') || planoNorm.includes('desconto sobre despesas'));
 }
 
 function escopoRegraPagamento(empresaOrigem, centroCusto, rateio = false) {
@@ -1538,6 +1547,26 @@ function prepararPagamentosImportados(dados, abrirTelaPendencias = true) {
     const valorLiqRow = arredondarMoeda(r[COLS.VALOR_LIQ]);
     totaisMovimentoRateioBancoPreview.set(chaveMov, arredondarMoeda((totaisMovimentoRateioBancoPreview.get(chaveMov) || 0) + valorLiqRow));
   });
+  const gruposAbsorverPreviewPend = new Map();
+  dados.forEach(r => {
+    if (!r.__rateio || rateioIntercompanyLinha(r)) return;
+    const chave = chaveMovimentoRealPagamentoRateio(r);
+    const valor = arredondarMoeda(r[COLS.VALOR_LIQ]);
+    const planoLinha = limparTextoECD(r[COLS.PLANO]);
+    if (!gruposAbsorverPreviewPend.has(chave)) gruposAbsorverPreviewPend.set(chave, []);
+    gruposAbsorverPreviewPend.get(chave).push({ valor, plano: planoLinha });
+  });
+  const gruposComAbsorvedorPend = new Set();
+  gruposAbsorverPreviewPend.forEach((linhas, chave) => {
+    const descontos = linhas.filter(l => ehDescontoComercialAbsorvivel(l.plano, l.valor));
+    if (descontos.length === 0) return;
+    const candidatos = linhas.filter(l => !ehDescontoComercialAbsorvivel(l.plano, l.valor) && l.valor > 0);
+    if (candidatos.length === 0) return;
+    const totalDesconto = arredondarMoeda(descontos.reduce((s, l) => s + l.valor, 0));
+    const principal = candidatos.reduce((max, l) => (l.valor > max.valor ? l : max), candidatos[0]);
+    if (arredondarMoeda(principal.valor + totalDesconto) <= 0) return;
+    gruposComAbsorvedorPend.add(chave);
+  });
   const novas = [];
   const vistas = new Set();
   dados.forEach(r => {
@@ -1553,6 +1582,9 @@ function prepararPagamentosImportados(dados, abrirTelaPendencias = true) {
     const valorRateio = arredondarMoeda(r[COLS.VALOR_LIQ]);
     const tipoAjusteRateio = (r.__rateio && !rateioIntercompanyLinha(r)) ? tipoAjusteRateioPlano(plano, valorRateio) : '';
     if (!forn && !plano) return;
+    if (r.__rateio && !rateioIntercompanyLinha(r) && ehDescontoComercialAbsorvivel(plano, valorRateio) && gruposComAbsorvedorPend.has(chaveMovimentoRealPagamentoRateio(r))) {
+      return; // absorvido na linha principal do mesmo movimento bancário, não precisa de código próprio
+    }
     if (tipoAjusteRateio) {
       ['DÉBITO', 'CRÉDITO'].forEach(ponta => {
         const tipoPonta = tipoAjustePonta(tipoAjusteRateio, ponta);
@@ -4964,6 +4996,39 @@ function gerarLancamentos(dados, regras) {
     const valorLiqRow = arredondarMoeda(r[COLS.VALOR_LIQ]);
     totaisMovimentoRateioBanco.set(chaveMov, arredondarMoeda((totaisMovimentoRateioBanco.get(chaveMov) || 0) + valorLiqRow));
   });
+
+  // Linhas negativas de rateio (não-intercompany) nunca tocam o banco sozinhas — ou são
+  // desconto comercial (absorvido, some do export) ou retenção legal de folha (vira
+  // lançamento de ajuste à parte, sem tocar o banco). Nos dois casos, a linha principal
+  // (maior valor positivo) do mesmo movimento bancário real precisa ter o valor reduzido,
+  // senão o banco fica lançado pelo bruto em vez do líquido. Não afeta parcela de título
+  // nem intercompany.
+  function ehDescontoOuRetencaoRateio(plano, valor) {
+    return ehDescontoComercialAbsorvivel(plano, valor) || tipoAjusteRateioPlano(plano, valor) === 'DESCONTO';
+  }
+  const gruposAbsorverPreview = new Map();
+  dados.forEach((r, idx) => {
+    if (!r.__rateio || rateioIntercompanyLinha(r)) return;
+    const chave = chaveMovimentoRealPagamentoRateio(r);
+    const valor = arredondarMoeda(r[COLS.VALOR_LIQ]);
+    const plano = limparTextoECD(r[COLS.PLANO]);
+    if (!gruposAbsorverPreview.has(chave)) gruposAbsorverPreview.set(chave, []);
+    gruposAbsorverPreview.get(chave).push({ idx, valor, plano });
+  });
+  const absorvedorPorGrupo = new Map();
+  const valorAbsorverPorGrupo = new Map();
+  gruposAbsorverPreview.forEach((linhas, chave) => {
+    const descontos = linhas.filter(l => ehDescontoOuRetencaoRateio(l.plano, l.valor));
+    if (descontos.length === 0) return;
+    const candidatos = linhas.filter(l => !ehDescontoOuRetencaoRateio(l.plano, l.valor) && l.valor > 0);
+    if (candidatos.length === 0) return;
+    const principal = candidatos.reduce((max, l) => (l.valor > max.valor ? l : max), candidatos[0]);
+    const totalDesconto = arredondarMoeda(descontos.reduce((s, l) => s + l.valor, 0));
+    if (arredondarMoeda(principal.valor + totalDesconto) <= 0) return;
+    absorvedorPorGrupo.set(chave, principal.idx);
+    valorAbsorverPorGrupo.set(chave, totalDesconto);
+  });
+
   const bancoLegEmitidoRateio = new Set();
   let totalLiquido = 0;
   let totalBruto = 0;
@@ -4979,6 +5044,12 @@ function gerarLancamentos(dados, regras) {
     const infoDoc = separarNumeroDoHistorico(tipoDoc, r[COLS.NUMERO], r[COLS.HISTORICO]);
     const historico = infoDoc.historico;
     if (!forn && !plano && !tipoDoc && !historico) return;
+    if (r.__rateio && !rateioIntercompanyLinha(r)) {
+      const valorRateioAtual = arredondarMoeda(r[COLS.VALOR_LIQ]);
+      if (ehDescontoComercialAbsorvivel(plano, valorRateioAtual) && absorvedorPorGrupo.has(chaveMovimentoRealPagamentoRateio(r))) {
+        return; // absorvido na linha principal do mesmo movimento bancário, sem lançamento próprio
+      }
+    }
     const escopoRegra = escopoRegraLinha(r);
     const chave = montarChave(forn, plano, tipoDoc, historico, escopoRegra);
     const codDeparaPrincipal = obterCodigoContaParaDominio(encontrarCodigoRegra(regras, forn, plano, tipoDoc, historico, escopoRegra));
@@ -4995,9 +5066,18 @@ function gerarLancamentos(dados, regras) {
     const centroCustoRateio = centroCustoLinha(r);
     const linhaRateioNegativa = !!r.__rateio && valorLiq < 0;
     const intercompanyRateio = rateioIntercompanyLinha(r);
-    const valorLancamento = linhaRateioNegativa ? Math.abs(valorLiq) : valorLiq;
+    let valorLancamento = linhaRateioNegativa ? Math.abs(valorLiq) : valorLiq;
+    let notaDescontoAbsorvido = '';
+    if (r.__rateio && !intercompanyRateio) {
+      const chaveMovAbsorver = chaveMovimentoRealPagamentoRateio(r);
+      if (absorvedorPorGrupo.get(chaveMovAbsorver) === idx) {
+        const totalAbsorvido = valorAbsorverPorGrupo.get(chaveMovAbsorver) || 0;
+        valorLancamento = arredondarMoeda(valorLancamento + totalAbsorvido);
+        notaDescontoAbsorvido = ` (inclui desconto de R$ ${fmtValor(Math.abs(totalAbsorvido))})`;
+      }
+    }
     if (valorLancamento === 0) return;
-    const complemento = [forn, tipoDoc, num, plano, historico].filter(Boolean).join(' - ');
+    const complemento = [forn, tipoDoc, num, plano, historico].filter(Boolean).join(' - ') + notaDescontoAbsorvido;
     const complementoIntercompany = [complemento, 'TRANSFERENCIA DE NUMERARIOS'].filter(Boolean).join(' - ');
     const tipoRateioAtual = tipoRateioLinha(r);
 
