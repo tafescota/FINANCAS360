@@ -1981,7 +1981,7 @@ function linhasRateioCartoesReceber(wb, arquivoOrigem) {
   const nomePlanilha = wb.SheetNames.find(n => /cart/i.test(n)) || wb.SheetNames[0];
   const ws = wb.Sheets[nomePlanilha];
   const raw = XLSX.utils.sheet_to_json(ws, { header: 1, defval: null });
-  const info = headerInfoRecebimentos(raw, ['Empresa', 'Adquirente', 'Produto', 'Dt. Liquidação', 'Valor Bruto', 'Conta', 'Centro de Custo', 'Plano de Conta']);
+  const info = headerInfoRecebimentos(raw, ['Empresa', 'Adquirente', 'Produto', 'Dt. Liquidação', 'Valor Bruto', 'Conta', 'Centro de Custo']);
   if (!info) return null;
   const { headerIdx, idx } = info;
   const col = {
@@ -1999,7 +1999,7 @@ function linhasRateioCartoesReceber(wb, arquivoOrigem) {
   };
   const linhas = raw.slice(headerIdx + 1).map((row, rowIdx) => {
     const tipoLancamento = limparTextoECD(col.tipoLancamento >= 0 ? row[col.tipoLancamento] : '');
-    const plano = limparTextoECD(row[col.plano]);
+    const plano = limparTextoECD(col.plano >= 0 ? row[col.plano] : 'Parcelas de Cartões');
     const partesHistorico = [
       col.adquirente >= 0 ? row[col.adquirente] : '',
       col.bandeira >= 0 ? row[col.bandeira] : '',
