@@ -956,7 +956,26 @@ function salvarCodigosPreenchidosNoGrupo(coletarDaTela = true) {
   if (coletarDaTela) coletarCodigosNovasChaves();
   const regrasSalvas = Object.assign({}, depara[grupoAtivo] || {});
   novasChavesTemp.forEach(item => {
-    const codigo = obterCodigoContaParaDominio(codigosTemp[item.chave] || '');
+    const codigoBruto = codigosTemp[item.chave] || '';
+    if (item.tipoItem === 'contaMapa') {
+      const codigo = obterCodigoContaParaDominio(codigoBruto);
+      if (codigo) {
+        contasSemConciliacao[grupoAtivo] = contasSemConciliacao[grupoAtivo] || {};
+        contasSemConciliacao[grupoAtivo][item.nomeMapa] = codigo;
+        contasSemConciliacao[grupoAtivo][normalizarTexto(item.nomeMapa)] = codigo;
+      }
+      return;
+    }
+    if (item.tipoItem === 'empresaMapa') {
+      const codigo = String(codigoBruto || '').trim();
+      if (codigo) {
+        mapaEmpresas[grupoAtivo] = mapaEmpresas[grupoAtivo] || {};
+        mapaEmpresas[grupoAtivo][item.nomeMapa] = codigo;
+        mapaEmpresas[grupoAtivo][normalizarTexto(item.nomeMapa)] = codigo;
+      }
+      return;
+    }
+    const codigo = obterCodigoContaParaDominio(codigoBruto);
     if (codigo) regrasSalvas[obterChaveRegraNova(item)] = codigo;
   });
   depara[grupoAtivo] = regrasSalvas;
@@ -1500,7 +1519,7 @@ function prepararPagamentosImportados(dados, abrirTelaPendencias = true) {
     const centroCusto = centroCustoLinha(r);
     const escopoRegra = escopoRegraLinha(r);
     const valorRateio = arredondarMoeda(r[COLS.VALOR_LIQ]);
-    const tipoAjusteRateio = r.__rateio ? tipoAjusteRateioPlano(plano, valorRateio) : '';
+    const tipoAjusteRateio = (r.__rateio && !rateioIntercompanyLinha(r)) ? tipoAjusteRateioPlano(plano, valorRateio) : '';
     if (!forn && !plano) return;
     if (tipoAjusteRateio) {
       ['DÉBITO', 'CRÉDITO'].forEach(ponta => {
@@ -1559,6 +1578,20 @@ function prepararPagamentosImportados(dados, abrirTelaPendencias = true) {
         }
       });
     }
+  });
+
+  const pendMapa = pendenciasMapaCodigos();
+  pendMapa.contasFaltando.forEach(nome => {
+    const chaveMapa = `MAPA_CONTA | ${nome}`;
+    if (vistas.has(chaveMapa)) return;
+    vistas.add(chaveMapa);
+    novas.push({ chave: chaveMapa, tipoItem: 'contaMapa', nomeMapa: nome, fornecedor: '', plano: nome, tipoDoc: 'CONTA (BANCO/CAIXA)', historico: '', trechoHistorico: '', trechoHistoricoIndices: [], numero: '', empresa: '', empresaOrigem: '', centroCusto: '', empresaLancamento: '', rateio: false, escopoRegra: '' });
+  });
+  pendMapa.empresasFaltando.forEach(nome => {
+    const chaveMapa = `MAPA_EMPRESA | ${nome}`;
+    if (vistas.has(chaveMapa)) return;
+    vistas.add(chaveMapa);
+    novas.push({ chave: chaveMapa, tipoItem: 'empresaMapa', nomeMapa: nome, fornecedor: '', plano: nome, tipoDoc: 'EMPRESA/FILIAL', historico: '', trechoHistorico: '', trechoHistoricoIndices: [], numero: '', empresa: '', empresaOrigem: '', centroCusto: '', empresaLancamento: '', rateio: false, escopoRegra: '' });
   });
 
   novasChavesTemp = novas;
@@ -4617,8 +4650,13 @@ function selecionarPalavraHistoricoRegra(btn) {
 
 function coletarCodigosNovasChaves() {
   document.querySelectorAll('#tbody-novas-chaves input[type=text][data-chave]').forEach(inp => {
-    codigosTemp[inp.dataset.chave] = obterCodigoContaParaDominio(inp.value);
-    inp.value = codigosTemp[inp.dataset.chave];
+    const item = novasChavesTemp.find(n => n.chave === inp.dataset.chave);
+    if (item && item.tipoItem === 'empresaMapa') {
+      codigosTemp[inp.dataset.chave] = String(inp.value || '').trim();
+    } else {
+      codigosTemp[inp.dataset.chave] = obterCodigoContaParaDominio(inp.value);
+      inp.value = codigosTemp[inp.dataset.chave];
+    }
   });
 }
 
@@ -4795,10 +4833,22 @@ function aplicarCodigoEmLote() {
   inputLote.value = codigo;
   // Aplica no codigosTemp para todas selecionadas
   selecionadasLote.forEach(chave => { codigosTemp[chave] = codigo; });
-  // Salva imediatamente no depara do grupo ativo
+  // Salva imediatamente no depara do grupo ativo (ou no mapa de contas/empresas, se for o caso)
   const regrasSalvas = Object.assign({}, depara[grupoAtivo] || {});
   selecionadasLote.forEach(chave => {
     const item = novasChavesTemp.find(n => n.chave === chave);
+    if (item && item.tipoItem === 'contaMapa') {
+      contasSemConciliacao[grupoAtivo] = contasSemConciliacao[grupoAtivo] || {};
+      contasSemConciliacao[grupoAtivo][item.nomeMapa] = codigo;
+      contasSemConciliacao[grupoAtivo][normalizarTexto(item.nomeMapa)] = codigo;
+      return;
+    }
+    if (item && item.tipoItem === 'empresaMapa') {
+      mapaEmpresas[grupoAtivo] = mapaEmpresas[grupoAtivo] || {};
+      mapaEmpresas[grupoAtivo][item.nomeMapa] = codigo;
+      mapaEmpresas[grupoAtivo][normalizarTexto(item.nomeMapa)] = codigo;
+      return;
+    }
     regrasSalvas[item ? obterChaveRegraNova(item) : chave] = codigo;
   });
   depara[grupoAtivo] = regrasSalvas;
@@ -4810,8 +4860,13 @@ function aplicarCodigoEmLote() {
 function salvarNovasChavesEGerar() {
   // Coletar valores dos inputs
   document.querySelectorAll('#tbody-novas-chaves input[type=text][data-chave]').forEach(inp => {
-    codigosTemp[inp.dataset.chave] = obterCodigoContaParaDominio(inp.value);
-    inp.value = codigosTemp[inp.dataset.chave];
+    const item = novasChavesTemp.find(n => n.chave === inp.dataset.chave);
+    if (item && item.tipoItem === 'empresaMapa') {
+      codigosTemp[inp.dataset.chave] = String(inp.value || '').trim();
+    } else {
+      codigosTemp[inp.dataset.chave] = obterCodigoContaParaDominio(inp.value);
+      inp.value = codigosTemp[inp.dataset.chave];
+    }
   });
   salvarCodigosPreenchidosNoGrupo();
   const regrasSalvas = Object.assign({}, depara[grupoAtivo] || {});
