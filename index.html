@@ -2919,9 +2919,14 @@ function gerarSugestoesConciliacao(opcoes = {}) {
     regra: 'Precisa conciliar',
     diferenca: pag.valor
   });
-  const saidasExtras = movimentos
+  const saidasExtrasTitulo = movimentos
     .map((mov, idxMov) => ({ mov, idxMov }))
     .filter(item => !usadosMov.has(item.idxMov));
+  const saidasExtrasOutrosTipos = extratoBancarioTemp
+    .map((mov, idx) => ({ mov, idx }))
+    .filter(({ mov, idx }) => mov.valor < 0 && !transferenciasPareadas.has(idx) && !normalizarTexto(mov.tipoConciliacao).includes('parcelas de titulos'))
+    .map(({ mov }, i) => ({ mov, idxMov: `outro-${i}` }));
+  const saidasExtras = [...saidasExtrasTitulo, ...saidasExtrasOutrosTipos];
 
   const resultado = renderSugestoesConciliacao(sugestoes, pagamentos.length, movimentos.length, entradas, saidasExtras);
   if (redirecionarSeOk && resultado?.qtdParaResolver === 0) {
