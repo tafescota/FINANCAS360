@@ -4443,6 +4443,14 @@ async function classificarArquivoRateioImportacao(file) {
       if (recebimento) return recebimento;
     } catch (errRecebimento) {}
   }
+  if (nome.includes('rateio') && (nome.includes('pagar') || nome.includes('tituloapagar') || nome.includes('titulo a pagar'))) {
+    try {
+      const leituraPagamentoRateio = linhasPlanilhaRateio(wb);
+      if (leituraPagamentoRateio?.dados?.length) {
+        return { tipo: 'pagamento', arquivo: file.name, dados: leituraPagamentoRateio.dados, subtipo: 'rateio' };
+      }
+    } catch (errPagamentoRateio) {}
+  }
   try {
     const leituraTitulos = linhasPlanilhaTitulos(wb);
     if (leituraTitulos?.dados?.length) {
