@@ -1655,6 +1655,50 @@ function htmlDetalheDiferencaConferencia(pagamentos, saidas) {
     </div>
   </details>`;
 }
+function htmlDetalheDiferencaConferenciaRecebimentos(planilhaRows, extratoRows) {
+  const porData = new Map();
+  planilhaRows.forEach(r => {
+    const data = r.dataKey || 'Sem data';
+    const atual = porData.get(data) || { data, relatorio: 0, extrato: 0, qtdRelatorio: 0, qtdExtrato: 0, exemplosRelatorio: [], exemplosExtrato: [] };
+    atual.relatorio = arredondarMoeda(atual.relatorio + (r.valor || 0));
+    atual.qtdRelatorio += 1;
+    if (atual.exemplosRelatorio.length < 3) atual.exemplosRelatorio.push(`${r.centroCusto || 'Sem unidade'} R$ ${fmtValor(r.valor || 0)}`);
+    porData.set(data, atual);
+  });
+  extratoRows.forEach(m => {
+    const data = dataKey(m.data) || 'Sem data';
+    const atual = porData.get(data) || { data, relatorio: 0, extrato: 0, qtdRelatorio: 0, qtdExtrato: 0, exemplosRelatorio: [], exemplosExtrato: [] };
+    const valor = Math.abs(m.valor || 0);
+    atual.extrato = arredondarMoeda(atual.extrato + valor);
+    atual.qtdExtrato += 1;
+    if (atual.exemplosExtrato.length < 3) atual.exemplosExtrato.push(`${descricaoMovimentoExtrato(m) || 'Sem histórico'} R$ ${fmtValor(valor)}`);
+    porData.set(data, atual);
+  });
+  const divergentes = Array.from(porData.values())
+    .map(item => ({ ...item, diferenca: arredondarMoeda(item.relatorio - item.extrato) }))
+    .filter(item => Math.abs(item.diferenca) >= 0.01)
+    .sort((a, b) => ordenarDataBR(a.data, b.data));
+  if (!divergentes.length) return '';
+  const linhas = divergentes.slice(0, 80).map(item => `
+    <tr>
+      <td>${escapeHtml(item.data)}</td>
+      <td style="text-align:right">R$ ${fmtValor(item.relatorio)}</td>
+      <td style="text-align:right">R$ ${fmtValor(item.extrato)}</td>
+      <td style="text-align:right;font-weight:700;color:#9a3412">R$ ${fmtValor(Math.abs(item.diferenca))}</td>
+      <td>${item.qtdRelatorio} planilha · ${item.qtdExtrato} extrato</td>
+      <td title="${escapeAttr(item.exemplosRelatorio.join(' | '))}">${escapeHtml(item.exemplosRelatorio.join(' | '))}</td>
+      <td title="${escapeAttr(item.exemplosExtrato.join(' | '))}">${escapeHtml(item.exemplosExtrato.join(' | '))}</td>
+    </tr>`).join('');
+  return `<details class="conciliacao-diff-details">
+    <summary>Ver diferença por dia</summary>
+    <div class="table-wrap table-scroll" style="margin-top:8px">
+      <table class="diff-conferencia-table">
+        <thead><tr><th>Data</th><th style="text-align:right">Planilha</th><th style="text-align:right">Extrato</th><th style="text-align:right">Diferença</th><th>Qtd.</th><th>Exemplos na planilha</th><th>Exemplos no extrato</th></tr></thead>
+        <tbody>${linhas}</tbody>
+      </table>
+    </div>
+  </details>`;
+}
 function htmlResumoConferenciaBancaria() {
   const qtdPagamentos = linhasImportadas.length;
   const entradas = extratoBancarioTemp.filter(m => m.valor > 0);
@@ -1674,6 +1718,7 @@ function htmlResumoConferenciaBancaria() {
   const totalRecebimentosRateio = arredondarMoeda(recebimentosRateioTemp.reduce((s, r) => s + r.valor, 0));
   const diferencaRecebimentos = arredondarMoeda(totalRecebimentosRateio - totalEntradas);
   const recebimentosBatem = Math.abs(diferencaRecebimentos) < 0.01;
+  const detalheDiferencaRecebimentos = recebimentosBatem ? '' : htmlDetalheDiferencaConferenciaRecebimentos(recebimentosRateioTemp, entradas);
   const blocoConferenciaRecebimentos = temRecebimentosRateio ? `
     <div class="alert ${recebimentosBatem ? 'alert-ok' : 'alert-warn'} conciliacao-check-alert">
       <div class="conciliacao-check-head">
@@ -1687,6 +1732,7 @@ function htmlResumoConferenciaBancaria() {
         <span>Planilhas de recebimento: <strong>R$ ${fmtValor(totalRecebimentosRateio)}</strong></span>
         <span>Extrato (entradas): <strong>R$ ${fmtValor(totalEntradas)}</strong></span>
       </div>
+      ${detalheDiferencaRecebimentos}
     </div>` : '';
   return `
     <div class="conciliacao-grid conciliacao-summary-grid">
@@ -2810,6 +2856,13 @@ function renderSugestoesConciliacao(sugestoes, qtdPagamentos, qtdMovimentos, ent
   const itensRecebimentoRateio = criarItensRecebimentosRateioPorDia();
   const validacaoUnidades = validacaoRecebimentosPorUnidade(itensRecebimentoRateio);
   const itensSobraRecebimento = itensSobraRecebimentoRateio();
+  const totalExtratoRelevanteRecebimentos = arredondarMoeda(
+    extratoBancarioTemp.filter(m => m.valor > 0 && extratoRelevantePlanilhaRecebimentos(m)).reduce((s, m) => s + m.valor, 0)
+  );
+  const totalRateadoMaisSobra = arredondarMoeda(
+    itensRecebimentoRateio.reduce((s, i) => s + i.total, 0) + itensSobraRecebimento.reduce((s, i) => s + i.total, 0)
+  );
+  const diferencaRefinadaRecebimentos = arredondarMoeda(totalExtratoRelevanteRecebimentos - totalRateadoMaisSobra);
   const itensRecebimento = [...itensRecebimentoExtrato, ...itensRecebimentoRateio, ...itensSobraRecebimento];
   const itensNumerarioRateio = itensNumerarioRecebimentosRateio(itensRecebimentoRateio);
   const itensSaidaExtra = saidasExtras.slice(0, 80).map(({ mov, idxMov }) => ({
@@ -2960,6 +3013,9 @@ function renderSugestoesConciliacao(sugestoes, qtdPagamentos, qtdMovimentos, ent
       <div style="margin-top:8px;display:flex;flex-direction:column;gap:4px">
         ${avisosRecebimentoRateioDia.map(a => `<div>${escapeHtml(a.data)} · conta ${escapeHtml(a.conta)} — extrato: <strong>R$ ${fmtValor(a.totalExtrato)}</strong>, planilha explica: <strong>R$ ${fmtValor(a.totalPlanilha)}</strong>, sobra não lançada: <strong>R$ ${fmtValor(a.diferenca)}</strong></div>`).join('')}
       </div>
+    </div>` : ''}
+    ${itensRecebimentoRateio.length || itensSobraRecebimento.length ? `<div class="alert ${Math.abs(diferencaRefinadaRecebimentos) < 1 ? 'alert-ok' : 'alert-warn'}" style="margin-bottom:12px">
+      <strong>Diferença refinada pós-rateio (recebimentos)</strong> — depois de ratear pelo extrato e considerar as sobras já identificadas: extrato relevante (cartões/títulos): <strong>R$ ${fmtValor(totalExtratoRelevanteRecebimentos)}</strong>, rateado + sobra: <strong>R$ ${fmtValor(totalRateadoMaisSobra)}</strong>, diferença: <strong>R$ ${fmtValor(diferencaRefinadaRecebimentos)}</strong>${Math.abs(diferencaRefinadaRecebimentos) >= 1 ? ' — a sobra costuma ser dia/conta do extrato sem nenhuma linha correspondente na planilha (cai direto como recebimento avulso, fora do rateio).' : ''}
     </div>` : ''}
     ${validacaoUnidades.length ? `<div class="alert ${validacaoUnidades.every(u => Math.abs(u.diferenca) < 1) ? 'alert-ok' : 'alert-warn'}" style="margin-bottom:12px">
       <strong>Validação de recebimentos por unidade (centro de custo)</strong> — total da planilha de rateio × total efetivamente rateado pelo extrato, por unidade:
