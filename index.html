@@ -2920,12 +2920,12 @@ function gerarSugestoesConciliacao(opcoes = {}) {
     diferenca: pag.valor
   });
   const saidasExtrasTitulo = movimentos
-    .map((mov, idxMov) => ({ mov, idxMov }))
+    .map((mov, idxMov) => ({ mov, idxMov, origemTipo: 'titulo' }))
     .filter(item => !usadosMov.has(item.idxMov));
   const saidasExtrasOutrosTipos = extratoBancarioTemp
     .map((mov, idx) => ({ mov, idx }))
     .filter(({ mov, idx }) => mov.valor < 0 && !transferenciasPareadas.has(idx) && !normalizarTexto(mov.tipoConciliacao).includes('parcelas de titulos'))
-    .map(({ mov }, i) => ({ mov, idxMov: `outro-${i}` }));
+    .map(({ mov }, i) => ({ mov, idxMov: `outro-${i}`, origemTipo: 'outro' }));
   const saidasExtras = [...saidasExtrasTitulo, ...saidasExtrasOutrosTipos];
 
   const resultado = renderSugestoesConciliacao(sugestoes, pagamentos.length, movimentos.length, entradas, saidasExtras);
@@ -2986,9 +2986,10 @@ function renderSugestoesConciliacao(sugestoes, qtdPagamentos, qtdMovimentos, ent
   const diferencaRefinadaRecebimentos = arredondarMoeda(totalExtratoRelevanteRecebimentos - totalRateadoMaisSobra);
   const itensRecebimento = [...itensRecebimentoExtrato, ...itensRecebimentoRateio, ...itensSobraRecebimento];
   const itensNumerarioRateio = itensNumerarioRecebimentosRateio(itensRecebimentoRateio);
-  const itensSaidaExtra = saidasExtras.map(({ mov, idxMov }) => ({
+  const itensSaidaExtra = saidasExtras.map(({ mov, idxMov, origemTipo }) => ({
     id: `saida-${idxMov}`,
     movimento: 'saida-pendente',
+    origemTipo: origemTipo || 'titulo',
     tipo: mov.tipoConciliacao || 'Saída não conciliada',
     historico: descricaoMovimentoExtrato(mov) || 'Sem histórico',
     qtd: 1,
@@ -3310,7 +3311,8 @@ function abrirModalPendenciasConciliacao() {
       .filter(([id, valorSelecionado]) => id !== item.id && valorSelecionado !== '')
       .map(([, valorSelecionado]) => String(valorSelecionado)));
     const saidasDisponiveis = saidasPendentes.filter(saida =>
-      !selecionadasEmOutros.has(String(saida.idxOriginal))
+      saida.origemTipo === 'titulo'
+      && !selecionadasEmOutros.has(String(saida.idxOriginal))
       && (item.movimento !== 'pagamento-pendente' || !item.conta || !saida.conta || normalizarTexto(item.conta) === normalizarTexto(saida.conta))
     );
     const mesmasSaidas = saidasDisponiveis.filter(saida => Math.abs(saida.total - item.total) < 0.01);
