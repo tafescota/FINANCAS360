@@ -2439,7 +2439,21 @@ function gerarSugestoesConciliacao(opcoes = {}) {
   const pagamentos = pagamentosImportadosConciliacao(contasBanco);
   const movimentos = extratoBancarioTemp
     .filter(m => m.valor < 0 && normalizarTexto(m.tipoConciliacao).includes('parcelas de titulos'));
-  const entradas = extratoBancarioTemp.filter((m, idx) => m.valor > 0 && !transferenciasPareadas.has(idx));
+  const itensRecebimentoRateioPrevia = criarItensRecebimentosRateioAgrupados();
+  const movimentosClaimedPorRateio = new Set();
+  itensRecebimentoRateioPrevia.forEach(item => {
+    const valorAlvo = Math.abs(arredondarMoeda(item.total));
+    if (!valorAlvo) return;
+    const dataAlvo = dataKey((item.movimentos && item.movimentos[0] && item.movimentos[0].data) || item.data);
+    const contaAlvo = normalizarTexto(item.conta);
+    extratoBancarioTemp.forEach((m, idx) => {
+      if (movimentosClaimedPorRateio.has(idx) || m.valor <= 0) return;
+      if (normalizarTexto(m.conta) !== contaAlvo) return;
+      if (dataKey(m.data) !== dataAlvo) return;
+      if (Math.abs(arredondarMoeda(Math.abs(m.valor) - valorAlvo)) < 0.02) movimentosClaimedPorRateio.add(idx);
+    });
+  });
+  const entradas = extratoBancarioTemp.filter((m, idx) => m.valor > 0 && !transferenciasPareadas.has(idx) && !movimentosClaimedPorRateio.has(idx));
   const usadosMov = new Set();
   const sugestoesPorPagamento = new Map();
 
