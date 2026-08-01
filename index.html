@@ -2924,7 +2924,7 @@ function gerarSugestoesConciliacao(opcoes = {}) {
     .filter(item => !usadosMov.has(item.idxMov));
   const saidasExtrasOutrosTipos = extratoBancarioTemp
     .map((mov, idx) => ({ mov, idx }))
-    .filter(({ mov, idx }) => mov.valor < 0 && !transferenciasPareadas.has(idx) && !normalizarTexto(mov.tipoConciliacao).includes('parcelas de titulos'))
+    .filter(({ mov, idx }) => mov.valor < 0 && !transferenciasPareadas.has(idx) && !extratoRelevantePlanilhaRecebimentos(mov))
     .map(({ mov }, i) => ({ mov, idxMov: `outro-${i}`, origemTipo: 'outro' }));
   const saidasExtras = [...saidasExtrasTitulo, ...saidasExtrasOutrosTipos];
 
