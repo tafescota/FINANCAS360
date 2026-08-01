@@ -411,7 +411,8 @@
       <button class="btn btn-primary" onclick="mostrarTela('tela-conciliacao-bancaria')">Importar extrato para conciliação bancária</button>
       <button class="btn btn-blue" onclick="exportarDominioFinal()">⬇ Exportar Domínio final (.xlsx)</button>
       <button class="btn" onclick="exportarDominioPagamentos()">Exportar somente pagamentos (.xlsx)</button>
-      <span class="conciliacao-note">O ideal é exportar o arquivo final após validar a conciliação. Use pagamentos somente quando não for conciliar extrato.</span>
+      <button class="btn btn-sm" onclick="resetarControleExportacoes()" title="Use depois de já ter importado tudo no Domínio e for gerar um novo lote para este mesmo grupo">↺ Resetar controle de exportação</button>
+      <span class="conciliacao-note">O ideal é exportar SOMENTE o arquivo final e importar só ele no Domínio. Não importe "Final" junto com "Pagamentos" ou "Conciliação" separados — o Final já contém os dois, e importar mais de um duplica os lançamentos.</span>
     </div>
     <div id="resumo-conciliacao-resultado"></div>
     <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:12px;margin-bottom:16px">
@@ -538,6 +539,7 @@ let infoRecebimentosRateioTemp = null;
 let provisaoRateioTemp = [];
 let infoProvisaoRateioTemp = null;
 let provisaoSelecionadas = new Set();
+let exportacoesRealizadas = { pagamentos: false, conciliacao: false, final: false };
 
 const COLS = { TIPO:0, NUMERO:1, PARCELA:2, EMPRESA:3, FORNECEDOR:4, EMISSAO:5, VENCIMENTO:6, LIQUIDACAO:7, VALOR_BRUTO:8, COMPETENCIA:9, PLANO:10, CC:11, ACRESCIMO:12, VALOR_LIQ:13, CONTA:14, MEIO_PAG:15, TIPO_DOC:16, APROVADA:17, STATUS:18, HISTORICO:19 };
 
@@ -1722,15 +1724,16 @@ function headerInfoRecebimentos(raw, obrigatorias) {
   return { headerIdx, idx };
 }
 
-function linhaRecebimentoRateioBase({ data, valor, conta, empresaBanco, centroCusto, tipo, historico, plano, origem, arquivoOrigem, linhaOrigem, tipoLancamento }) {
+function linhaRecebimentoRateioBase({ data, valor, conta, empresaBanco, centroCusto, tipo, historico, plano, origem, arquivoOrigem, linhaOrigem, tipoLancamento, chaveMovimentoReal }) {
   const empresaBancoLimpa = limparTextoECD(empresaBanco || conta || '');
   const centroLimpo = limparTextoECD(centroCusto || empresaBancoLimpa);
   const valorMoeda = arredondarMoeda(valor);
   if (!data || !valorMoeda || !centroLimpo) return null;
+  const dk = dataKey(data);
   return {
     id: `rateio-rec-${recebimentosRateioTemp.length}-${Math.random().toString(36).slice(2)}`,
     data,
-    dataKey: dataKey(data),
+    dataKey: dk,
     valor: valorMoeda,
     total: Math.abs(valorMoeda),
     conta: limparTextoECD(conta),
@@ -1746,7 +1749,8 @@ function linhaRecebimentoRateioBase({ data, valor, conta, empresaBanco, centroCu
     movimento: 'recebimento-rateio',
     rateio: true,
     intercompany: grupoUsaNumerariosRateio() && normalizarTexto(empresaBancoLimpa) !== normalizarTexto(centroLimpo),
-    tipoRateio: grupoUsaNumerariosRateio() && normalizarTexto(empresaBancoLimpa) !== normalizarTexto(centroLimpo) ? 'TRANSFERENCIA DE NUMERARIOS' : 'PROPRIO'
+    tipoRateio: grupoUsaNumerariosRateio() && normalizarTexto(empresaBancoLimpa) !== normalizarTexto(centroLimpo) ? 'TRANSFERENCIA DE NUMERARIOS' : 'PROPRIO',
+    chaveAgrupamento: [dk, normalizarTexto(conta), normalizarTexto(empresaBancoLimpa), normalizarTexto(centroLimpo), normalizarTexto(chaveMovimentoReal || '')].join('|')
   };
 }
 
@@ -1793,7 +1797,8 @@ function linhasRateioCartoesReceber(wb, arquivoOrigem) {
       origem: 'Rateio de Cartões a Receber',
       arquivoOrigem,
       linhaOrigem: headerIdx + rowIdx + 2,
-      tipoLancamento
+      tipoLancamento,
+      chaveMovimentoReal: [col.bandeira >= 0 ? row[col.bandeira] : '', col.adquirente >= 0 ? row[col.adquirente] : ''].join('|')
     });
   }).filter(Boolean);
   return { tipo: 'cartoes', nomePlanilha, linhas };
@@ -1823,7 +1828,8 @@ function linhasRateioTitulosReceber(wb, arquivoOrigem) {
     status: idx('status'),
     historico: idx('historico'),
     tipoDoc: idx('tipo de documento'),
-    numero: idx('numero')
+    numero: idx('numero'),
+    parcela: idx('parcela')
   };
   const linhas = raw.slice(headerIdx + 1).map((row, rowIdx) => {
     const status = limparTextoECD(col.status >= 0 ? row[col.status] : 'Liquidado');
@@ -1849,7 +1855,8 @@ function linhasRateioTitulosReceber(wb, arquivoOrigem) {
       origem: 'Parcela de Título a Receber',
       arquivoOrigem,
       linhaOrigem: headerIdx + rowIdx + 2,
-      tipoLancamento: status
+      tipoLancamento: status,
+      chaveMovimentoReal: [col.numero >= 0 ? row[col.numero] : '', col.parcela >= 0 ? row[col.parcela] : ''].join('|')
     });
   }).filter(Boolean);
   return { tipo: 'titulos', nomePlanilha, linhas };
@@ -1902,7 +1909,8 @@ async function processarRecebimentosRateio(files) {
     codigosConciliacaoTemp = {};
     trechosRecebimentoConciliacaoTemp = {};
     conciliacaoAplicadaTemp = false;
-    mostrarMsgConciliacao(`${novosUnicos.length} recebimento${novosUnicos.length !== 1 ? 's' : ''} por rateio importado${novosUnicos.length !== 1 ? 's' : ''}.`, 'ok');
+    const avisoReexportacao = (exportacoesRealizadas.pagamentos || exportacoesRealizadas.conciliacao || exportacoesRealizadas.final) ? ' Atenção: você já exportou lançamentos nesta sessão — os lançamentos serão recalculados. Não importe de novo no Domínio sem conferir o que já foi enviado (use o botão ’Resetar controle de exportação’ na tela de Lançamentos gerados).' : '';
+    mostrarMsgConciliacao(`${novosUnicos.length} recebimento${novosUnicos.length !== 1 ? 's' : ''} por rateio importado${novosUnicos.length !== 1 ? 's' : ''}.${avisoReexportacao}`, avisoReexportacao ? 'warn' : 'ok');
     renderConciliacaoBancaria();
     if (extratoBancarioTemp.length > 0) gerarSugestoesConciliacao({ redirecionarSeOk: false });
   } catch (err) {
@@ -2336,9 +2344,9 @@ function criarItensRecebimentosRateioAgrupados() {
   if (!grupoPodeRecebimentosRateio() || recebimentosRateioTemp.length === 0) return [];
   const gruposRateio = new Map();
   recebimentosRateioTemp.forEach((r, idx) => {
-    if (arredondarMoeda(r.valor) <= 0) return;
+    if (arredondarMoeda(r.valor) === 0) return;
     const escopoRegra = escopoRecebimentoRateio(r);
-    const chave = [r.dataKey, r.conta, r.empresaBanco, r.centroCusto, r.tipo, r.historico, r.valor < 0 ? 'NEG' : 'POS'].map(v => normalizarTexto(v)).join('|');
+    const chave = r.chaveAgrupamento || [r.dataKey, r.conta, r.empresaBanco, r.centroCusto, r.tipo, r.historico].map(v => normalizarTexto(v)).join('|');
     const atual = gruposRateio.get(chave) || {
       id: `rec-rateio-${gruposRateio.size}`,
       movimento: 'recebimento',
@@ -2359,11 +2367,11 @@ function criarItensRecebimentosRateioAgrupados() {
       movimentos: []
     };
     atual.qtd += 1;
-    atual.total = arredondarMoeda(atual.total + Math.abs(r.valor));
+    atual.total = arredondarMoeda(atual.total + r.valor);
     atual.movimentos.push({ ...r, idxRecebimentoRateio: idx });
     gruposRateio.set(chave, atual);
   });
-  return Array.from(gruposRateio.values());
+  return Array.from(gruposRateio.values()).filter(item => arredondarMoeda(item.total) !== 0);
 }
 
 function itensNumerarioRecebimentosRateio(itensRateio) {
@@ -3253,7 +3261,8 @@ function montarLinhasRecebimentoRateioDominio(item, codigoRecebimento, regrasNum
     : empresaBanco;
   const complemento = [item.tipo || primeiroMovimento.tipo, item.historico || primeiroMovimento.historico].filter(Boolean).join(' - ');
   const complementoNumerarios = [complemento, 'TRANSFERENCIA DE NUMERARIOS'].filter(Boolean).join(' - ');
-  const negativo = movimentos.every(mov => arredondarMoeda(mov.valor || 0) < 0) || arredondarMoeda(item.valor || 0) < 0;
+  const totalLiquidoGrupo = arredondarMoeda(item.total !== undefined && item.total !== null ? item.total : movimentos.reduce((s, mov) => s + (mov.valor || 0), 0));
+  const negativo = totalLiquidoGrupo < 0;
   if (item.intercompany || primeiroMovimento.intercompany) {
     const naturezaNumerarioBanco = naturezaNumerarioRecebimento('EMPRESA DO BANCO', negativo);
     const naturezaNumerarioCentro = naturezaNumerarioRecebimento('CENTRO DE CUSTO', negativo);
@@ -3337,6 +3346,27 @@ function montarLinhasDominioConciliacao({ validarPendencias = true } = {}) {
   });
   return linhas;
 }
+function resetarControleExportacoes() {
+  exportacoesRealizadas = { pagamentos: false, conciliacao: false, final: false };
+  showMsg('Controle de exportações desta sessão foi zerado.', 'ok');
+}
+
+function confirmarExportacaoSemSobreposicao(tipo) {
+  let mensagem = '';
+  if (tipo === 'pagamentos' && exportacoesRealizadas.final) {
+    mensagem = 'Você já exportou o arquivo "Final" nesta sessão, que já inclui os lançamentos de pagamentos. Exportar "Pagamentos" separado agora e importar os dois arquivos no Domínio vai DUPLICAR esses lançamentos.';
+  } else if (tipo === 'conciliacao' && exportacoesRealizadas.final) {
+    mensagem = 'Você já exportou o arquivo "Final" nesta sessão, que já inclui os lançamentos de conciliação/recebimentos por rateio. Exportar "Conciliação" separado agora e importar os dois arquivos no Domínio vai DUPLICAR esses lançamentos.';
+  } else if (tipo === 'final' && (exportacoesRealizadas.pagamentos || exportacoesRealizadas.conciliacao)) {
+    const partes = [];
+    if (exportacoesRealizadas.pagamentos) partes.push('"Pagamentos"');
+    if (exportacoesRealizadas.conciliacao) partes.push('"Conciliação"');
+    mensagem = `Você já exportou o arquivo ${partes.join(' e ')} nesta sessão. O arquivo "Final" também inclui esses mesmos lançamentos. Importar o Final além do(s) arquivo(s) já exportado(s) no Domínio vai DUPLICAR os lançamentos.`;
+  }
+  if (!mensagem) return true;
+  return confirm(mensagem + '\n\nSó exporte de novo se tiver certeza de que vai importar no Domínio apenas UM desses arquivos (e não os dois).\n\nDeseja exportar mesmo assim?');
+}
+
 function exportarConciliacaoBancaria() {
   const linhas = montarLinhasDominioConciliacao();
   if (linhas === null) return;
@@ -3344,12 +3374,14 @@ function exportarConciliacaoBancaria() {
     alert('Não há movimentos novos para exportar na conciliação. Os pagamentos já ficam no arquivo final.');
     return;
   }
+  if (!confirmarExportacaoSemSobreposicao('conciliacao')) return;
   linhas[0][6] = 1;
   const ws = XLSX.utils.aoa_to_sheet([CABECALHO_DOMINIO, ...linhas]);
   const wb = XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(wb, ws, 'Domínio Conciliação');
   const data = new Date().toLocaleDateString('pt-BR').replace(/\//g,'-');
   XLSX.writeFile(wb, `Dominio_Conciliacao_Bancaria_${grupoAtivo}_${data}.xlsx`);
+  exportacoesRealizadas.conciliacao = true;
 }
 
 function renderGrupos() {
@@ -3439,6 +3471,7 @@ function editarGrupoCadastro(g) {
 }
 function selecionarGrupo(g) {
   grupoAtivo = g;
+  exportacoesRealizadas = { pagamentos: false, conciliacao: false, final: false };
   renderGrupos();
   showMsg(`Grupo "${g}" selecionado.`, 'ok');
 }
@@ -4485,8 +4518,27 @@ function arredondarMoeda(v) {
   return Math.round((numeroMoeda(v) + Number.EPSILON) * 100) / 100;
 }
 
+function chaveMovimentoRealPagamentoRateio(r) {
+  return [
+    dataKey(r[COLS.LIQUIDACAO]),
+    normalizarTexto(limparTextoECD(r[COLS.CONTA])),
+    normalizarTexto(empresaOrigemLinha(r)),
+    normalizarTexto(centroCustoLinha(r)),
+    normalizarTexto(String(r[COLS.NUMERO] ?? '')),
+    normalizarTexto(String(r[COLS.PARCELA] ?? ''))
+  ].join('|');
+}
+
 function gerarLancamentos(dados, regras) {
   lancamentosGerados = [];
+  const totaisMovimentoRateioBanco = new Map();
+  dados.forEach(r => {
+    if (!rateioIntercompanyLinha(r)) return;
+    const chaveMov = chaveMovimentoRealPagamentoRateio(r);
+    const valorLiqRow = arredondarMoeda(r[COLS.VALOR_LIQ]);
+    totaisMovimentoRateioBanco.set(chaveMov, arredondarMoeda((totaisMovimentoRateioBanco.get(chaveMov) || 0) + valorLiqRow));
+  });
+  const bancoLegEmitidoRateio = new Set();
   let totalLiquido = 0;
   let totalBruto = 0;
   let totalDesconto = 0;
@@ -4562,7 +4614,11 @@ function gerarLancamentos(dados, regras) {
 
 
     if (intercompanyRateio) {
-      const naturezaNumerarioBanco = naturezaNumerarioPagamento('EMPRESA DO BANCO', linhaRateioNegativa);
+      const chaveMovReal = chaveMovimentoRealPagamentoRateio(r);
+      const totalGrupoBanco = arredondarMoeda(totaisMovimentoRateioBanco.has(chaveMovReal) ? totaisMovimentoRateioBanco.get(chaveMovReal) : valorLiq);
+      const grupoNegativo = totalGrupoBanco < 0;
+      const valorGrupoBanco = Math.abs(totalGrupoBanco);
+      const naturezaNumerarioBanco = naturezaNumerarioPagamento('EMPRESA DO BANCO', grupoNegativo);
       const naturezaNumerarioCentro = naturezaNumerarioPagamento('CENTRO DE CUSTO', linhaRateioNegativa);
       const codNumerarioBanco = codigoNumerarioRateio(regras, empresaBancoRateio, centroCustoRateio, 'EMPRESA DO BANCO', naturezaNumerarioBanco);
       const codNumerarioCentro = codigoNumerarioRateio(regras, empresaBancoRateio, centroCustoRateio, 'CENTRO DE CUSTO', naturezaNumerarioCentro);
@@ -4572,11 +4628,17 @@ function gerarLancamentos(dados, regras) {
       if (!codNumerarioCentro) pendentes.add(chaveNumerarioCentro);
       const semCodigoBanco = !codNumerarioBanco || !codCredito;
       const semCodigoCentro = !codDeparaPrincipal || !codNumerarioCentro;
+      if (!bancoLegEmitidoRateio.has(chaveMovReal) && valorGrupoBanco > 0) {
+        bancoLegEmitidoRateio.add(chaveMovReal);
+        if (grupoNegativo) {
+          lancamentosGerados.push({ idx, data: dataLiq, codDebito: codCredito, codCredito: codNumerarioBanco, valorLiq: valorGrupoBanco, valorFmt: fmtValor(valorGrupoBanco), complemento: complementoIntercompany, empresa: empresaBancoRateio, plano, acrescimoDesconto, semCodigo: semCodigoBanco, rateioNegativo: true, tipoRateio: tipoRateioAtual });
+        } else {
+          lancamentosGerados.push({ idx, data: dataLiq, codDebito: codNumerarioBanco, codCredito, valorLiq: valorGrupoBanco, valorFmt: fmtValor(valorGrupoBanco), complemento: complementoIntercompany, empresa: empresaBancoRateio, plano, acrescimoDesconto, semCodigo: semCodigoBanco, tipoRateio: tipoRateioAtual });
+        }
+      }
       if (linhaRateioNegativa) {
-        lancamentosGerados.push({ idx, data: dataLiq, codDebito: codCredito, codCredito: codNumerarioBanco, valorLiq: valorLancamento, valorFmt: fmtValor(valorLancamento), complemento: complementoIntercompany, empresa: empresaBancoRateio, plano, acrescimoDesconto, semCodigo: semCodigoBanco, rateioNegativo: true, tipoRateio: tipoRateioAtual });
         lancamentosGerados.push({ idx, data: dataLiq, codDebito: codNumerarioCentro, codCredito: codDeparaPrincipal, valorLiq: valorLancamento, valorFmt: fmtValor(valorLancamento), complemento: complementoIntercompany, empresa, plano, acrescimoDesconto, semCodigo: semCodigoCentro, rateioNegativo: true, tipoRateio: tipoRateioAtual });
       } else {
-        lancamentosGerados.push({ idx, data: dataLiq, codDebito: codNumerarioBanco, codCredito, valorLiq: valorLancamento, valorFmt: fmtValor(valorLancamento), complemento: complementoIntercompany, empresa: empresaBancoRateio, plano, acrescimoDesconto, semCodigo: semCodigoBanco, tipoRateio: tipoRateioAtual });
         lancamentosGerados.push({ idx, data: dataLiq, codDebito: codDeparaPrincipal, codCredito: codNumerarioCentro, valorLiq: valorLancamento, valorFmt: fmtValor(valorLancamento), complemento: complementoIntercompany, empresa, plano, acrescimoDesconto, semCodigo: semCodigoCentro, tipoRateio: tipoRateioAtual });
       }
       return;
@@ -4710,12 +4772,14 @@ function exportarDominioPagamentos() {
     alert('Gere os lançamentos antes de exportar.');
     return;
   }
+  if (!confirmarExportacaoSemSobreposicao('pagamentos')) return;
   linhas[0][6] = 1;
   const ws = XLSX.utils.aoa_to_sheet([CABECALHO_DOMINIO, ...linhas]);
   const wb = XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(wb, ws, 'Lançamentos Domínio');
   const data = new Date().toLocaleDateString('pt-BR').replace(/\//g,'-');
   XLSX.writeFile(wb, `Dominio_Pagamentos_${grupoAtivo}_${data}.xlsx`);
+  exportacoesRealizadas.pagamentos = true;
 }
 
 function exportarDominioFinal() {
@@ -4726,6 +4790,7 @@ function exportarDominioFinal() {
   }
   const linhasConciliacao = montarLinhasDominioConciliacao();
   if (linhasConciliacao === null) return;
+  if (!confirmarExportacaoSemSobreposicao('final')) return;
 
   const linhas = [...linhasPagamentos, ...linhasConciliacao];
   linhas.forEach(l => { l[6] = ''; });
@@ -4736,6 +4801,7 @@ function exportarDominioFinal() {
   XLSX.utils.book_append_sheet(wb, ws, 'Lançamentos Domínio');
   const data = new Date().toLocaleDateString('pt-BR').replace(/\//g,'-');
   XLSX.writeFile(wb, `Dominio_Final_${grupoAtivo}_${data}.xlsx`);
+  exportacoesRealizadas.final = true;
 }
 
 // ---------- REGRAS ----------
