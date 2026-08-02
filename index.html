@@ -1245,7 +1245,7 @@ function centroCustoEhRateado(r) {
 }
 
 function linhaPrecisaAberturaRateio(r) {
-  return centroCustoEhRateado(r) || normalizarTexto(r?.[COLS.PLANO]).includes('rateado');
+  return centroCustoEhRateado(r);
 }
 
 function chaveRateioApoioPagamento(r) {
