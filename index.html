@@ -1791,8 +1791,8 @@ function prepararPagamentosImportados(dados, abrirTelaPendencias = true) {
     const valorRateio = arredondarMoeda(r[COLS.VALOR_LIQ]);
     const tipoAjusteRateio = (r.__rateio && !rateioIntercompanyLinha(r)) ? tipoAjusteRateioPlano(plano, valorRateio) : '';
     if (!forn && !plano) return;
-    if (r.__rateio && !rateioIntercompanyLinha(r) && ehRetencaoFolhaSemLancamento(plano, valorRateio) && gruposComAbsorvedorPend.has(chaveGuiaAbsorverRateio(r))) {
-      return; // retenção (INSS/FGTS) absorvida no banco, não precisa de código próprio
+    if (r.__rateio && !rateioIntercompanyLinha(r) && ehDescontoComercialAbsorvivel(plano, valorRateio) && gruposComAbsorvedorPend.has(chaveGuiaAbsorverRateio(r))) {
+      return; // desconto/retenção absorvido no valor bancário da linha principal, sem código próprio
     }
     if (tipoAjusteRateio) {
       ['DÉBITO', 'CRÉDITO'].forEach(ponta => {
@@ -2175,7 +2175,7 @@ function linhasRateioCartoesReceber(wb, arquivoOrigem) {
   const grupos = new Map();
   raw.slice(headerIdx + 1).forEach((row, rowIdx) => {
     const valor = arredondarMoeda(row[col.valor]);
-    if (valor <= 0) return;
+    if (valor === 0) return;
     const tipoLancamento = limparTextoECD(col.tipoLancamento >= 0 ? row[col.tipoLancamento] : '');
     const plano = limparTextoECD(col.plano >= 0 ? row[col.plano] : 'Parcelas de Cartões');
     const data = row[col.liquidacao];
@@ -2862,10 +2862,9 @@ function criarItensRecebimentosRateioPorDia() {
   //    dentro de cada grupo, subdivide por categoria (cartão/boleto/dinheiro) + empresa (centro de custo) — tudo somado no período inteiro, não por dia
   const planilhaPorContaTipo = new Map(); // chave "conta|tipoExtrato" -> Map("categoria|empresaNorm" -> {total, qtd, conta, centroCusto, empresaBanco, categoria})
   recebimentosRateioTemp.forEach(r => {
-    // Taxas/ajustes negativos de recebimentos por rateio não são apropriados aqui:
-    // a conciliação/exportação segue o que entrou no extrato, e as taxas são tratadas
-    // por competência em outro processo. Elas ficam no resumo, mas não viram lançamento.
-    if (arredondarMoeda(r.valor) <= 0) return;
+    // Taxas/ajustes negativos de recebimentos por rateio não viram lançamento próprio aqui,
+    // mas entram no total líquido usado para ratear o valor confirmado pelo extrato.
+    if (arredondarMoeda(r.valor) === 0) return;
     const tipoExtrato = tipoExtratoDaCategoria(r.categoria);
     const chaveContaTipo = `${normalizarTexto(r.conta)}|${tipoExtrato}`;
     if (!planilhaPorContaTipo.has(chaveContaTipo)) planilhaPorContaTipo.set(chaveContaTipo, new Map());
@@ -5755,8 +5754,8 @@ function gerarLancamentos(dados, regras) {
     if (!forn && !plano && !tipoDoc && !historico) return;
     if (r.__rateio && !rateioIntercompanyLinha(r)) {
       const valorRateioAtual = arredondarMoeda(r[COLS.VALOR_LIQ]);
-      if (ehRetencaoFolhaSemLancamento(plano, valorRateioAtual) && absorvedorPorGrupo.has(chaveGuiaAbsorverRateio(r))) {
-        return; // retenção (INSS/FGTS) absorvida no banco, sem lançamento próprio (obrigação já lançada à parte)
+      if (ehDescontoComercialAbsorvivel(plano, valorRateioAtual) && absorvedorPorGrupo.has(chaveGuiaAbsorverRateio(r))) {
+        return; // desconto/retenção absorvido no valor bancário da linha principal; não gera linha fantasma
       }
     }
     const escopoRegra = escopoRegraLinha(r);
@@ -6449,6 +6448,10 @@ iniciarSincronizacaoAutomatica();
 </script>
 </body>
 </html>
+
+
+
+
 
 
 
