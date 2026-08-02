@@ -247,11 +247,11 @@
     <div class="card" style="max-width:420px">
       <label style="font-size:13px;color:var(--text2);display:block;margin-bottom:6px">Nome do grupo</label>
       <input type="text" id="input-nome-grupo" placeholder="Ex: CP Simone, VD 108, Grupo Pinheiro..." onkeydown="if(event.key==='Enter') criarGrupo()" style="margin-bottom:16px">
-      <label style="font-size:13px;color:var(--text2);display:block;margin-bottom:6px">Fluxo padrão de pagamentos</label>
-      <select id="select-modo-grupo" style="margin-bottom:8px">
+      <label style="font-size:13px;color:var(--text2);display:block;margin-bottom:6px">Formato de pagamentos</label>
+      <select id="select-modo-grupo" style="margin-bottom:16px">
         <option value="parcelas">Parcelas de Títulos</option>
+        <option value="rateio">Rateio de Títulos</option>
       </select>
-      <div class="conciliacao-note" style="margin-bottom:16px">Rateio CP Aromas será tratado em módulo separado, para não misturar com o fluxo normal de parcelas.</div>
       <div style="display:flex;gap:10px">
         <button class="btn btn-primary" onclick="criarGrupo()">Criar grupo</button>
         <button class="btn" onclick="mostrarTela('tela-home')">Cancelar</button>
@@ -276,33 +276,6 @@
       <div class="drop-icon">📄</div>
       <div class="drop-title">Arraste a planilha aqui ou clique para selecionar</div>
       <div class="drop-sub" id="drop-sub-importacao">Arquivo de Parcelas de Títulos exportado do financeiro (.xlsx ou .xlsm)</div>
-  </div>
-  </div>
-
-  <!-- TELA RATEIO CP AROMAS -->
-  <div class="tela" id="tela-rateio-aromas">
-    <div class="section-header">
-      <button class="btn btn-sm" onclick="voltarTela()">← Voltar</button>
-      <h2 id="titulo-rateio-aromas">Rateio CP Aromas</h2>
-    </div>
-    <div class="card" style="margin-bottom:16px">
-      <div class="metric-label" style="margin-bottom:8px">Módulo isolado / experimental</div>
-      <h3 style="margin:0 0 8px">Reconstrução do rateio sem tocar em parcelas</h3>
-      <p class="conciliacao-note" style="margin-bottom:12px">
-        Esta área será usada para criar o novo motor de rateio do CP Aromas do zero. O fluxo normal de Parcelas de Títulos permanece congelado e continua sendo acessado pelo botão Importar planilha.
-      </p>
-      <div class="alert alert-warn" style="margin:0">
-        Enquanto este módulo estiver em desenvolvimento, use a importação normal para grupos de parcelas. Nenhuma rotina deste bloco deve alterar de-para, conciliação ou exportação do fluxo normal.
-      </div>
-    </div>
-    <div class="card">
-      <div class="metric-label" style="margin-bottom:8px">Próximas etapas do módulo</div>
-      <div class="grupo-info" style="line-height:1.8">
-        1. Importar parcelas, apoio de rateio e extrato em área própria.<br>
-        2. Conciliar banco x parcelas sem abrir rateio junto.<br>
-        3. Abrir apenas títulos com centro de custo Rateado.<br>
-        4. Gerar auditoria antes de liberar exportação.
-      </div>
     </div>
   </div>
 
@@ -477,7 +450,7 @@
       <button class="btn btn-sm btn-primary" id="btn-salvar-regras" style="display:none" onclick="salvarEdicaoRegras()">Salvar alterações</button>
       <button class="btn btn-sm" id="btn-cancelar-regras" style="display:none" onclick="cancelarEdicaoRegras()">Cancelar</button>
       <button class="btn btn-sm btn-danger" id="btn-limpar-regras" onclick="limparTodasRegras()">🗑 Limpar tudo</button>
-      <button class="btn btn-sm btn-blue" id="btn-importar-regras" onclick="abrirImportacaoParcelas()">Importar planilha</button>
+      <button class="btn btn-sm btn-blue" id="btn-importar-regras" onclick="mostrarTela('tela-importar')">Importar planilha</button>
       <button class="btn btn-sm" onclick="mostrarTela('tela-home')">Grupos</button>
     </div>
     <div style="display:flex;gap:8px;margin-bottom:12px;flex-wrap:wrap">
@@ -659,23 +632,6 @@ function grupoUsaNumerariosRateio() {
   return modoImportacaoDoGrupo() === 'rateio';
 }
 
-function grupoEhModuloRateioAromas(nome = grupoAtivo) {
-  return !!nome && normalizarTexto(nome).includes('aromas');
-}
-
-function abrirImportacaoParcelas() {
-  selecionarModoImportacaoPagamentos('parcelas');
-  mostrarTela('tela-importar');
-}
-
-function abrirModuloRateioAromas() {
-  if (!grupoEhModuloRateioAromas()) {
-    showMsg('O módulo de rateio isolado está reservado para o grupo CP Aromas.', 'warn');
-    return;
-  }
-  mostrarTela('tela-rateio-aromas');
-}
-
 function empresaBancoRateioPorConta(conta, empresaFallback = '') {
   const fallback = limparTextoECD(empresaFallback);
   if (!grupoUsaNumerariosRateio()) return fallback;
@@ -849,10 +805,7 @@ async function carregarBaseCompartilhada(mostrarMensagem = false) {
     if (!resp.ok) throw new Error('base compartilhada indisponível');
     const data = await resp.json();
     const remoteUpdatedAt = data.updatedAt ? new Date(data.updatedAt).getTime() : 0;
-    if (remoteUpdatedAt && remoteUpdatedAt < ultimaSyncLocal) {
-      atualizarStatusBanco('Base compartilhada do site conectada. Usando a cópia mais recente deste navegador.', 'ok');
-      return;
-    }
+    if (remoteUpdatedAt && remoteUpdatedAt < ultimaSyncLocal) return;
     grupos = Array.isArray(data.grupos) ? data.grupos : [];
     depara = data.depara && typeof data.depara === 'object' ? data.depara : {};
     deparaRecebimentos = data.deparaRecebimentos && typeof data.deparaRecebimentos === 'object' ? data.deparaRecebimentos : {};
@@ -979,7 +932,7 @@ function mostrarTela(id, registrarHistorico = true) {
   if (id === 'tela-provisao-rateio') renderProvisaoRateio();
   if (id === 'tela-importar' && grupoAtivo) {
     document.getElementById('titulo-importar').textContent = 'Importar planilha — ' + grupoAtivo;
-    selecionarModoImportacaoPagamentos('parcelas');
+    selecionarModoImportacaoPagamentos(modoImportacaoDoGrupo(grupoAtivo));
   }
 }
 
@@ -3333,12 +3286,11 @@ function renderGrupos() {
         <div class="grupo-info">${qtd} regra${qtd !== 1 ? 's' : ''} de pagamentos · ${qtdRecebimentos} regra${qtdRecebimentos !== 1 ? 's' : ''} de recebimentos · ${qtdContas > 0 ? qtdContas + ' contas no plano' : 'plano de contas não carregado'} · ${modoLabel}</div>
       </div>
       <div class="grupo-row-actions">
-        ${!isAtivo ? `<button class="btn btn-sm" onclick="selecionarGrupoPorIndice(${grupos.indexOf(g)})">Selecionar</button>` : ''}
+        ${!isAtivo ? `<button class="btn btn-sm" onclick="selecionarGrupo('${g}')">Selecionar</button>` : ''}
         ${isAtivo ? `
           <button class="btn btn-sm" onclick="mostrarTela('tela-regras')">📋 Regras</button>
           <button class="btn btn-sm" onclick="mostrarTela('tela-plano-contas')">📑 Plano de Contas</button>
-          <button class="btn btn-sm btn-blue" onclick="abrirImportacaoParcelas()">⬆ Importar planilha</button>
-          ${grupoEhModuloRateioAromas(g) ? `<button class="btn btn-sm" onclick="abrirModuloRateioAromas()">Rateio CP Aromas</button>` : ''}
+          <button class="btn btn-sm btn-blue" onclick="mostrarTela('tela-importar')">⬆ Importar planilha</button>
           ${modoGrupo === 'rateio' ? `<button class="btn btn-sm" onclick="mostrarTela('tela-provisao-rateio')">Provisão</button>` : ''}
         ` : ''}
         <button class="btn btn-sm btn-danger" onclick="excluirGrupo('${g}')">🗑</button>
@@ -3386,12 +3338,6 @@ function selecionarGrupo(g) {
   grupoAtivo = g;
   renderGrupos();
   showMsg(`Grupo "${g}" selecionado.`, 'ok');
-}
-
-function selecionarGrupoPorIndice(indice) {
-  const g = grupos[indice];
-  if (!g) return;
-  selecionarGrupo(g);
 }
 
 function criarGrupo() {
@@ -3920,7 +3866,7 @@ function adicionarRecebimentosRateio(resultados) {
 
 async function processarArquivosImportacao(files) {
   if (!grupoAtivo) { alert('Selecione um grupo antes de importar.'); return; }
-  selecionarModoImportacaoPagamentos('parcelas');
+  selecionarModoImportacaoPagamentos(modoImportacaoDoGrupo(grupoAtivo));
   if (modoImportacaoPagamentos !== 'rateio') {
     const file = files[0];
     const reader = new FileReader();
@@ -4976,10 +4922,6 @@ iniciarSincronizacaoAutomatica();
 </script>
 </body>
 </html>
-
-
-
-
 
 
 
