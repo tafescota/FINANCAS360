@@ -659,6 +659,23 @@ function grupoUsaNumerariosRateio() {
   return modoImportacaoDoGrupo() === 'rateio';
 }
 
+function grupoEhModuloRateioAromas(nome = grupoAtivo) {
+  return !!nome && normalizarTexto(nome).includes('aromas');
+}
+
+function abrirImportacaoParcelas() {
+  selecionarModoImportacaoPagamentos('parcelas');
+  mostrarTela('tela-importar');
+}
+
+function abrirModuloRateioAromas() {
+  if (!grupoEhModuloRateioAromas()) {
+    showMsg('O módulo de rateio isolado está reservado para o grupo CP Aromas.', 'warn');
+    return;
+  }
+  mostrarTela('tela-rateio-aromas');
+}
+
 function empresaBancoRateioPorConta(conta, empresaFallback = '') {
   const fallback = limparTextoECD(empresaFallback);
   if (!grupoUsaNumerariosRateio()) return fallback;
@@ -832,7 +849,10 @@ async function carregarBaseCompartilhada(mostrarMensagem = false) {
     if (!resp.ok) throw new Error('base compartilhada indisponível');
     const data = await resp.json();
     const remoteUpdatedAt = data.updatedAt ? new Date(data.updatedAt).getTime() : 0;
-    if (remoteUpdatedAt && remoteUpdatedAt < ultimaSyncLocal) return;
+    if (remoteUpdatedAt && remoteUpdatedAt < ultimaSyncLocal) {
+      atualizarStatusBanco('Base compartilhada do site conectada. Usando a cópia mais recente deste navegador.', 'ok');
+      return;
+    }
     grupos = Array.isArray(data.grupos) ? data.grupos : [];
     depara = data.depara && typeof data.depara === 'object' ? data.depara : {};
     deparaRecebimentos = data.deparaRecebimentos && typeof data.deparaRecebimentos === 'object' ? data.deparaRecebimentos : {};
@@ -3313,7 +3333,7 @@ function renderGrupos() {
         <div class="grupo-info">${qtd} regra${qtd !== 1 ? 's' : ''} de pagamentos · ${qtdRecebimentos} regra${qtdRecebimentos !== 1 ? 's' : ''} de recebimentos · ${qtdContas > 0 ? qtdContas + ' contas no plano' : 'plano de contas não carregado'} · ${modoLabel}</div>
       </div>
       <div class="grupo-row-actions">
-        ${!isAtivo ? `<button class="btn btn-sm" onclick="selecionarGrupo('${g}')">Selecionar</button>` : ''}
+        ${!isAtivo ? `<button class="btn btn-sm" onclick="selecionarGrupoPorIndice(${grupos.indexOf(g)})">Selecionar</button>` : ''}
         ${isAtivo ? `
           <button class="btn btn-sm" onclick="mostrarTela('tela-regras')">📋 Regras</button>
           <button class="btn btn-sm" onclick="mostrarTela('tela-plano-contas')">📑 Plano de Contas</button>
@@ -3366,6 +3386,12 @@ function selecionarGrupo(g) {
   grupoAtivo = g;
   renderGrupos();
   showMsg(`Grupo "${g}" selecionado.`, 'ok');
+}
+
+function selecionarGrupoPorIndice(indice) {
+  const g = grupos[indice];
+  if (!g) return;
+  selecionarGrupo(g);
 }
 
 function criarGrupo() {
@@ -4950,6 +4976,8 @@ iniciarSincronizacaoAutomatica();
 </script>
 </body>
 </html>
+
+
 
 
 
