@@ -1997,32 +1997,79 @@ function linhasRateioCartoesReceber(wb, arquivoOrigem) {
     plano: idx('plano de conta'),
     tipoLancamento: idx('tipo de lancamento')
   };
-  const linhas = raw.slice(headerIdx + 1).map((row, rowIdx) => {
+  const grupos = new Map();
+  raw.slice(headerIdx + 1).forEach((row, rowIdx) => {
+    const valor = arredondarMoeda(row[col.valor]);
+    if (valor <= 0) return;
     const tipoLancamento = limparTextoECD(col.tipoLancamento >= 0 ? row[col.tipoLancamento] : '');
     const plano = limparTextoECD(col.plano >= 0 ? row[col.plano] : 'Parcelas de Cartões');
+    const data = row[col.liquidacao];
+    const conta = row[col.conta];
+    const empresaBanco = empresaBancoRateioPorConta(conta, row[col.empresa]);
+    const centroCusto = row[col.centroCusto];
+    if (!data || !conta || !centroCusto) return;
+    const adquirente = limparTextoECD(col.adquirente >= 0 ? row[col.adquirente] : '');
+    const bandeira = limparTextoECD(col.bandeira >= 0 ? row[col.bandeira] : '');
+    const modalidade = limparTextoECD(col.modalidade >= 0 ? row[col.modalidade] : '');
+    const produto = limparTextoECD(col.produto >= 0 ? row[col.produto] : '');
+    const chaveMovimentoReal = [bandeira, adquirente].join('|');
+    const chaveGrupo = [
+      dataKey(data),
+      normalizarTexto(conta),
+      normalizarTexto(empresaBanco),
+      normalizarTexto(centroCusto),
+      normalizarTexto(chaveMovimentoReal),
+      normalizarTexto(plano),
+      normalizarTexto(tipoLancamento)
+    ].join('|');
     const partesHistorico = [
-      col.adquirente >= 0 ? row[col.adquirente] : '',
-      col.bandeira >= 0 ? row[col.bandeira] : '',
-      col.modalidade >= 0 ? row[col.modalidade] : '',
-      col.produto >= 0 ? row[col.produto] : '',
+      adquirente,
+      bandeira,
+      modalidade,
+      produto,
       plano,
       tipoLancamento
     ].filter(Boolean);
-    return linhaRecebimentoRateioBase({
-      data: row[col.liquidacao],
-      valor: row[col.valor],
-      conta: row[col.conta],
-      empresaBanco: empresaBancoRateioPorConta(row[col.conta], row[col.empresa]),
-      centroCusto: row[col.centroCusto],
-      tipo: valorNegativo(row[col.valor]) ? 'Taxa/Ajuste de Cartões' : 'Recebimento de Cartões',
+    const existente = grupos.get(chaveGrupo);
+    if (existente) {
+      existente.valor = arredondarMoeda(existente.valor + valor);
+      existente.qtd += 1;
+      return;
+    }
+    grupos.set(chaveGrupo, {
+      data,
+      valor,
+      conta,
+      empresaBanco,
+      centroCusto,
+      tipo: 'Recebimento de Cartões',
       historico: partesHistorico.join(' - '),
       plano,
       origem: 'Rateio de Cartões a Receber',
       arquivoOrigem,
       linhaOrigem: headerIdx + rowIdx + 2,
       tipoLancamento,
-      chaveMovimentoReal: [col.bandeira >= 0 ? row[col.bandeira] : '', col.adquirente >= 0 ? row[col.adquirente] : ''].join('|'),
-      categoria: (() => { const a = normalizarTexto(col.adquirente >= 0 ? row[col.adquirente] : ''); return a.includes('boleto') ? 'boleto' : a.includes('pix') ? 'dinheiro' : 'cartao'; })()
+      chaveMovimentoReal,
+      categoria: (() => { const a = normalizarTexto(adquirente); return a.includes('boleto') ? 'boleto' : a.includes('pix') ? 'dinheiro' : 'cartao'; })(),
+      qtd: 1
+    });
+  });
+  const linhas = Array.from(grupos.values()).map(g => {
+    return linhaRecebimentoRateioBase({
+      data: g.data,
+      valor: g.valor,
+      conta: g.conta,
+      empresaBanco: g.empresaBanco,
+      centroCusto: g.centroCusto,
+      tipo: g.tipo,
+      historico: g.historico,
+      plano: g.plano,
+      origem: g.qtd > 1 ? `${g.origem} (${g.qtd} linhas)` : g.origem,
+      arquivoOrigem: g.arquivoOrigem,
+      linhaOrigem: g.linhaOrigem,
+      tipoLancamento: g.tipoLancamento,
+      chaveMovimentoReal: g.chaveMovimentoReal,
+      categoria: g.categoria
     });
   }).filter(Boolean);
   return { tipo: 'cartoes', nomePlanilha, linhas };
@@ -4511,7 +4558,16 @@ async function processarArquivosImportacao(files) {
   }
 
   try {
-    const leituras = await Promise.allSettled(files.map(classificarArquivoRateioImportacao));
+    const leituras = [];
+    for (const file of files) {
+      try {
+        const value = await classificarArquivoRateioImportacao(file);
+        leituras.push({ status: 'fulfilled', value });
+      } catch (reason) {
+        leituras.push({ status: 'rejected', reason });
+      }
+      await new Promise(resolve => setTimeout(resolve, 0));
+    }
     const resultados = leituras.filter(r => r.status === 'fulfilled').map(r => r.value);
     const errosLeitura = leituras.filter(r => r.status === 'rejected').map(r => r.reason?.message || String(r.reason || 'Erro ao ler arquivo.'));
     if (resultados.length === 0) {
