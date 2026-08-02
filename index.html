@@ -667,12 +667,14 @@ function centroCustoLinha(r) {
 }
 
 function empresaLancamentoLinha(r) {
+  if (r?.__rateioSemApoio) return limparTextoECD(r?.__empresaOriginal || r?.[COLS.EMPRESA]);
   return r?.__rateio
     ? limparTextoECD(r?.__centroCusto || r?.[COLS.CC] || r?.[COLS.EMPRESA])
     : limparTextoECD(r?.[COLS.EMPRESA]);
 }
 
 function escopoRegraLinha(r) {
+  if (r?.__rateioSemApoio) return '';
   return escopoRegraPagamento(empresaOrigemLinha(r), centroCustoLinha(r), !!r?.__rateio);
 }
 
@@ -721,6 +723,7 @@ function empresaBancoRateioPorConta(conta, empresaFallback = '') {
 }
 
 function rateioIntercompanyLinha(r) {
+  if (r?.__rateioSemApoio || centroCustoEhRateado(r)) return false;
   const empresaBanco = empresaOrigemLinha(r);
   const empresaCentro = centroCustoLinha(r);
   return grupoUsaNumerariosRateio()
