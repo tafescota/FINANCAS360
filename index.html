@@ -5794,7 +5794,7 @@ function gerarLancamentos(dados, regras) {
     totalBruto += valorBruto;
     if (acrescimoDesconto < 0) totalDesconto += Math.abs(acrescimoDesconto);
     if (acrescimoDesconto > 0) totalAcrescimo += acrescimoDesconto;
-    const tipoAjusteRateio = (r.__rateio && !intercompanyRateio) ? tipoAjusteRateioPlano(plano, valorLiq) : '';
+    const tipoAjusteRateio = (r.__rateio && !intercompanyRateio && !ehDescontoComercialAbsorvivel(plano, valorLiq)) ? tipoAjusteRateioPlano(plano, valorLiq) : '';
     if (tipoAjusteRateio) {
       const valorAjusteRateio = Math.abs(valorLiq);
       if (tipoAjusteRateio === 'DESCONTO') totalDesconto += valorAjusteRateio;
