@@ -1237,6 +1237,73 @@ function marcarLinhasTitulosComoRateio(dados) {
   });
 }
 
+function centroCustoEhRateado(r) {
+  return normalizarTexto(r?.[COLS.CC]).includes('rateado');
+}
+
+function chaveRateioApoioPagamento(r) {
+  const infoDoc = separarNumeroDoHistorico(limparTextoECD(r?.[COLS.TIPO_DOC]), r?.[COLS.NUMERO], r?.[COLS.HISTORICO]);
+  return [
+    fmtDate(r?.[COLS.LIQUIDACAO]),
+    normalizarTexto(empresaOrigemLinha(r) || r?.[COLS.EMPRESA]),
+    normalizarTexto(r?.[COLS.FORNECEDOR]),
+    normalizarTexto(r?.[COLS.PLANO]),
+    normalizarTexto(infoDoc.numero || r?.[COLS.NUMERO]),
+    normalizarTexto(infoDoc.historico || r?.[COLS.HISTORICO]),
+    normalizarTexto(r?.[COLS.TIPO_DOC]),
+    normalizarTexto(r?.[COLS.CONTA])
+  ].join('|');
+}
+
+function aplicarRateioApoioPagamentos(pagamentosBase, linhasRateioApoio) {
+  const base = marcarLinhasTitulosComoRateio(pagamentosBase || []);
+  const apoio = (linhasRateioApoio || []).filter(r => r && !centroCustoEhRateado(r));
+  if (!apoio.length) return { dados: base, linhasRateadas: 0, linhasApoioUsadas: 0, rateadosSemApoio: 0 };
+
+  const mapa = new Map();
+  apoio.forEach(r => {
+    const chave = chaveRateioApoioPagamento(r);
+    if (!mapa.has(chave)) mapa.set(chave, []);
+    mapa.get(chave).push(r);
+  });
+
+  let linhasRateadas = 0;
+  let linhasApoioUsadas = 0;
+  let rateadosSemApoio = 0;
+  const dados = [];
+
+  base.forEach(row => {
+    if (!centroCustoEhRateado(row)) {
+      dados.push(row);
+      return;
+    }
+    const chave = chaveRateioApoioPagamento(row);
+    const partes = mapa.get(chave) || [];
+    const totalPartes = arredondarMoeda(partes.reduce((s, r) => s + arredondarMoeda(r[COLS.VALOR_LIQ] || r[COLS.VALOR_BRUTO]), 0));
+    const totalOriginal = arredondarMoeda(row[COLS.VALOR_LIQ] || row[COLS.VALOR_BRUTO]);
+    if (!partes.length || Math.abs(totalPartes - totalOriginal) > 0.02) {
+      rateadosSemApoio += 1;
+      dados.push(row);
+      return;
+    }
+    linhasRateadas += 1;
+    linhasApoioUsadas += partes.length;
+    partes.forEach(parte => {
+      const linha = parte.slice();
+      linha[COLS.CONTA] = linha[COLS.CONTA] || row[COLS.CONTA];
+      linha[COLS.MEIO_PAG] = linha[COLS.MEIO_PAG] || row[COLS.MEIO_PAG];
+      linha.__rateio = true;
+      linha.__empresaOriginal = limparTextoECD(row.__empresaOriginal || row[COLS.EMPRESA] || linha[COLS.EMPRESA]);
+      linha.__centroCusto = limparTextoECD(linha[COLS.CC]);
+      linha.__rateioApoio = true;
+      linha.__valorRateadoOriginal = totalOriginal;
+      dados.push(linha);
+    });
+  });
+
+  return { dados, linhasRateadas, linhasApoioUsadas, rateadosSemApoio };
+}
+
 function linhasPlanilhaRateio(wb) {
   const nomePlanilha = wb.SheetNames.find(n => /rateio|parcela|t[íi]tulo/i.test(n)) || wb.SheetNames[0];
   const ws = wb.Sheets[nomePlanilha];
@@ -4494,7 +4561,7 @@ async function classificarArquivoRateioImportacao(file) {
     try {
       const leituraPagamentoRateio = linhasPlanilhaRateio(wb);
       if (leituraPagamentoRateio?.dados?.length) {
-        return { tipo: 'pagamento', arquivo: file.name, dados: leituraPagamentoRateio.dados, subtipo: 'rateio' };
+        return { tipo: 'rateio-pagamento', arquivo: file.name, dados: leituraPagamentoRateio.dados, subtipo: 'apoio-rateio' };
       }
     } catch (errPagamentoRateio) {}
   }
@@ -4573,10 +4640,13 @@ async function processarArquivosImportacao(files) {
     if (resultados.length === 0) {
       throw new Error(errosLeitura[0] || 'Nenhum arquivo reconhecido.');
     }
-    const pagamentos = resultados.filter(r => r.tipo === 'pagamento').flatMap(r => r.dados || []);
+    const pagamentosBase = resultados.filter(r => r.tipo === 'pagamento').flatMap(r => r.dados || []);
+    const rateiosPagamento = resultados.filter(r => r.tipo === 'rateio-pagamento').flatMap(r => r.dados || []);
+    const rateioAplicado = aplicarRateioApoioPagamentos(pagamentosBase, rateiosPagamento);
+    const pagamentos = rateioAplicado.dados;
     const recebimentos = resultados.filter(r => r.tipo === 'recebimento');
     const qtdRecebimentos = recebimentos.length ? adicionarRecebimentosRateio(recebimentos) : 0;
-    if (pagamentos.length === 0) {
+    if (pagamentosBase.length === 0) {
       showMsg(`${qtdRecebimentos} recebimento${qtdRecebimentos !== 1 ? 's' : ''} por rateio importado${qtdRecebimentos !== 1 ? 's' : ''}. Nenhuma planilha de pagamento foi selecionada.`, 'ok');
       return;
     }
@@ -4584,7 +4654,21 @@ async function processarArquivosImportacao(files) {
     prepararPagamentosImportados(pagamentos, true);
     if (qtdRecebimentos > 0) {
       const aviso = errosLeitura.length ? ` ${errosLeitura.length} arquivo${errosLeitura.length !== 1 ? 's' : ''} não reconhecido${errosLeitura.length !== 1 ? 's' : ''}.` : '';
-      showMsg(`${pagamentos.length} pagamento${pagamentos.length !== 1 ? 's' : ''} e ${qtdRecebimentos} recebimento${qtdRecebimentos !== 1 ? 's' : ''} por rateio importado${qtdRecebimentos !== 1 ? 's' : ''}.${aviso}`, errosLeitura.length ? 'warn' : 'ok');
+      const msgRateio = rateioAplicado.linhasRateadas
+        ? ` ${rateioAplicado.linhasRateadas} linha${rateioAplicado.linhasRateadas !== 1 ? 's' : ''} "Rateado" aberta${rateioAplicado.linhasRateadas !== 1 ? 's' : ''} em ${rateioAplicado.linhasApoioUsadas} linha${rateioAplicado.linhasApoioUsadas !== 1 ? 's' : ''} de centro de custo.`
+        : '';
+      const msgSemApoio = rateioAplicado.rateadosSemApoio
+        ? ` ${rateioAplicado.rateadosSemApoio} linha${rateioAplicado.rateadosSemApoio !== 1 ? 's' : ''} "Rateado" sem abertura compatível.`
+        : '';
+      showMsg(`${pagamentos.length} pagamento${pagamentos.length !== 1 ? 's' : ''} e ${qtdRecebimentos} recebimento${qtdRecebimentos !== 1 ? 's' : ''} por rateio importado${qtdRecebimentos !== 1 ? 's' : ''}.${msgRateio}${msgSemApoio}${aviso}`, errosLeitura.length || rateioAplicado.rateadosSemApoio ? 'warn' : 'ok');
+    } else {
+      const msgRateio = rateioAplicado.linhasRateadas
+        ? `${rateioAplicado.linhasRateadas} linha${rateioAplicado.linhasRateadas !== 1 ? 's' : ''} "Rateado" aberta${rateioAplicado.linhasRateadas !== 1 ? 's' : ''} em ${rateioAplicado.linhasApoioUsadas} linha${rateioAplicado.linhasApoioUsadas !== 1 ? 's' : ''} de centro de custo.`
+        : '';
+      const msgSemApoio = rateioAplicado.rateadosSemApoio
+        ? ` ${rateioAplicado.rateadosSemApoio} linha${rateioAplicado.rateadosSemApoio !== 1 ? 's' : ''} "Rateado" sem abertura compatível.`
+        : '';
+      if (msgRateio || msgSemApoio) showMsg(`${msgRateio}${msgSemApoio}`, rateioAplicado.rateadosSemApoio ? 'warn' : 'ok');
     }
   } catch(err) {
     alert('Erro ao ler os arquivos: ' + err.message);
