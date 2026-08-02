@@ -216,10 +216,6 @@
   <span class="topbar-logo"><img src="zip-logo-topbar.webp?v=2" alt="Zip Contabilidade" class="topbar-logo-img"></span>
   <span class="topbar-sub">Conciliação F360</span>
   <span class="topbar-grupo" id="topbar-grupo" style="display:none"></span>
-  <span id="topbar-sync-status" style="display:none;margin-left:8px;background:#7c2d12;color:#fff;font-size:12px;padding:4px 12px;border-radius:20px;align-items:center;gap:8px">
-    <span>⚠️ Regras não sincronizaram com a base compartilhada</span>
-    <button onclick="tentarSincronizarNovamente()" style="background:#fff;color:#7c2d12;border:none;border-radius:12px;padding:2px 10px;font-size:11px;cursor:pointer;font-weight:600">Tentar de novo</button>
-  </span>
 </div>
 
 <div class="container">
@@ -329,30 +325,10 @@
       <button class="btn" onclick="aplicarRegrasSalvasProvisao()">🔁 Reaplicar regras salvas</button>
       <button class="btn" onclick="limparProvisaoRateio()">Limpar provisão</button>
     </div>
-    <div id="lote-provisao-rateio" class="card" style="display:none;margin-bottom:16px">
-      <div class="metric-label" style="margin-bottom:8px">Pesquisar e aplicar em lote</div>
-      <input type="search" id="filtro-provisao" placeholder="Filtrar por fornecedor, plano, histórico, documento, empresa..." oninput="renderProvisaoRateio()" style="margin-bottom:10px">
-      <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
-        <label style="display:flex;align-items:center;gap:6px;font-size:12.5px;color:var(--text2)"><input type="checkbox" id="chk-todas-provisao" onchange="alternarTodasVisiveisProvisao(this.checked)"> Selecionar todas filtradas</label>
-        <span id="contador-selecao-provisao" class="metric-label">0 selecionada(s)</span>
-      </div>
-      <div class="bulk-tool-options">
-        <label class="compact-check">
-          <input type="checkbox" id="somente-pendentes-provisao" onchange="renderProvisaoRateio()">
-          Mostrar somente pendentes
-        </label>
-      </div>
-      <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:10px">
-        <input type="text" id="lote-debito-provisao" class="conta-autocomplete" placeholder="Débito para aplicar nas selecionadas" oninput="criarAutocompleteConta(this)" style="width:260px">
-        <input type="text" id="lote-credito-provisao" class="conta-autocomplete" placeholder="Crédito para aplicar nas selecionadas" oninput="criarAutocompleteConta(this)" style="width:260px">
-        <button class="btn btn-sm btn-primary" onclick="aplicarContasLoteProvisao()">Aplicar às selecionadas</button>
-        <button class="btn btn-sm" onclick="limparSelecaoProvisao()">Limpar seleção</button>
-      </div>
-    </div>
     <div class="table-wrap table-scroll" id="preview-provisao-rateio" style="display:none;margin-bottom:16px">
       <table>
         <thead>
-          <tr><th></th><th>Emissão</th><th>Débito</th><th>Crédito</th><th style="text-align:right">Valor</th><th>Empresa</th><th>Fornecedor</th><th>Documento</th><th>Complemento</th></tr>
+          <tr><th>Emissão</th><th>Débito</th><th>Crédito</th><th style="text-align:right">Valor</th><th>Empresa</th><th>Fornecedor</th><th>Documento</th><th>Complemento</th></tr>
         </thead>
         <tbody id="tbody-provisao-rateio"></tbody>
       </table>
@@ -415,14 +391,12 @@
       <button class="btn btn-primary" onclick="mostrarTela('tela-conciliacao-bancaria')">Importar extrato para conciliação bancária</button>
       <button class="btn btn-blue" onclick="exportarDominioFinal()">⬇ Exportar Domínio final (.xlsx)</button>
       <button class="btn" onclick="exportarDominioPagamentos()">Exportar somente pagamentos (.xlsx)</button>
-      <button class="btn btn-sm" onclick="resetarControleExportacoes()" title="Use depois de já ter importado tudo no Domínio e for gerar um novo lote para este mesmo grupo">↺ Resetar controle de exportação</button>
-      <span class="conciliacao-note">O ideal é exportar SOMENTE o arquivo final e importar só ele no Domínio. Não importe "Final" junto com "Pagamentos" ou "Conciliação" separados — o Final já contém os dois, e importar mais de um duplica os lançamentos.</span>
+      <span class="conciliacao-note">O ideal é exportar o arquivo final após validar a conciliação. Use pagamentos somente quando não for conciliar extrato.</span>
     </div>
     <div id="resumo-conciliacao-resultado"></div>
     <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:12px;margin-bottom:16px">
       <div class="metric"><div class="metric-label">Total de lançamentos</div><div class="metric-value" id="met-total">0</div><div class="metric-sub"><div id="met-linhas-originais">0 linhas originais</div><div id="met-linhas-extras">0 linhas extras</div></div></div>
       <div class="metric"><div class="metric-label">Sem código</div><div class="metric-value" id="met-sem" class="">0</div></div>
-      <div class="metric" id="metric-mapa-codigos" style="display:none"><div class="metric-label">Mapa de códigos pendente</div><div class="metric-value warn" id="met-mapa-codigos">0</div><div class="metric-sub"><button class="btn btn-sm" onclick="mostrarTela('tela-mapa-codigos')">Preencher agora</button></div></div>
       <div class="metric"><div class="metric-label">Totais para validação</div><div class="metric-value" style="font-size:16px" id="met-valor">R$ 0,00</div><div class="metric-sub"><div id="met-total-bruto">Bruto: R$ 0,00</div><div id="met-total-liquido">Líquido: R$ 0,00</div><div id="met-total-desconto">Descontos: R$ 0,00</div><div id="met-total-acrescimo">Acréscimos: R$ 0,00</div></div></div>
     </div>
     <div id="alert-pendentes"></div>
@@ -477,8 +451,6 @@
       <button class="btn btn-sm" id="btn-cancelar-regras" style="display:none" onclick="cancelarEdicaoRegras()">Cancelar</button>
       <button class="btn btn-sm btn-danger" id="btn-limpar-regras" onclick="limparTodasRegras()">🗑 Limpar tudo</button>
       <button class="btn btn-sm btn-blue" id="btn-importar-regras" onclick="mostrarTela('tela-importar')">Importar planilha</button>
-      <button class="btn btn-sm" onclick="exportarRegrasNumerarioRateio()">⬇ Exportar regras de numerário (.xlsx)</button>
-      <button class="btn btn-sm btn-blue" onclick="mostrarTela('tela-mapa-codigos')">🏷 Mapa de códigos (banco/caixa/empresas)</button>
       <button class="btn btn-sm" onclick="mostrarTela('tela-home')">Grupos</button>
     </div>
     <div style="display:flex;gap:8px;margin-bottom:12px;flex-wrap:wrap">
@@ -487,15 +459,6 @@
     </div>
     <input type="search" id="filtro-regras" placeholder="Filtrar fornecedor, plano, histórico ou código..." oninput="coletarInputsEdicaoRegras(); renderRegras()" style="margin-bottom:14px">
     <div id="container-regras"></div>
-  </div>
-
-  <div class="tela" id="tela-mapa-codigos">
-    <div class="section-header">
-      <button class="btn btn-sm" onclick="voltarTela()">← Voltar</button>
-      <h2>Mapa de códigos — <span id="titulo-mapa-codigos"></span></h2>
-    </div>
-    <p class="conciliacao-note" style="margin-bottom:14px">Preencha uma vez o código numérico do Domínio pra cada conta (banco/caixa) e cada empresa/filial. A partir daí, toda exportação já sai com os códigos certos — sem precisar substituir na mão.</p>
-    <div id="container-mapa-codigos"></div>
   </div>
 
 </div>
@@ -507,7 +470,6 @@ const STORAGE_DEPARA_RECEBIMENTOS = 'zip_depara_regras_recebimentos';
 const STORAGE_DEPARA_PROVISAO = 'zip_depara_regras_provisao';
 const STORAGE_PLANO_CONTAS = 'zip_depara_plano_contas';
 const STORAGE_CONTAS_SEM_CONCILIACAO = 'zip_depara_contas_sem_conciliacao';
-const STORAGE_MAPA_EMPRESAS = 'zip_depara_mapa_empresas';
 const STORAGE_CONFIG_GRUPOS = 'zip_depara_config_grupos';
 const API_BASE_DEPARA = '/.netlify/functions/depara-base';
 
@@ -517,7 +479,6 @@ let deparaRecebimentos = JSON.parse(localStorage.getItem(STORAGE_DEPARA_RECEBIME
 let deparaProvisao = JSON.parse(localStorage.getItem(STORAGE_DEPARA_PROVISAO) || '{}');
 let planoContas = JSON.parse(localStorage.getItem(STORAGE_PLANO_CONTAS) || '{}');
 let contasSemConciliacao = JSON.parse(localStorage.getItem(STORAGE_CONTAS_SEM_CONCILIACAO) || '{}');
-let mapaEmpresas = JSON.parse(localStorage.getItem(STORAGE_MAPA_EMPRESAS) || '{}');
 let configGrupos = JSON.parse(localStorage.getItem(STORAGE_CONFIG_GRUPOS) || '{}');
 let grupoAtivo = null;
 let linhasImportadas = [];
@@ -556,15 +517,6 @@ let recebimentosRateioTemp = [];
 let infoRecebimentosRateioTemp = null;
 let provisaoRateioTemp = [];
 let infoProvisaoRateioTemp = null;
-let provisaoSelecionadas = new Set();
-let exportacoesRealizadas = { pagamentos: false, conciliacao: false, final: false };
-let avisosRecebimentoRateioDia = [];
-let avisosPlanilhaMaiorQueExtrato = [];
-let rateiosPagamentoApoioTemp = [];
-let auditoriaNovaLogicaRateios = null;
-let comparativoNovaLogicaRateios = null;
-const FEATURE_NOVA_LOGICA_RATEIOS = localStorage.getItem('f360_nova_logica_rateios') === '1';
-const COL_DATA_CRIACAO = 20;
 
 const COLS = { TIPO:0, NUMERO:1, PARCELA:2, EMPRESA:3, FORNECEDOR:4, EMISSAO:5, VENCIMENTO:6, LIQUIDACAO:7, VALOR_BRUTO:8, COMPETENCIA:9, PLANO:10, CC:11, ACRESCIMO:12, VALOR_LIQ:13, CONTA:14, MEIO_PAG:15, TIPO_DOC:16, APROVADA:17, STATUS:18, HISTORICO:19 };
 
@@ -621,39 +573,10 @@ function tipoAjustePonta(tipoAjuste, ponta) {
   return `${tipoAjuste} - ${ponta}`;
 }
 
-// Desconto comercial de fornecedor/nota fiscal dentro de um rateio: reduz o valor lançado
-// no banco (linha principal do movimento) E também gera seu próprio lançamento de ajuste
-// (não bancário, com Débito/Crédito configuráveis), porque reduz o "fornecedor a pagar" e
-// precisa aparecer para o saldo correto junto ao fornecedor.
-function ehDescontoComercial(plano, valor) {
-  const planoNorm = normalizarTexto(plano);
-  return valor < 0 && (planoNorm.includes('descontos sobre despesas') || planoNorm.includes('desconto sobre despesas'));
-}
-
-// Retenção legal de folha (INSS, FGTS) dentro de um rateio: reduz o valor lançado no banco
-// (linha principal do movimento), mas NÃO gera lançamento próprio — a obrigação (INSS/FGTS
-// a Recolher) já é lançada no sistema contábil por outro processo (provisão feita à parte).
-function ehRetencaoFolhaSemLancamento(plano, valor) {
-  const planoNorm = normalizarTexto(plano);
-  return valor < 0 && (
-    planoNorm.includes('inss')
-    || planoNorm.includes('fgts')
-    || planoNorm.includes('descontos gerais sobre folha')
-    || planoNorm.includes('desconto ferias pagas')
-    || planoNorm.includes('desconto férias pagas')
-  );
-}
-
-// Usado só para agrupar/absorver no lado do banco: os dois tipos acima reduzem o valor
-// lançado na linha principal do mesmo movimento bancário real.
-function ehDescontoComercialAbsorvivel(plano, valor) {
-  return ehDescontoComercial(plano, valor) || ehRetencaoFolhaSemLancamento(plano, valor);
-}
-
 function tipoAjusteRateioPlano(plano, valor) {
   const planoNorm = normalizarTexto(plano);
+  if (valor < 0 && (planoNorm.includes('descontos sobre despesas') || planoNorm.includes('desconto sobre despesas'))) return 'DESCONTO';
   if (valor > 0 && (planoNorm.includes('acrescimos') || planoNorm.includes('acrescimo'))) return 'ACRÉSCIMO';
-  if (ehDescontoComercial(plano, valor)) return 'DESCONTO';
   return '';
 }
 
@@ -672,14 +595,12 @@ function centroCustoLinha(r) {
 }
 
 function empresaLancamentoLinha(r) {
-  if (r?.__rateioSemApoio) return limparTextoECD(r?.__empresaOriginal || r?.[COLS.EMPRESA]);
   return r?.__rateio
     ? limparTextoECD(r?.__centroCusto || r?.[COLS.CC] || r?.[COLS.EMPRESA])
     : limparTextoECD(r?.[COLS.EMPRESA]);
 }
 
 function escopoRegraLinha(r) {
-  if (r?.__rateioSemApoio) return '';
   return escopoRegraPagamento(empresaOrigemLinha(r), centroCustoLinha(r), !!r?.__rateio);
 }
 
@@ -728,7 +649,6 @@ function empresaBancoRateioPorConta(conta, empresaFallback = '') {
 }
 
 function rateioIntercompanyLinha(r) {
-  if (r?.__rateioSemApoio || centroCustoEhRateado(r)) return false;
   const empresaBanco = empresaOrigemLinha(r);
   const empresaCentro = centroCustoLinha(r);
   return grupoUsaNumerariosRateio()
@@ -866,7 +786,6 @@ function salvarStorage() {
   localStorage.setItem(STORAGE_DEPARA_PROVISAO, JSON.stringify(deparaProvisao));
   localStorage.setItem(STORAGE_PLANO_CONTAS, JSON.stringify(planoContas));
   localStorage.setItem(STORAGE_CONTAS_SEM_CONCILIACAO, JSON.stringify(contasSemConciliacao));
-  localStorage.setItem(STORAGE_MAPA_EMPRESAS, JSON.stringify(mapaEmpresas));
   localStorage.setItem(STORAGE_CONFIG_GRUPOS, JSON.stringify(configGrupos));
   salvarBaseCompartilhada();
 }
@@ -893,7 +812,6 @@ async function carregarBaseCompartilhada(mostrarMensagem = false) {
     deparaProvisao = data.deparaProvisao && typeof data.deparaProvisao === 'object' ? data.deparaProvisao : {};
     planoContas = data.planoContas && typeof data.planoContas === 'object' ? data.planoContas : {};
     contasSemConciliacao = data.contasSemConciliacao && typeof data.contasSemConciliacao === 'object' ? data.contasSemConciliacao : {};
-    mapaEmpresas = data.mapaEmpresas && typeof data.mapaEmpresas === 'object' ? data.mapaEmpresas : {};
     configGrupos = data.configGrupos && typeof data.configGrupos === 'object' ? data.configGrupos : {};
     ultimaSyncLocal = remoteUpdatedAt || Date.now();
     localStorage.setItem(STORAGE_GRUPOS, JSON.stringify(grupos));
@@ -902,12 +820,10 @@ async function carregarBaseCompartilhada(mostrarMensagem = false) {
     localStorage.setItem(STORAGE_DEPARA_PROVISAO, JSON.stringify(deparaProvisao));
     localStorage.setItem(STORAGE_PLANO_CONTAS, JSON.stringify(planoContas));
     localStorage.setItem(STORAGE_CONTAS_SEM_CONCILIACAO, JSON.stringify(contasSemConciliacao));
-    localStorage.setItem(STORAGE_MAPA_EMPRESAS, JSON.stringify(mapaEmpresas));
     localStorage.setItem(STORAGE_CONFIG_GRUPOS, JSON.stringify(configGrupos));
     if (grupoAtivo && !grupos.includes(grupoAtivo)) grupoAtivo = null;
     renderGrupos();
     atualizarStatusBanco('Base compartilhada do site conectada. Todos usam os mesmos grupos e regras.', 'ok');
-    ocultarAvisoSyncGlobal();
     if (mostrarMensagem) showMsg('Base sincronizada com o site.', 'ok');
   } catch (err) {
     const local = location.hostname === '127.0.0.1' || location.hostname === 'localhost';
@@ -917,7 +833,6 @@ async function carregarBaseCompartilhada(mostrarMensagem = false) {
         : 'Base compartilhada indisponível. Verifique se a pasta completa foi publicada no Netlify.',
       'orange'
     );
-    if (!local) mostrarAvisoSyncGlobal();
   }
 }
 
@@ -925,7 +840,7 @@ async function salvarBaseCompartilhada(forcar = false) {
   try {
     salvandoBaseCompartilhada = true;
     ultimaSyncLocal = Date.now();
-    const payload = { grupos, depara, deparaRecebimentos, deparaProvisao, planoContas, contasSemConciliacao, mapaEmpresas, configGrupos };
+    const payload = { grupos, depara, deparaRecebimentos, deparaProvisao, planoContas, contasSemConciliacao, configGrupos };
     const resp = await fetch(API_BASE_DEPARA, {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
@@ -933,31 +848,12 @@ async function salvarBaseCompartilhada(forcar = false) {
     });
     if (!resp.ok) throw new Error('não foi possível salvar');
     atualizarStatusBanco('Base compartilhada salva no site.', 'ok');
-    ocultarAvisoSyncGlobal();
     if (forcar) renderGrupos();
   } catch (err) {
     atualizarStatusBanco('Não consegui salvar na base compartilhada agora. Mantive uma cópia local neste navegador.', 'warn');
-    mostrarAvisoSyncGlobal();
   } finally {
     salvandoBaseCompartilhada = false;
   }
-}
-
-function mostrarAvisoSyncGlobal() {
-  const el = document.getElementById('topbar-sync-status');
-  if (el) el.style.display = 'flex';
-}
-
-function ocultarAvisoSyncGlobal() {
-  const el = document.getElementById('topbar-sync-status');
-  if (el) el.style.display = 'none';
-}
-
-async function tentarSincronizarNovamente() {
-  // Primeiro tenta buscar o que está no site (mais seguro, não sobrescreve o trabalho de outra pessoa).
-  await carregarBaseCompartilhada(true);
-  // Depois garante que qualquer alteração feita aqui neste navegador também suba.
-  await salvarBaseCompartilhada(true);
 }
 
 function exportarBaseDePara() {
@@ -969,7 +865,6 @@ function exportarBaseDePara() {
     deparaRecebimentos,
     deparaProvisao,
     contasSemConciliacao,
-    mapaEmpresas,
     configGrupos
   };
   const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json;charset=utf-8' });
@@ -1000,7 +895,6 @@ function importarBaseDePara(event) {
       deparaRecebimentos = payload.deparaRecebimentos && typeof payload.deparaRecebimentos === 'object' ? payload.deparaRecebimentos : {};
       deparaProvisao = payload.deparaProvisao && typeof payload.deparaProvisao === 'object' ? payload.deparaProvisao : {};
       contasSemConciliacao = payload.contasSemConciliacao && typeof payload.contasSemConciliacao === 'object' ? payload.contasSemConciliacao : {};
-      mapaEmpresas = payload.mapaEmpresas && typeof payload.mapaEmpresas === 'object' ? payload.mapaEmpresas : {};
       configGrupos = payload.configGrupos && typeof payload.configGrupos === 'object' ? payload.configGrupos : {};
       grupoAtivo = grupos.includes(grupoAtivo) ? grupoAtivo : null;
       salvarStorage();
@@ -1018,26 +912,7 @@ function salvarCodigosPreenchidosNoGrupo(coletarDaTela = true) {
   if (coletarDaTela) coletarCodigosNovasChaves();
   const regrasSalvas = Object.assign({}, depara[grupoAtivo] || {});
   novasChavesTemp.forEach(item => {
-    const codigoBruto = codigosTemp[item.chave] || '';
-    if (item.tipoItem === 'contaMapa') {
-      const codigo = obterCodigoContaParaDominio(codigoBruto);
-      if (codigo) {
-        contasSemConciliacao[grupoAtivo] = contasSemConciliacao[grupoAtivo] || {};
-        contasSemConciliacao[grupoAtivo][item.nomeMapa] = codigo;
-        contasSemConciliacao[grupoAtivo][normalizarTexto(item.nomeMapa)] = codigo;
-      }
-      return;
-    }
-    if (item.tipoItem === 'empresaMapa') {
-      const codigo = String(codigoBruto || '').trim();
-      if (codigo) {
-        mapaEmpresas[grupoAtivo] = mapaEmpresas[grupoAtivo] || {};
-        mapaEmpresas[grupoAtivo][item.nomeMapa] = codigo;
-        mapaEmpresas[grupoAtivo][normalizarTexto(item.nomeMapa)] = codigo;
-      }
-      return;
-    }
-    const codigo = obterCodigoContaParaDominio(codigoBruto);
+    const codigo = obterCodigoContaParaDominio(codigosTemp[item.chave] || '');
     if (codigo) regrasSalvas[obterChaveRegraNova(item)] = codigo;
   });
   depara[grupoAtivo] = regrasSalvas;
@@ -1054,7 +929,6 @@ function mostrarTela(id, registrarHistorico = true) {
   if (id === 'tela-plano-contas') renderResumoPlanoContas();
   if (id === 'tela-conciliacao-bancaria') renderConciliacaoBancaria();
   if (id === 'tela-resultado') renderResumoConferenciaResultado();
-  if (id === 'tela-mapa-codigos') renderMapaCodigos();
   if (id === 'tela-provisao-rateio') renderProvisaoRateio();
   if (id === 'tela-importar' && grupoAtivo) {
     document.getElementById('titulo-importar').textContent = 'Importar planilha — ' + grupoAtivo;
@@ -1175,12 +1049,12 @@ function selecionarModoImportacaoPagamentos(modo) {
   if (status) status.textContent = nomeModoImportacao(modoImportacaoPagamentos);
   if (nota) {
     nota.textContent = modoImportacaoPagamentos === 'rateio'
-      ? 'Usa as planilhas normais de títulos: anexe pagamentos, títulos a receber e cartões a receber juntos. A regra usa o Centro de Custo para identificar a empresa e cria transferência de numerários quando o banco for de outra unidade.'
+      ? 'Usa Rateio de Títulos: selecione juntos pagamentos e recebimentos. A regra considera Empresa + Centro de Custo e identifica operação própria ou transferência de numerários.'
       : 'Usa o formato atual de Parcelas de Títulos, com empresa na coluna D e acréscimo/desconto próprio.';
   }
   if (sub) {
     sub.textContent = modoImportacaoPagamentos === 'rateio'
-      ? 'Anexe as planilhas normais de pagamentos e recebimentos: ParcelaDeTituloAPagar, ParcelaDeTituloAReceber e ParcelasDeCartoesAReceber'
+      ? 'Anexe aqui as planilhas de PAGAMENTOS e RECEBIMENTOS por rateio juntas (.xlsx ou .xlsm)'
       : 'Arquivo de Parcelas de Títulos exportado do financeiro (.xlsx ou .xlsm)';
   }
   if (dropTitle) {
@@ -1227,185 +1101,10 @@ function normalizarLinhaRateio(row, col) {
   linha[COLS.APROVADA] = '';
   linha[COLS.STATUS] = row[col.status];
   linha[COLS.HISTORICO] = row[col.historico];
-  linha[COL_DATA_CRIACAO] = col.dataCriacao >= 0 ? row[col.dataCriacao] : row[COL_DATA_CRIACAO];
   linha.__rateio = true;
   linha.__empresaOriginal = empresaOrigem;
   linha.__centroCusto = centroCusto;
   return linha;
-}
-
-function marcarLinhasTitulosComoRateio(dados) {
-  return (dados || []).map(row => {
-    const linha = Array.isArray(row) ? row.slice() : row;
-    const empresaOrigem = limparTextoECD(linha[COLS.EMPRESA]);
-    const centroCusto = limparTextoECD(linha[COLS.CC]) || empresaOrigem;
-    linha.__rateio = true;
-    linha.__empresaOriginal = empresaOrigem;
-    linha.__centroCusto = centroCusto;
-    return linha;
-  });
-}
-
-function centroCustoEhRateado(r) {
-  return normalizarTexto(r?.[COLS.CC]).includes('rateado');
-}
-
-function linhaPrecisaAberturaRateio(r) {
-  return centroCustoEhRateado(r);
-}
-
-function chaveRateioApoioPagamento(r) {
-  const infoDoc = separarNumeroDoHistorico(limparTextoECD(r?.[COLS.TIPO_DOC]), r?.[COLS.NUMERO], r?.[COLS.HISTORICO]);
-  return [
-    fmtDate(r?.[COLS.LIQUIDACAO]),
-    normalizarTexto(empresaOrigemLinha(r) || r?.[COLS.EMPRESA]),
-    normalizarTexto(r?.[COLS.FORNECEDOR]),
-    normalizarTexto(r?.[COLS.PLANO]),
-    normalizarTexto(infoDoc.numero || r?.[COLS.NUMERO]),
-    normalizarTexto(infoDoc.historico || r?.[COLS.HISTORICO]),
-    normalizarTexto(r?.[COLS.TIPO_DOC]),
-    normalizarTexto(r?.[COLS.CONTA])
-  ].join('|');
-}
-
-function chaveRateioApoioPagamentoBase(r) {
-  return [
-    fmtDate(r?.[COLS.LIQUIDACAO]),
-    normalizarTexto(empresaOrigemLinha(r) || r?.[COLS.EMPRESA]),
-    normalizarTexto(r?.[COLS.CONTA])
-  ].join('|');
-}
-
-function textoRateioApoio(r) {
-  const infoDoc = separarNumeroDoHistorico(limparTextoECD(r?.[COLS.TIPO_DOC]), r?.[COLS.NUMERO], r?.[COLS.HISTORICO]);
-  return normalizarTexto([
-    r?.[COLS.FORNECEDOR],
-    r?.[COLS.PLANO],
-    r?.[COLS.TIPO_DOC],
-    infoDoc.numero,
-    infoDoc.historico,
-    r?.[COLS.HISTORICO]
-  ].filter(Boolean).join(' '));
-}
-
-function tagsRateioApoio(r) {
-  const texto = textoRateioApoio(r);
-  const tags = [];
-  ['inss', 'fgts', 'irpj', 'csll', 'pis', 'cofins', 'iss', 'irrf'].forEach(tag => {
-    if (texto.includes(tag)) tags.push(tag);
-  });
-  if (texto.includes('porto seguro') || texto.includes('vida') || texto.includes('previdencia')) tags.push('vida_previdencia');
-  if (texto.includes('energia')) tags.push('energia');
-  if (texto.includes('agua') || texto.includes('esgoto')) tags.push('agua_esgoto');
-  if (texto.includes('internet')) tags.push('internet');
-  if (texto.includes('telefone') || texto.includes('telefonia') || texto.includes('vivo')) tags.push('telefonia');
-  if (texto.includes('aluguel')) tags.push('aluguel');
-  if (texto.includes('contabilidade')) tags.push('contabilidade');
-  if (texto.includes('uniforme')) tags.push('uniformes');
-  return [...new Set(tags)];
-}
-
-function scoreCompatibilidadeRateio(rowRateado, rowApoio) {
-  const tagsRateado = tagsRateioApoio(rowRateado);
-  const tagsApoio = tagsRateioApoio(rowApoio);
-  if (tagsRateado.length && !tagsRateado.some(tag => tagsApoio.includes(tag))) return 0;
-  const textoRateado = textoRateioApoio(rowRateado);
-  const textoApoio = textoRateioApoio(rowApoio);
-  let score = tagsRateado.some(tag => tagsApoio.includes(tag)) ? 5 : 0;
-  [rowRateado?.[COLS.FORNECEDOR], rowRateado?.[COLS.PLANO], rowRateado?.[COLS.NUMERO]].forEach(valor => {
-    const token = normalizarTexto(valor);
-    if (token && token !== 'rateado' && token.length > 3 && textoApoio.includes(token)) score += 2;
-  });
-  if (textoRateado && textoApoio.includes(textoRateado)) score += 1;
-  return score;
-}
-
-function subsetRateioPorValor(candidatos, totalOriginal) {
-  const alvo = Math.round(Math.abs(totalOriginal) * 100);
-  if (!alvo || candidatos.length > 80) return [];
-  const dp = new Map([[0, []]]);
-  for (let i = 0; i < candidatos.length; i++) {
-    const valor = Math.round(Math.abs(arredondarMoeda(candidatos[i].row[COLS.VALOR_LIQ] || candidatos[i].row[COLS.VALOR_BRUTO])) * 100);
-    if (!valor) continue;
-    const entradas = Array.from(dp.entries());
-    for (const [soma, indices] of entradas) {
-      const novaSoma = soma + valor;
-      if (novaSoma > alvo + 2 || dp.has(novaSoma)) continue;
-      const novaLista = [...indices, i];
-      if (Math.abs(novaSoma - alvo) <= 2) return novaLista.map(idx => candidatos[idx]);
-      dp.set(novaSoma, novaLista);
-    }
-  }
-  return [];
-}
-
-function aplicarRateioApoioPagamentos(pagamentosBase, linhasRateioApoio) {
-  const base = marcarLinhasTitulosComoRateio(pagamentosBase || []);
-  const apoio = (linhasRateioApoio || []).filter(r => r && !linhaPrecisaAberturaRateio(r)).map((row, idx) => ({ row, idx }));
-  if (!apoio.length) return { dados: base, linhasRateadas: 0, linhasApoioUsadas: 0, rateadosSemApoio: 0 };
-
-  const mapa = new Map();
-  apoio.forEach(item => {
-    const chave = chaveRateioApoioPagamento(item.row);
-    if (!mapa.has(chave)) mapa.set(chave, []);
-    mapa.get(chave).push(item);
-  });
-  const usadosApoio = new Set();
-
-  let linhasRateadas = 0;
-  let linhasApoioUsadas = 0;
-  let rateadosSemApoio = 0;
-  const dados = [];
-
-  base.forEach(row => {
-    if (!linhaPrecisaAberturaRateio(row)) {
-      dados.push(row);
-      return;
-    }
-    const chave = chaveRateioApoioPagamento(row);
-    const totalOriginal = arredondarMoeda(row[COLS.VALOR_LIQ] || row[COLS.VALOR_BRUTO]);
-    let partes = (mapa.get(chave) || []).filter(item => !usadosApoio.has(item.idx));
-    let totalPartes = arredondarMoeda(partes.reduce((s, item) => s + arredondarMoeda(item.row[COLS.VALOR_LIQ] || item.row[COLS.VALOR_BRUTO]), 0));
-    if (!partes.length || Math.abs(totalPartes - totalOriginal) > 0.02) {
-      const chaveBase = chaveRateioApoioPagamentoBase(row);
-      const candidatos = apoio
-        .filter(item => !usadosApoio.has(item.idx))
-        .filter(item => chaveRateioApoioPagamentoBase(item.row) === chaveBase)
-        .map(item => ({ ...item, score: scoreCompatibilidadeRateio(row, item.row) }))
-        .filter(item => item.score > 0)
-        .sort((a, b) => b.score - a.score);
-      const selecionados = subsetRateioPorValor(candidatos, totalOriginal);
-      if (selecionados.length) {
-        partes = selecionados;
-        totalPartes = arredondarMoeda(partes.reduce((s, item) => s + arredondarMoeda(item.row[COLS.VALOR_LIQ] || item.row[COLS.VALOR_BRUTO]), 0));
-      }
-    }
-    if (!partes.length || Math.abs(totalPartes - totalOriginal) > 0.02) {
-      rateadosSemApoio += 1;
-      const linha = Array.isArray(row) ? row.slice() : row;
-      linha.__rateioSemApoio = true;
-      linha.__centroCusto = limparTextoECD(linha[COLS.CC] || 'Rateado');
-      dados.push(linha);
-      return;
-    }
-    linhasRateadas += 1;
-    linhasApoioUsadas += partes.length;
-    partes.forEach(item => {
-      usadosApoio.add(item.idx);
-      const parte = item.row;
-      const linha = parte.slice();
-      linha[COLS.CONTA] = linha[COLS.CONTA] || row[COLS.CONTA];
-      linha[COLS.MEIO_PAG] = linha[COLS.MEIO_PAG] || row[COLS.MEIO_PAG];
-      linha.__rateio = true;
-      linha.__empresaOriginal = limparTextoECD(row.__empresaOriginal || row[COLS.EMPRESA] || linha[COLS.EMPRESA]);
-      linha.__centroCusto = limparTextoECD(linha[COLS.CC]);
-      linha.__rateioApoio = true;
-      linha.__valorRateadoOriginal = totalOriginal;
-      dados.push(linha);
-    });
-  });
-
-  return { dados, linhasRateadas, linhasApoioUsadas, rateadosSemApoio };
 }
 
 function linhasPlanilhaRateio(wb) {
@@ -1416,8 +1115,6 @@ function linhasPlanilhaRateio(wb) {
   if (headerIdx === -1) throw new Error('Não encontrei o cabeçalho do Rateio de Títulos.');
   const headers = raw[headerIdx].map(h => normalizarTexto(h));
   const idx = nome => headers.indexOf(normalizarTexto(nome));
-  const temColunasParcelas = headers.some(h => h.includes('valor liquido') || h.includes('v liquido') || h.includes('acres/desc') || h.includes('acresc/desc'));
-  if (temColunasParcelas) throw new Error('Arquivo no padrão Parcelas de Títulos; usar leitura normal com regra de rateio.');
   const col = {
     tipo: idx('tipo'),
     numero: idx('numero'),
@@ -1435,8 +1132,7 @@ function linhasPlanilhaRateio(wb) {
     meioPagamento: idx('meio de pagamento'),
     tipoDocumento: idx('tipo de documento'),
     status: idx('status'),
-    historico: idx('historico'),
-    dataCriacao: Math.max(idx('data da criação'), idx('data da criacao'), idx('data de criação'), idx('data de criacao'))
+    historico: idx('historico')
   };
   ['liquidacao', 'valorBruto', 'plano', 'centroCustos', 'conta'].forEach(campo => {
     if (col[campo] < 0) throw new Error(`Não encontrei a coluna obrigatória de rateio: ${campo}.`);
@@ -1531,32 +1227,8 @@ function mostrarMsgProvisaoRateio(texto, tipo = 'ok') {
 function limparProvisaoRateio() {
   provisaoRateioTemp = [];
   infoProvisaoRateioTemp = null;
-  provisaoSelecionadas.clear();
   renderProvisaoRateio();
   mostrarMsgProvisaoRateio('Provisão limpa nesta sessão.', 'ok');
-}
-
-function textoBuscaProvisao(r) {
-  return normalizarTexto([r.fornecedor, r.plano, r.documento, r.historico, r.complemento, r.empresa].filter(Boolean).join(' '));
-}
-
-function obterProvisaoFiltradas() {
-  const termo = normalizarTexto(document.getElementById('filtro-provisao')?.value || '');
-  const somentePendentes = document.getElementById('somente-pendentes-provisao')?.checked ?? false;
-  return provisaoRateioTemp
-    .map((r, i) => ({ r, i }))
-    .filter(({ r }) => !somentePendentes || !r.debitoConta || !r.creditoConta)
-    .filter(({ r }) => !termo || textoBuscaProvisao(r).includes(termo));
-}
-
-function atualizarContadorSelecaoProvisao() {
-  const contador = document.getElementById('contador-selecao-provisao');
-  if (contador) contador.textContent = `${provisaoSelecionadas.size} selecionada(s)`;
-  const chkTodas = document.getElementById('chk-todas-provisao');
-  if (chkTodas) {
-    const visiveis = obterProvisaoFiltradas();
-    chkTodas.checked = visiveis.length > 0 && visiveis.every(({ i }) => provisaoSelecionadas.has(i));
-  }
 }
 
 function renderProvisaoRateio() {
@@ -1564,21 +1236,18 @@ function renderProvisaoRateio() {
   if (titulo) titulo.textContent = 'Provisão por rateio — ' + (grupoAtivo || '');
   const resumo = document.getElementById('resumo-provisao-rateio');
   const acoes = document.getElementById('acoes-provisao-rateio');
-  const lote = document.getElementById('lote-provisao-rateio');
   const preview = document.getElementById('preview-provisao-rateio');
   const tbody = document.getElementById('tbody-provisao-rateio');
   if (!resumo || !acoes || !preview || !tbody) return;
   if (modoImportacaoDoGrupo(grupoAtivo) !== 'rateio') {
     resumo.innerHTML = `<div class="alert alert-warn">Esta tela é usada somente para grupos configurados como Rateio de Títulos.</div>`;
     acoes.style.display = 'none';
-    if (lote) lote.style.display = 'none';
     preview.style.display = 'none';
     return;
   }
   if (provisaoRateioTemp.length === 0) {
     resumo.innerHTML = `<div class="card" style="margin-bottom:16px"><div class="empty">Nenhuma provisão importada nesta sessão.</div></div>`;
     acoes.style.display = 'none';
-    if (lote) lote.style.display = 'none';
     preview.style.display = 'none';
     return;
   }
@@ -1595,12 +1264,9 @@ function renderProvisaoRateio() {
     <div class="conciliacao-note" style="margin-bottom:14px">Arquivos: ${escapeHtml((infoProvisaoRateioTemp?.arquivos || []).join(', '))}</div>
   `;
   acoes.style.display = 'flex';
-  if (lote) lote.style.display = '';
   preview.style.display = '';
-  const visiveis = obterProvisaoFiltradas();
-  tbody.innerHTML = visiveis.slice(0, 250).map(({ r, i }) => `
+  tbody.innerHTML = provisaoRateioTemp.slice(0, 250).map((r, i) => `
     <tr class="${(!r.debitoConta || !r.creditoConta) ? 'sem-codigo' : ''}">
-      <td><input type="checkbox" ${provisaoSelecionadas.has(i) ? 'checked' : ''} onchange="alternarSelecionadaProvisao(${i}, this.checked)"></td>
       <td style="white-space:nowrap">${escapeHtml(r.data)}</td>
       <td><input type="text" class="conta-autocomplete" style="width:110px" placeholder="${escapeAttr(r.debitoSugerido || 'Débito')}" value="${escapeAttr(r.debitoConta || '')}" data-idx="${i}" data-campo="debito" oninput="atualizarContaProvisao(this); criarAutocompleteConta(this)" onblur="salvarRegraProvisaoLinha(${i})"></td>
       <td><input type="text" class="conta-autocomplete" style="width:110px" placeholder="Crédito" value="${escapeAttr(r.creditoConta || '')}" data-idx="${i}" data-campo="credito" oninput="atualizarContaProvisao(this); criarAutocompleteConta(this)" onblur="salvarRegraProvisaoLinha(${i})"></td>
@@ -1611,7 +1277,6 @@ function renderProvisaoRateio() {
       <td title="${escapeAttr(r.complemento)}">${escapeHtml(r.complemento)}</td>
     </tr>
   `).join('');
-  atualizarContadorSelecaoProvisao();
 }
 
 function atualizarContaProvisao(input) {
@@ -1642,7 +1307,7 @@ function salvarRegraProvisaoLinha(idx) {
   });
   salvarStorage();
   salvarBaseCompartilhada();
-  renderProvisaoRateio();
+  if (aplicouOutras) renderProvisaoRateio();
 }
 
 function aplicarRegrasSalvasProvisao() {
@@ -1658,57 +1323,6 @@ function aplicarRegrasSalvasProvisao() {
   });
   renderProvisaoRateio();
   mostrarMsgProvisaoRateio(aplicadas > 0 ? `${aplicadas} linha(s) preenchida(s) com regras salvas.` : 'Nenhuma regra salva encontrada para as linhas pendentes.', aplicadas > 0 ? 'ok' : 'warn');
-}
-
-function alternarSelecionadaProvisao(idx, marcado) {
-  if (marcado) provisaoSelecionadas.add(idx); else provisaoSelecionadas.delete(idx);
-  atualizarContadorSelecaoProvisao();
-}
-
-function alternarTodasVisiveisProvisao(checked) {
-  obterProvisaoFiltradas().forEach(({ i }) => {
-    if (checked) provisaoSelecionadas.add(i); else provisaoSelecionadas.delete(i);
-  });
-  renderProvisaoRateio();
-}
-
-function limparSelecaoProvisao() {
-  provisaoSelecionadas.clear();
-  renderProvisaoRateio();
-}
-
-function aplicarContasLoteProvisao() {
-  if (!provisaoSelecionadas.size) {
-    mostrarMsgProvisaoRateio('Selecione ao menos uma linha (use o filtro e marque as caixinhas) antes de aplicar.', 'warn');
-    return;
-  }
-  const debitoInput = document.getElementById('lote-debito-provisao');
-  const creditoInput = document.getElementById('lote-credito-provisao');
-  const debito = obterCodigoContaParaDominio(debitoInput?.value || '');
-  const credito = obterCodigoContaParaDominio(creditoInput?.value || '');
-  if (!debito && !credito) {
-    mostrarMsgProvisaoRateio('Informe ao menos a conta de débito ou de crédito para aplicar.', 'warn');
-    return;
-  }
-  let aplicadas = 0;
-  provisaoSelecionadas.forEach(idx => {
-    const item = provisaoRateioTemp[idx];
-    if (!item) return;
-    if (debito) item.debitoConta = debito;
-    if (credito) item.creditoConta = credito;
-    if (item.debitoConta && item.creditoConta && grupoAtivo) {
-      deparaProvisao[grupoAtivo] = deparaProvisao[grupoAtivo] || {};
-      deparaProvisao[grupoAtivo][item.chave] = { debito: item.debitoConta, credito: item.creditoConta };
-    }
-    aplicadas++;
-  });
-  salvarStorage();
-  salvarBaseCompartilhada();
-  if (debitoInput) debitoInput.value = '';
-  if (creditoInput) creditoInput.value = '';
-  provisaoSelecionadas.clear();
-  renderProvisaoRateio();
-  mostrarMsgProvisaoRateio(`Conta aplicada a ${aplicadas} linha(s).`, 'ok');
 }
 
 function montarLinhasDominioProvisaoRateio() {
@@ -1746,54 +1360,21 @@ function prepararPagamentosImportados(dados, abrirTelaPendencias = true) {
   linhasImportadas = dados;
 
   const regrasSalvas = depara[grupoAtivo] || {};
-  const totaisMovimentoRateioBancoPreview = new Map();
-  dados.forEach(r => {
-    if (!rateioIntercompanyLinha(r)) return;
-    const chaveMov = chaveMovimentoRealPagamentoRateio(r);
-    const valorLiqRow = arredondarMoeda(r[COLS.VALOR_LIQ]);
-    totaisMovimentoRateioBancoPreview.set(chaveMov, arredondarMoeda((totaisMovimentoRateioBancoPreview.get(chaveMov) || 0) + valorLiqRow));
-  });
-  const gruposAbsorverPreviewPend = new Map();
-  dados.forEach(r => {
-    if (!r.__rateio || rateioIntercompanyLinha(r)) return;
-    const chave = chaveGuiaAbsorverRateio(r);
-    const valor = arredondarMoeda(r[COLS.VALOR_LIQ]);
-    const planoLinha = limparTextoECD(r[COLS.PLANO]);
-    if (!gruposAbsorverPreviewPend.has(chave)) gruposAbsorverPreviewPend.set(chave, []);
-    gruposAbsorverPreviewPend.get(chave).push({ valor, plano: planoLinha });
-  });
-  const gruposComAbsorvedorPend = new Set();
-  gruposAbsorverPreviewPend.forEach((linhas, chave) => {
-    const descontos = linhas.filter(l => ehDescontoComercialAbsorvivel(l.plano, l.valor));
-    if (descontos.length === 0) return;
-    const candidatos = linhas.filter(l => !ehDescontoComercialAbsorvivel(l.plano, l.valor) && l.valor > 0);
-    if (candidatos.length === 0) return;
-    const totalDesconto = arredondarMoeda(descontos.reduce((s, l) => s + l.valor, 0));
-    const principal = candidatos.reduce((max, l) => (l.valor > max.valor ? l : max), candidatos[0]);
-    if (arredondarMoeda(principal.valor + totalDesconto) <= 0) return;
-    gruposComAbsorvedorPend.add(chave);
-  });
   const novas = [];
   const vistas = new Set();
   dados.forEach(r => {
     const forn = limparTextoECD(r[COLS.FORNECEDOR]);
     const plano = limparTextoECD(r[COLS.PLANO]);
-    const tipoDocOriginal = limparTextoECD(r[COLS.TIPO_DOC]);
-    const tipoDoc = r.__rateioSemApoio ? 'RATEADO SEM ABERTURA' : tipoDocOriginal;
+    const tipoDoc = limparTextoECD(r[COLS.TIPO_DOC]);
     const infoDoc = separarNumeroDoHistorico(tipoDoc, r[COLS.NUMERO], r[COLS.HISTORICO]);
-    const historico = r.__rateioSemApoio
-      ? [infoDoc.historico, 'Linha com centro de custo Rateado sem abertura compatível na planilha de apoio'].filter(Boolean).join(' - ')
-      : infoDoc.historico;
+    const historico = infoDoc.historico;
     const numero = infoDoc.numero;
     const empresaOrigem = empresaOrigemLinha(r);
     const centroCusto = centroCustoLinha(r);
     const escopoRegra = escopoRegraLinha(r);
     const valorRateio = arredondarMoeda(r[COLS.VALOR_LIQ]);
-    const tipoAjusteRateio = (r.__rateio && !rateioIntercompanyLinha(r)) ? tipoAjusteRateioPlano(plano, valorRateio) : '';
+    const tipoAjusteRateio = r.__rateio ? tipoAjusteRateioPlano(plano, valorRateio) : '';
     if (!forn && !plano) return;
-    if (r.__rateio && !rateioIntercompanyLinha(r) && ehRetencaoFolhaSemLancamento(plano, valorRateio) && gruposComAbsorvedorPend.has(chaveGuiaAbsorverRateio(r))) {
-      return; // retenção (INSS/FGTS) absorvida no banco, não precisa de código próprio
-    }
     if (tipoAjusteRateio) {
       ['DÉBITO', 'CRÉDITO'].forEach(ponta => {
         const tipoPonta = tipoAjustePonta(tipoAjusteRateio, ponta);
@@ -1805,18 +1386,15 @@ function prepararPagamentosImportados(dados, abrirTelaPendencias = true) {
       });
       return;
     }
-      const chave = montarChave(forn, plano, tipoDoc, historico, escopoRegra);
+    const chave = montarChave(forn, plano, tipoDoc, historico, escopoRegra);
     if (!encontrarCodigoRegra(regrasSalvas, forn, plano, tipoDoc, historico, escopoRegra) && !vistas.has(chave)) {
       vistas.add(chave);
       novas.push({ chave, fornecedor: forn, plano, tipoDoc, historico, trechoHistorico: '', trechoHistoricoIndices: [], numero, empresa: empresaOrigem, empresaOrigem, centroCusto, empresaLancamento: empresaLancamentoLinha(r), rateio: !!r.__rateio, escopoRegra });
     }
     if (rateioIntercompanyLinha(r)) {
       const linhaRateioNegativa = arredondarMoeda(r[COLS.VALOR_LIQ]) < 0;
-      const chaveMovReal = chaveMovimentoRealPagamentoRateio(r);
-      const grupoNegativo = arredondarMoeda(totaisMovimentoRateioBancoPreview.get(chaveMovReal) || 0) < 0;
       ['EMPRESA DO BANCO', 'CENTRO DE CUSTO'].forEach(lado => {
-        const negativoParaLado = lado === 'EMPRESA DO BANCO' ? grupoNegativo : linhaRateioNegativa;
-        const naturezaNumerario = naturezaNumerarioPagamento(lado, negativoParaLado);
+        const naturezaNumerario = naturezaNumerarioPagamento(lado, linhaRateioNegativa);
         const chaveNumerario = chaveNumerarioRateio(empresaOrigem, centroCusto, lado, naturezaNumerario);
         if (!codigoNumerarioRateio(regrasSalvas, empresaOrigem, centroCusto, lado, naturezaNumerario) && !vistas.has(chaveNumerario)) {
           vistas.add(chaveNumerario);
@@ -1854,20 +1432,6 @@ function prepararPagamentosImportados(dados, abrirTelaPendencias = true) {
         }
       });
     }
-  });
-
-  const pendMapa = pendenciasMapaCodigos();
-  pendMapa.contasFaltando.forEach(nome => {
-    const chaveMapa = `MAPA_CONTA | ${nome}`;
-    if (vistas.has(chaveMapa)) return;
-    vistas.add(chaveMapa);
-    novas.push({ chave: chaveMapa, tipoItem: 'contaMapa', nomeMapa: nome, fornecedor: '', plano: nome, tipoDoc: 'CONTA (BANCO/CAIXA)', historico: '', trechoHistorico: '', trechoHistoricoIndices: [], numero: '', empresa: '', empresaOrigem: '', centroCusto: '', empresaLancamento: '', rateio: false, escopoRegra: '' });
-  });
-  pendMapa.empresasFaltando.forEach(nome => {
-    const chaveMapa = `MAPA_EMPRESA | ${nome}`;
-    if (vistas.has(chaveMapa)) return;
-    vistas.add(chaveMapa);
-    novas.push({ chave: chaveMapa, tipoItem: 'empresaMapa', nomeMapa: nome, fornecedor: '', plano: nome, tipoDoc: 'EMPRESA/FILIAL', historico: '', trechoHistorico: '', trechoHistoricoIndices: [], numero: '', empresa: '', empresaOrigem: '', centroCusto: '', empresaLancamento: '', rateio: false, escopoRegra: '' });
   });
 
   novasChavesTemp = novas;
@@ -1985,50 +1549,6 @@ function htmlDetalheDiferencaConferencia(pagamentos, saidas) {
     </div>
   </details>`;
 }
-function htmlDetalheDiferencaConferenciaRecebimentos(planilhaRows, extratoRows) {
-  const porData = new Map();
-  planilhaRows.forEach(r => {
-    const data = r.dataKey || 'Sem data';
-    const atual = porData.get(data) || { data, relatorio: 0, extrato: 0, qtdRelatorio: 0, qtdExtrato: 0, exemplosRelatorio: [], exemplosExtrato: [] };
-    atual.relatorio = arredondarMoeda(atual.relatorio + (r.valor || 0));
-    atual.qtdRelatorio += 1;
-    if (atual.exemplosRelatorio.length < 3) atual.exemplosRelatorio.push(`${r.centroCusto || 'Sem unidade'} R$ ${fmtValor(r.valor || 0)}`);
-    porData.set(data, atual);
-  });
-  extratoRows.forEach(m => {
-    const data = dataKey(m.data) || 'Sem data';
-    const atual = porData.get(data) || { data, relatorio: 0, extrato: 0, qtdRelatorio: 0, qtdExtrato: 0, exemplosRelatorio: [], exemplosExtrato: [] };
-    const valor = Math.abs(m.valor || 0);
-    atual.extrato = arredondarMoeda(atual.extrato + valor);
-    atual.qtdExtrato += 1;
-    if (atual.exemplosExtrato.length < 3) atual.exemplosExtrato.push(`${descricaoMovimentoExtrato(m) || 'Sem histórico'} R$ ${fmtValor(valor)}`);
-    porData.set(data, atual);
-  });
-  const divergentes = Array.from(porData.values())
-    .map(item => ({ ...item, diferenca: arredondarMoeda(item.relatorio - item.extrato) }))
-    .filter(item => Math.abs(item.diferenca) >= 0.01)
-    .sort((a, b) => ordenarDataBR(a.data, b.data));
-  if (!divergentes.length) return '';
-  const linhas = divergentes.slice(0, 80).map(item => `
-    <tr>
-      <td>${escapeHtml(item.data)}</td>
-      <td style="text-align:right">R$ ${fmtValor(item.relatorio)}</td>
-      <td style="text-align:right">R$ ${fmtValor(item.extrato)}</td>
-      <td style="text-align:right;font-weight:700;color:#9a3412">R$ ${fmtValor(Math.abs(item.diferenca))}</td>
-      <td>${item.qtdRelatorio} planilha · ${item.qtdExtrato} extrato</td>
-      <td title="${escapeAttr(item.exemplosRelatorio.join(' | '))}">${escapeHtml(item.exemplosRelatorio.join(' | '))}</td>
-      <td title="${escapeAttr(item.exemplosExtrato.join(' | '))}">${escapeHtml(item.exemplosExtrato.join(' | '))}</td>
-    </tr>`).join('');
-  return `<details class="conciliacao-diff-details">
-    <summary>Ver diferença por dia</summary>
-    <div class="table-wrap table-scroll" style="margin-top:8px">
-      <table class="diff-conferencia-table">
-        <thead><tr><th>Data</th><th style="text-align:right">Planilha</th><th style="text-align:right">Extrato</th><th style="text-align:right">Diferença</th><th>Qtd.</th><th>Exemplos na planilha</th><th>Exemplos no extrato</th></tr></thead>
-        <tbody>${linhas}</tbody>
-      </table>
-    </div>
-  </details>`;
-}
 function htmlResumoConferenciaBancaria() {
   const qtdPagamentos = linhasImportadas.length;
   const entradas = extratoBancarioTemp.filter(m => m.valor > 0);
@@ -2043,27 +1563,6 @@ function htmlResumoConferenciaBancaria() {
   const diferencaConferencia = arredondarMoeda(totalPagamentos - totalSaidasPagamentos);
   const valoresBatem = Math.abs(diferencaConferencia) < 0.01;
   const detalheDiferenca = valoresBatem ? '' : htmlDetalheDiferencaConferencia(pagamentosConciliaveis, saidasPagamentos);
-  const totalEntradas = arredondarMoeda(entradas.reduce((s, m) => s + m.valor, 0));
-  const temRecebimentosRateio = grupoPodeRecebimentosRateio() && recebimentosRateioTemp.length > 0;
-  const totalRecebimentosRateio = arredondarMoeda(recebimentosRateioTemp.reduce((s, r) => s + r.valor, 0));
-  const diferencaRecebimentos = arredondarMoeda(totalRecebimentosRateio - totalEntradas);
-  const recebimentosBatem = Math.abs(diferencaRecebimentos) < 0.01;
-  const detalheDiferencaRecebimentos = recebimentosBatem ? '' : htmlDetalheDiferencaConferenciaRecebimentos(recebimentosRateioTemp, entradas);
-  const blocoConferenciaRecebimentos = temRecebimentosRateio ? `
-    <div class="alert ${recebimentosBatem ? 'alert-ok' : 'alert-warn'} conciliacao-check-alert">
-      <div class="conciliacao-check-head">
-        <div>
-          <strong>Conferência de recebimentos</strong>
-          <span>Validação do total das entradas do extrato contra o total das planilhas de recebimento por rateio (cartões + títulos a receber) do mês.</span>
-        </div>
-        <span class="conciliacao-check-status ${recebimentosBatem ? 'ok' : 'warn'}">${recebimentosBatem ? 'Valores batem' : 'Diferença R$ ' + fmtValor(Math.abs(diferencaRecebimentos))}</span>
-      </div>
-      <div class="conciliacao-check-totals">
-        <span>Planilhas de recebimento: <strong>R$ ${fmtValor(totalRecebimentosRateio)}</strong></span>
-        <span>Extrato (entradas): <strong>R$ ${fmtValor(totalEntradas)}</strong></span>
-      </div>
-      ${detalheDiferencaRecebimentos}
-    </div>` : '';
   return `
     <div class="conciliacao-grid conciliacao-summary-grid">
       <div class="metric metric-muted"><div class="metric-label">Grupo ativo</div><div class="metric-value metric-text">${escapeHtml(grupoAtivo || 'Nenhum')}</div></div>
@@ -2086,8 +1585,7 @@ function htmlResumoConferenciaBancaria() {
         <span>Extrato: <strong>R$ ${fmtValor(totalSaidasPagamentos)}</strong></span>
       </div>
       ${detalheDiferenca}
-    </div>
-    ${blocoConferenciaRecebimentos}`;
+    </div>`;
 }
 
 function renderResumoConferenciaResultado() {
@@ -2121,16 +1619,15 @@ function headerInfoRecebimentos(raw, obrigatorias) {
   return { headerIdx, idx };
 }
 
-function linhaRecebimentoRateioBase({ data, valor, conta, empresaBanco, centroCusto, tipo, historico, plano, origem, arquivoOrigem, linhaOrigem, tipoLancamento, chaveMovimentoReal, categoria }) {
+function linhaRecebimentoRateioBase({ data, valor, conta, empresaBanco, centroCusto, tipo, historico, plano, origem, arquivoOrigem, linhaOrigem, tipoLancamento }) {
   const empresaBancoLimpa = limparTextoECD(empresaBanco || conta || '');
   const centroLimpo = limparTextoECD(centroCusto || empresaBancoLimpa);
   const valorMoeda = arredondarMoeda(valor);
   if (!data || !valorMoeda || !centroLimpo) return null;
-  const dk = dataKey(data);
   return {
     id: `rateio-rec-${recebimentosRateioTemp.length}-${Math.random().toString(36).slice(2)}`,
     data,
-    dataKey: dk,
+    dataKey: dataKey(data),
     valor: valorMoeda,
     total: Math.abs(valorMoeda),
     conta: limparTextoECD(conta),
@@ -2146,9 +1643,7 @@ function linhaRecebimentoRateioBase({ data, valor, conta, empresaBanco, centroCu
     movimento: 'recebimento-rateio',
     rateio: true,
     intercompany: grupoUsaNumerariosRateio() && normalizarTexto(empresaBancoLimpa) !== normalizarTexto(centroLimpo),
-    tipoRateio: grupoUsaNumerariosRateio() && normalizarTexto(empresaBancoLimpa) !== normalizarTexto(centroLimpo) ? 'TRANSFERENCIA DE NUMERARIOS' : 'PROPRIO',
-    chaveAgrupamento: [dk, normalizarTexto(conta), normalizarTexto(empresaBancoLimpa), normalizarTexto(centroLimpo), normalizarTexto(chaveMovimentoReal || '')].join('|'),
-    categoria: categoria || 'dinheiro'
+    tipoRateio: grupoUsaNumerariosRateio() && normalizarTexto(empresaBancoLimpa) !== normalizarTexto(centroLimpo) ? 'TRANSFERENCIA DE NUMERARIOS' : 'PROPRIO'
   };
 }
 
@@ -2156,7 +1651,7 @@ function linhasRateioCartoesReceber(wb, arquivoOrigem) {
   const nomePlanilha = wb.SheetNames.find(n => /cart/i.test(n)) || wb.SheetNames[0];
   const ws = wb.Sheets[nomePlanilha];
   const raw = XLSX.utils.sheet_to_json(ws, { header: 1, defval: null });
-  const info = headerInfoRecebimentos(raw, ['Empresa', 'Adquirente', 'Produto', 'Dt. Liquidação', 'Valor Bruto', 'Conta', 'Centro de Custo']);
+  const info = headerInfoRecebimentos(raw, ['Empresa', 'Adquirente', 'Produto', 'Dt. Liquidação', 'Valor Bruto', 'Conta', 'Centro de Custo', 'Plano de Conta']);
   if (!info) return null;
   const { headerIdx, idx } = info;
   const col = {
@@ -2165,86 +1660,37 @@ function linhasRateioCartoesReceber(wb, arquivoOrigem) {
     bandeira: idx('bandeira'),
     modalidade: idx('modalidade'),
     produto: idx('produto'),
-    valor: idx('valor liquido') >= 0 ? idx('valor liquido') : idx('valor bruto'),
+    valor: idx('valor bruto'),
     conta: idx('conta'),
     liquidacao: idx('dt. liquidacao'),
     centroCusto: idx('centro de custo'),
     plano: idx('plano de conta'),
     tipoLancamento: idx('tipo de lancamento')
   };
-  const grupos = new Map();
-  raw.slice(headerIdx + 1).forEach((row, rowIdx) => {
-    const valor = arredondarMoeda(row[col.valor]);
-    if (valor <= 0) return;
+  const linhas = raw.slice(headerIdx + 1).map((row, rowIdx) => {
     const tipoLancamento = limparTextoECD(col.tipoLancamento >= 0 ? row[col.tipoLancamento] : '');
-    const plano = limparTextoECD(col.plano >= 0 ? row[col.plano] : 'Parcelas de Cartões');
-    const data = row[col.liquidacao];
-    const conta = row[col.conta];
-    const empresaBanco = empresaBancoRateioPorConta(conta, row[col.empresa]);
-    const centroCusto = row[col.centroCusto];
-    if (!data || !conta || !centroCusto) return;
-    const adquirente = limparTextoECD(col.adquirente >= 0 ? row[col.adquirente] : '');
-    const bandeira = limparTextoECD(col.bandeira >= 0 ? row[col.bandeira] : '');
-    const modalidade = limparTextoECD(col.modalidade >= 0 ? row[col.modalidade] : '');
-    const produto = limparTextoECD(col.produto >= 0 ? row[col.produto] : '');
-    const chaveMovimentoReal = [bandeira, adquirente].join('|');
-    const chaveGrupo = [
-      dataKey(data),
-      normalizarTexto(conta),
-      normalizarTexto(empresaBanco),
-      normalizarTexto(centroCusto),
-      normalizarTexto(chaveMovimentoReal),
-      normalizarTexto(plano),
-      normalizarTexto(tipoLancamento)
-    ].join('|');
+    const plano = limparTextoECD(row[col.plano]);
     const partesHistorico = [
-      adquirente,
-      bandeira,
-      modalidade,
-      produto,
+      col.adquirente >= 0 ? row[col.adquirente] : '',
+      col.bandeira >= 0 ? row[col.bandeira] : '',
+      col.modalidade >= 0 ? row[col.modalidade] : '',
+      col.produto >= 0 ? row[col.produto] : '',
       plano,
       tipoLancamento
     ].filter(Boolean);
-    const existente = grupos.get(chaveGrupo);
-    if (existente) {
-      existente.valor = arredondarMoeda(existente.valor + valor);
-      existente.qtd += 1;
-      return;
-    }
-    grupos.set(chaveGrupo, {
-      data,
-      valor,
-      conta,
-      empresaBanco,
-      centroCusto,
-      tipo: 'Recebimento de Cartões',
+    return linhaRecebimentoRateioBase({
+      data: row[col.liquidacao],
+      valor: row[col.valor],
+      conta: row[col.conta],
+      empresaBanco: empresaBancoRateioPorConta(row[col.conta], row[col.empresa]),
+      centroCusto: row[col.centroCusto],
+      tipo: valorNegativo(row[col.valor]) ? 'Taxa/Ajuste de Cartões' : 'Recebimento de Cartões',
       historico: partesHistorico.join(' - '),
       plano,
       origem: 'Rateio de Cartões a Receber',
       arquivoOrigem,
       linhaOrigem: headerIdx + rowIdx + 2,
-      tipoLancamento,
-      chaveMovimentoReal,
-      categoria: (() => { const a = normalizarTexto(adquirente); return a.includes('boleto') ? 'boleto' : a.includes('pix') ? 'dinheiro' : 'cartao'; })(),
-      qtd: 1
-    });
-  });
-  const linhas = Array.from(grupos.values()).map(g => {
-    return linhaRecebimentoRateioBase({
-      data: g.data,
-      valor: g.valor,
-      conta: g.conta,
-      empresaBanco: g.empresaBanco,
-      centroCusto: g.centroCusto,
-      tipo: g.tipo,
-      historico: g.historico,
-      plano: g.plano,
-      origem: g.qtd > 1 ? `${g.origem} (${g.qtd} linhas)` : g.origem,
-      arquivoOrigem: g.arquivoOrigem,
-      linhaOrigem: g.linhaOrigem,
-      tipoLancamento: g.tipoLancamento,
-      chaveMovimentoReal: g.chaveMovimentoReal,
-      categoria: g.categoria
+      tipoLancamento
     });
   }).filter(Boolean);
   return { tipo: 'cartoes', nomePlanilha, linhas };
@@ -2274,8 +1720,7 @@ function linhasRateioTitulosReceber(wb, arquivoOrigem) {
     status: idx('status'),
     historico: idx('historico'),
     tipoDoc: idx('tipo de documento'),
-    numero: idx('numero'),
-    parcela: idx('parcela')
+    numero: idx('numero')
   };
   const linhas = raw.slice(headerIdx + 1).map((row, rowIdx) => {
     const status = limparTextoECD(col.status >= 0 ? row[col.status] : 'Liquidado');
@@ -2301,9 +1746,7 @@ function linhasRateioTitulosReceber(wb, arquivoOrigem) {
       origem: 'Parcela de Título a Receber',
       arquivoOrigem,
       linhaOrigem: headerIdx + rowIdx + 2,
-      tipoLancamento: status,
-      chaveMovimentoReal: [col.numero >= 0 ? row[col.numero] : '', col.parcela >= 0 ? row[col.parcela] : ''].join('|'),
-      categoria: 'dinheiro'
+      tipoLancamento: status
     });
   }).filter(Boolean);
   return { tipo: 'titulos', nomePlanilha, linhas };
@@ -2356,8 +1799,7 @@ async function processarRecebimentosRateio(files) {
     codigosConciliacaoTemp = {};
     trechosRecebimentoConciliacaoTemp = {};
     conciliacaoAplicadaTemp = false;
-    const avisoReexportacao = (exportacoesRealizadas.pagamentos || exportacoesRealizadas.conciliacao || exportacoesRealizadas.final) ? ' Atenção: você já exportou lançamentos nesta sessão — os lançamentos serão recalculados. Não importe de novo no Domínio sem conferir o que já foi enviado (use o botão ’Resetar controle de exportação’ na tela de Lançamentos gerados).' : '';
-    mostrarMsgConciliacao(`${novosUnicos.length} recebimento${novosUnicos.length !== 1 ? 's' : ''} por rateio importado${novosUnicos.length !== 1 ? 's' : ''}.${avisoReexportacao}`, avisoReexportacao ? 'warn' : 'ok');
+    mostrarMsgConciliacao(`${novosUnicos.length} recebimento${novosUnicos.length !== 1 ? 's' : ''} por rateio importado${novosUnicos.length !== 1 ? 's' : ''}.`, 'ok');
     renderConciliacaoBancaria();
     if (extratoBancarioTemp.length > 0) gerarSugestoesConciliacao({ redirecionarSeOk: false });
   } catch (err) {
@@ -2526,7 +1968,7 @@ async function processarExtratosBancarios(files) {
     if (paresTransferencia > 0) partesMsg.push(`${paresTransferencia} transferência${paresTransferencia !== 1 ? 's' : ''} entre contas identificada${paresTransferencia !== 1 ? 's' : ''}`);
     mostrarMsgConciliacao(partesMsg.join('. ') + '.', 'ok');
     renderConciliacaoBancaria();
-    if (extratoBancarioTemp.length > 0) {
+    if (linhasImportadas.length > 0) {
       const resultado = gerarSugestoesConciliacao();
       if (resultado?.qtdParaResolver > 0) {
         setTimeout(() => abrirModalPendenciasConciliacao(), 0);
@@ -2791,9 +2233,9 @@ function criarItensRecebimentosRateioAgrupados() {
   if (!grupoPodeRecebimentosRateio() || recebimentosRateioTemp.length === 0) return [];
   const gruposRateio = new Map();
   recebimentosRateioTemp.forEach((r, idx) => {
-    if (arredondarMoeda(r.valor) === 0) return;
+    if (arredondarMoeda(r.valor) <= 0) return;
     const escopoRegra = escopoRecebimentoRateio(r);
-    const chave = r.chaveAgrupamento || [r.dataKey, r.conta, r.empresaBanco, r.centroCusto, r.tipo, r.historico].map(v => normalizarTexto(v)).join('|');
+    const chave = [r.dataKey, r.conta, r.empresaBanco, r.centroCusto, r.tipo, r.historico, r.valor < 0 ? 'NEG' : 'POS'].map(v => normalizarTexto(v)).join('|');
     const atual = gruposRateio.get(chave) || {
       id: `rec-rateio-${gruposRateio.size}`,
       movimento: 'recebimento',
@@ -2814,162 +2256,11 @@ function criarItensRecebimentosRateioAgrupados() {
       movimentos: []
     };
     atual.qtd += 1;
-    atual.total = arredondarMoeda(atual.total + r.valor);
+    atual.total = arredondarMoeda(atual.total + Math.abs(r.valor));
     atual.movimentos.push({ ...r, idxRecebimentoRateio: idx });
     gruposRateio.set(chave, atual);
   });
-  return Array.from(gruposRateio.values()).filter(item => arredondarMoeda(item.total) !== 0);
-}
-
-function extratoRelevantePlanilhaRecebimentos(m) {
-  const tipoNorm = normalizarTexto(m.tipoConciliacao || '');
-  return tipoNorm.includes('parcelas de cartoes') || tipoNorm.includes('parcelas de titulos');
-}
-
-function tipoExtratoRecebimento(m) {
-  const tipoNorm = normalizarTexto(m.tipoConciliacao || '');
-  if (tipoNorm.includes('parcelas de cartoes')) return 'cartoes';
-  if (tipoNorm.includes('parcelas de titulos')) return 'titulos';
-  return null;
-}
-
-function tipoExtratoDaCategoria(categoria) {
-  return categoria === 'dinheiro' ? 'titulos' : 'cartoes';
-}
-
-function rotuloCategoriaRecebimento(categoria) {
-  if (categoria === 'cartao') return 'cartão';
-  if (categoria === 'boleto') return 'boleto';
-  return 'dinheiro/título';
-}
-
-function criarItensRecebimentosRateioPorDia() {
-  avisosRecebimentoRateioDia = [];
-  avisosPlanilhaMaiorQueExtrato = [];
-  if (!grupoPodeRecebimentosRateio() || recebimentosRateioTemp.length === 0) return [];
-  // Período coberto pela planilha importada, só para exibição
-  const datasPlanilha = recebimentosRateioTemp.map(r => r.data).filter(Boolean);
-  let periodoLabel = 'período importado';
-  let dataLancamento = fmtDate(new Date());
-  if (datasPlanilha.length) {
-    const ordenadas = [...datasPlanilha].sort((a, b) => new Date(a) - new Date(b));
-    const ini = fmtDate(ordenadas[0]);
-    const fim = fmtDate(ordenadas[ordenadas.length - 1]);
-    periodoLabel = ini === fim ? ini : `${ini} a ${fim}`;
-    dataLancamento = fim;
-  }
-  // 1) Planilhas de recebimento agrupadas por conta + tipo de extrato (cartões/boleto batem contra "Parcelas de Cartões"; dinheiro/título contra "Parcelas de Títulos")
-  //    dentro de cada grupo, subdivide por categoria (cartão/boleto/dinheiro) + empresa (centro de custo) — tudo somado no período inteiro, não por dia
-  const planilhaPorContaTipo = new Map(); // chave "conta|tipoExtrato" -> Map("categoria|empresaNorm" -> {total, qtd, conta, centroCusto, empresaBanco, categoria})
-  recebimentosRateioTemp.forEach(r => {
-    // Taxas/ajustes negativos de recebimentos por rateio não são apropriados aqui:
-    // a conciliação/exportação segue o que entrou no extrato, e as taxas são tratadas
-    // por competência em outro processo. Elas ficam no resumo, mas não viram lançamento.
-    if (arredondarMoeda(r.valor) <= 0) return;
-    const tipoExtrato = tipoExtratoDaCategoria(r.categoria);
-    const chaveContaTipo = `${normalizarTexto(r.conta)}|${tipoExtrato}`;
-    if (!planilhaPorContaTipo.has(chaveContaTipo)) planilhaPorContaTipo.set(chaveContaTipo, new Map());
-    const porGrupo = planilhaPorContaTipo.get(chaveContaTipo);
-    const chaveGrupo = `${r.categoria}|${normalizarTexto(r.centroCusto)}`;
-    const atual = porGrupo.get(chaveGrupo) || { total: 0, qtd: 0, conta: r.conta, centroCusto: r.centroCusto, empresaBanco: r.empresaBanco, categoria: r.categoria };
-    atual.total = arredondarMoeda(atual.total + r.valor);
-    atual.qtd += 1;
-    porGrupo.set(chaveGrupo, atual);
-  });
-  // 2) Extrato: total de entradas por conta + tipo de extrato, no período coberto pela planilha — é a âncora
-  const diasCobertos = new Set(recebimentosRateioTemp.map(r => r.dataKey));
-  const extratoPorContaTipo = new Map();
-  extratoBancarioTemp.forEach(m => {
-    if (m.valor <= 0) return;
-    const tipoExtrato = tipoExtratoRecebimento(m);
-    if (!tipoExtrato) return;
-    if (!diasCobertos.has(dataKey(m.data))) return; // só soma dias que a planilha realmente cobre
-    const chave = `${normalizarTexto(m.conta)}|${tipoExtrato}`;
-    extratoPorContaTipo.set(chave, arredondarMoeda((extratoPorContaTipo.get(chave) || 0) + m.valor));
-  });
-  // 3) Ratear o total do período por conta/tipo entre categoria+empresa, na mesma proporção da planilha
-  const LIMITE_DIFERENCA_ABSOLUTA = 1000; // R$1.000
-  const LIMITE_DIFERENCA_PROPORCIONAL = 0.5; // 50% do que a planilha explica
-  const itens = [];
-  planilhaPorContaTipo.forEach((porGrupo, chaveContaTipo) => {
-    const totalExtratoPeriodo = extratoPorContaTipo.get(chaveContaTipo);
-    if (!totalExtratoPeriodo) return; // essa conta/tipo não tem entrada correspondente no extrato — planilha fica pendente, não lança
-    const totalPlanilhaPeriodo = arredondarMoeda(Array.from(porGrupo.values()).reduce((s, e) => s + e.total, 0));
-    if (!totalPlanilhaPeriodo) return;
-    const [contaNormStr] = chaveContaTipo.split('|');
-    const diferencaPeriodo = arredondarMoeda(totalExtratoPeriodo - totalPlanilhaPeriodo);
-    const extratoMaiorQuePlanilha = diferencaPeriodo > 0;
-    const diferencaGrande = Math.abs(diferencaPeriodo) > LIMITE_DIFERENCA_ABSOLUTA && Math.abs(diferencaPeriodo) > Math.abs(totalPlanilhaPeriodo) * LIMITE_DIFERENCA_PROPORCIONAL;
-    // O extrato manda: se a planilha mostra mais do que o banco confirmou, isso não é "sobra de caixa" —
-    // é só receita ainda não liquidada. Nesse caso usamos sempre o valor do extrato (o menor) e NÃO lançamos nada extra.
-    const valorParaRatear = (diferencaGrande && extratoMaiorQuePlanilha) ? totalPlanilhaPeriodo : totalExtratoPeriodo;
-    if (diferencaGrande && extratoMaiorQuePlanilha) {
-      const sobraItem = {
-        data: dataLancamento,
-        periodo: periodoLabel,
-        conta: Array.from(porGrupo.values())[0]?.conta || contaNormStr,
-        totalExtrato: totalExtratoPeriodo,
-        totalPlanilha: totalPlanilhaPeriodo,
-        diferenca: diferencaPeriodo
-      };
-      avisosRecebimentoRateioDia.push(sobraItem);
-    } else if (diferencaGrande && !extratoMaiorQuePlanilha) {
-      avisosPlanilhaMaiorQueExtrato.push({
-        periodo: periodoLabel,
-        conta: Array.from(porGrupo.values())[0]?.conta || contaNormStr,
-        totalExtrato: totalExtratoPeriodo,
-        totalPlanilha: totalPlanilhaPeriodo,
-        diferenca: Math.abs(diferencaPeriodo)
-      });
-    }
-    porGrupo.forEach(dadosGrupo => {
-      const proporcao = dadosGrupo.total / totalPlanilhaPeriodo;
-      const valorAlocado = arredondarMoeda(proporcao * valorParaRatear);
-      if (!valorAlocado) return;
-      const empresaBanco = dadosGrupo.empresaBanco;
-      const centroCusto = dadosGrupo.centroCusto;
-      const intercompany = grupoUsaNumerariosRateio() && normalizarTexto(empresaBanco) !== normalizarTexto(centroCusto);
-      const rotulo = rotuloCategoriaRecebimento(dadosGrupo.categoria);
-      itens.push({
-        id: `rec-rateio-mes-${itens.length}`,
-        movimento: 'recebimento',
-        rateioRecebimento: true,
-        tipo: `Recebimentos ${rotulo} do período (rateado pelo extrato)`,
-        historico: `Recebimentos ${rotulo} ${centroCusto} - rateio proporcional ${periodoLabel}`,
-        plano: '',
-        qtd: dadosGrupo.qtd,
-        total: valorAlocado,
-        data: dataLancamento,
-        conta: dadosGrupo.conta,
-        empresa: empresaBanco,
-        empresaBanco,
-        centroCusto,
-        categoria: dadosGrupo.categoria,
-        intercompany,
-        tipoRateio: intercompany ? 'TRANSFERENCIA DE NUMERARIOS' : 'PROPRIO',
-        escopoRegra: escopoRegraPagamento(empresaBanco, centroCusto, true) + ` | ${(dadosGrupo.categoria || '').toUpperCase()}`,
-        movimentos: []
-      });
-    });
-  });
-  return itens;
-}
-
-
-
-function itensSobraRecebimentoRateio() {
-  return avisosRecebimentoRateioDia.map((a, idx) => ({
-    id: `rec-sobra-rateio-${idx}`,
-    movimento: 'recebimento',
-    tipo: 'Sobra não explicada pela planilha de recebimentos',
-    historico: `Sobra do período ${a.periodo || a.data} (conta ${a.conta}): extrato mostrou R$ ${fmtValor(a.totalExtrato)}, a planilha só explica R$ ${fmtValor(a.totalPlanilha)}`,
-    qtd: 1,
-    total: Math.abs(a.diferenca),
-    data: a.data,
-    conta: a.conta,
-    empresa: '',
-    escopoRegra: ''
-  }));
+  return Array.from(gruposRateio.values());
 }
 
 function itensNumerarioRecebimentosRateio(itensRateio) {
@@ -2998,434 +2289,6 @@ function itensNumerarioRecebimentosRateio(itensRateio) {
   return itens;
 }
 
-function nlrTexto(v) {
-  return limparTextoECD(v).replace(/\s+/g, ' ').trim();
-}
-
-function nlrCmp(v) {
-  return nlrTexto(v).normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
-}
-
-function nlrCodigoEmpresa(v) {
-  const texto = nlrTexto(v);
-  const m = texto.match(/^\s*(\d{1,})\b/);
-  return m ? m[1] : '';
-}
-
-function nlrValorCentavos(v) {
-  return Math.round(arredondarMoeda(v) * 100);
-}
-
-function nlrDataDia(v) {
-  return dataKey(v) || fmtDate(v);
-}
-
-function nlrDataCompleta(v) {
-  if (v instanceof Date) return `${v.getFullYear()}-${String(v.getMonth() + 1).padStart(2, '0')}-${String(v.getDate()).padStart(2, '0')}T${String(v.getHours()).padStart(2, '0')}:${String(v.getMinutes()).padStart(2, '0')}:${String(v.getSeconds()).padStart(2, '0')}.${String(v.getMilliseconds()).padStart(3, '0')}`;
-  const texto = nlrTexto(v);
-  return texto || nlrDataDia(v);
-}
-
-function nlrId(prefixo, idx, partes = []) {
-  return `${prefixo}-${idx}-${partes.map(p => nlrCmp(p)).join('-')}`.replace(/[^a-z0-9_-]+/gi, '-').slice(0, 140);
-}
-
-function nlrNormalizarMovimentoBanco(m, idx) {
-  const valorCent = nlrValorCentavos(m.valor);
-  return {
-    id: nlrId('mov', idx, [m.data, m.conta, m.valor, m.documento]),
-    idx,
-    original: m,
-    dataDia: nlrDataDia(m.data),
-    conta: nlrTexto(m.conta),
-    contaCmp: nlrCmp(m.conta),
-    valorCent,
-    valorAbsCent: Math.abs(valorCent),
-    historico: nlrTexto(m.historico),
-    historicoCmp: nlrCmp(m.historico),
-    complemento: nlrTexto(m.complemento),
-    complementoCmp: nlrCmp(m.complemento),
-    documento: nlrTexto(m.documento),
-    documentoCmp: nlrCmp(m.documento),
-    empresa: nlrTexto(m.empresa),
-    empresaCodigo: nlrCodigoEmpresa(m.empresa),
-    origem: nlrTexto(m.origem),
-    tipoConciliacao: nlrTexto(m.tipoConciliacao),
-    tipoConciliacaoCmp: nlrCmp(m.tipoConciliacao),
-    status: 'NAO_PROCESSADO',
-    vinculoParcelaId: '',
-    validadoPorGrupo: false,
-    candidatos: []
-  };
-}
-
-function nlrStatusLiquidado(r) {
-  const st = nlrCmp(r?.[COLS.STATUS]);
-  return !st || st.includes('liquidado');
-}
-
-function nlrNormalizarParcela(r, idx) {
-  const empresa = empresaOrigemLinha(r) || r?.[COLS.EMPRESA];
-  const centro = centroCustoLinha(r) || r?.[COLS.CC];
-  const valorLiqCent = nlrValorCentavos(r?.[COLS.VALOR_LIQ]);
-  const numero = nlrTexto(r?.[COLS.NUMERO]);
-  const parcela = nlrTexto(r?.[COLS.PARCELA]);
-  return {
-    id: nlrId('parc', idx, [empresa, numero, parcela, r?.[COLS.LIQUIDACAO], valorLiqCent]),
-    idx,
-    original: r,
-    numero,
-    numeroCmp: nlrCmp(numero),
-    parcela,
-    empresa: nlrTexto(empresa),
-    empresaCodigo: nlrCodigoEmpresa(empresa),
-    fornecedor: nlrTexto(r?.[COLS.FORNECEDOR]),
-    fornecedorCmp: nlrCmp(r?.[COLS.FORNECEDOR]),
-    emissaoDia: nlrDataDia(r?.[COLS.EMISSAO]),
-    vencimentoDia: nlrDataDia(r?.[COLS.VENCIMENTO]),
-    liquidacaoDia: nlrDataDia(r?.[COLS.LIQUIDACAO]),
-    valorBrutoCent: nlrValorCentavos(r?.[COLS.VALOR_BRUTO]),
-    valorLiqCent,
-    competencia: nlrTexto(r?.[COLS.COMPETENCIA]),
-    plano: nlrTexto(r?.[COLS.PLANO]),
-    planoCmp: nlrCmp(r?.[COLS.PLANO]),
-    centroCusto: nlrTexto(centro),
-    centroCodigo: nlrCodigoEmpresa(centro),
-    acrescDescCent: nlrValorCentavos(r?.[COLS.ACRESCIMO]),
-    conta: nlrTexto(r?.[COLS.CONTA]),
-    contaCmp: nlrCmp(r?.[COLS.CONTA]),
-    meioPagamento: nlrTexto(r?.[COLS.MEIO_PAG]),
-    meioPagamentoCmp: nlrCmp(r?.[COLS.MEIO_PAG]),
-    tipoDoc: nlrTexto(r?.[COLS.TIPO_DOC]),
-    tipoDocCmp: nlrCmp(r?.[COLS.TIPO_DOC]),
-    status: nlrTexto(r?.[COLS.STATUS]),
-    liquidado: nlrStatusLiquidado(r),
-    historico: nlrTexto(r?.[COLS.HISTORICO]),
-    historicoCmp: nlrCmp(r?.[COLS.HISTORICO]),
-    dataCriacao: nlrDataCompleta(r?.[COL_DATA_CRIACAO]),
-    precisaRateio: centroCustoEhRateado(r),
-    statusConciliacao: 'NAO_PROCESSADA',
-    movimentoId: '',
-    validadoPorGrupo: false,
-    candidatos: [],
-    rateio: null
-  };
-}
-
-function nlrNormalizarLinhaRateio(r, idx) {
-  const empresa = empresaOrigemLinha(r) || r?.[COLS.EMPRESA];
-  const centro = centroCustoLinha(r) || r?.[COLS.CC];
-  return {
-    id: nlrId('rat', idx, [empresa, r?.[COLS.NUMERO], r?.[COLS.PARCELA], centro, r?.[COLS.VALOR_LIQ]]),
-    idx,
-    original: r,
-    numero: nlrTexto(r?.[COLS.NUMERO]),
-    numeroCmp: nlrCmp(r?.[COLS.NUMERO]),
-    parcela: nlrTexto(r?.[COLS.PARCELA]),
-    empresa: nlrTexto(empresa),
-    empresaCodigo: nlrCodigoEmpresa(empresa),
-    fornecedor: nlrTexto(r?.[COLS.FORNECEDOR]),
-    fornecedorCmp: nlrCmp(r?.[COLS.FORNECEDOR]),
-    liquidacaoDia: nlrDataDia(r?.[COLS.LIQUIDACAO]),
-    valorCent: nlrValorCentavos(r?.[COLS.VALOR_LIQ] || r?.[COLS.VALOR_BRUTO]),
-    plano: nlrTexto(r?.[COLS.PLANO]),
-    centroCusto: nlrTexto(centro),
-    centroCodigo: nlrCodigoEmpresa(centro),
-    conta: nlrTexto(r?.[COLS.CONTA]),
-    meioPagamento: nlrTexto(r?.[COLS.MEIO_PAG]),
-    tipoDoc: nlrTexto(r?.[COLS.TIPO_DOC]),
-    historico: nlrTexto(r?.[COLS.HISTORICO]),
-    dataCriacao: nlrDataCompleta(r?.[COL_DATA_CRIACAO]),
-    usadoPorParcelaId: ''
-  };
-}
-
-function nlrChaveBancoPrimaria(m) {
-  return [m.dataDia, m.contaCmp, m.valorAbsCent].join('|');
-}
-
-function nlrChaveParcelaPrimaria(p) {
-  return [p.liquidacaoDia, p.contaCmp, Math.abs(p.valorLiqCent)].join('|');
-}
-
-function nlrAssinaturaDuplicadoMov(m) {
-  return [m.dataDia, m.contaCmp, m.valorAbsCent, m.documentoCmp, m.complementoCmp, m.historicoCmp, m.empresaCodigo || m.empresa].join('|');
-}
-
-function nlrAssinaturaDuplicadoParcela(p) {
-  return [p.liquidacaoDia, p.contaCmp, Math.abs(p.valorLiqCent), p.numeroCmp, p.fornecedorCmp, p.empresaCodigo || p.empresa].join('|');
-}
-
-function nlrPontuarCandidato(m, p) {
-  const criterios = [];
-  let pontos = 0;
-  if (m.documentoCmp && p.numeroCmp && m.documentoCmp === p.numeroCmp) { pontos += 100; criterios.push('Documento = Número'); }
-  if (m.complementoCmp && p.fornecedorCmp && m.complementoCmp === p.fornecedorCmp) { pontos += 80; criterios.push('Complemento = Fornecedor'); }
-  if (m.complementoCmp && p.fornecedorCmp && (m.complementoCmp.includes(p.fornecedorCmp) || p.fornecedorCmp.includes(m.complementoCmp))) { pontos += 55; criterios.push('Fornecedor parcialmente compatível'); }
-  const textoBanco = `${m.historicoCmp} ${m.complementoCmp}`;
-  if (p.fornecedorCmp && textoBanco.includes(p.fornecedorCmp)) { pontos += 40; criterios.push('Fornecedor no histórico/complemento bancário'); }
-  if (m.historicoCmp && p.historicoCmp && m.historicoCmp === p.historicoCmp) { pontos += 20; criterios.push('Histórico exatamente igual'); }
-  if (m.empresaCodigo && p.empresaCodigo && m.empresaCodigo === p.empresaCodigo) { pontos += 10; criterios.push('Empresa igual'); }
-  if (p.tipoDocCmp && textoBanco.includes(p.tipoDocCmp)) { pontos += 5; criterios.push('Tipo documento compatível'); }
-  if (p.meioPagamentoCmp && textoBanco.includes(p.meioPagamentoCmp)) { pontos += 5; criterios.push('Meio pagamento compatível'); }
-  return { pontos, criterios };
-}
-
-function nlrAtribuirUmParaUm(movs, parcelas, pares) {
-  const byMov = new Map();
-  pares.forEach(par => {
-    if (!byMov.has(par.mov.id)) byMov.set(par.mov.id, []);
-    byMov.get(par.mov.id).push(par);
-  });
-  const movList = [...movs].sort((a, b) => (byMov.get(a.id)?.length || 0) - (byMov.get(b.id)?.length || 0));
-  let melhor = { score: -1, pares: [] };
-  if (movList.length <= 12 && pares.length <= 160) {
-    const usados = new Set();
-    function backtrack(pos, score, escolhidos) {
-      if (pos >= movList.length) {
-        if (score > melhor.score) melhor = { score, pares: escolhidos.slice() };
-        return;
-      }
-      const mov = movList[pos];
-      const candidatos = (byMov.get(mov.id) || []).filter(p => !usados.has(p.parcela.id)).sort((a, b) => b.pontos - a.pontos);
-      candidatos.forEach(par => {
-        usados.add(par.parcela.id);
-        escolhidos.push(par);
-        backtrack(pos + 1, score + par.pontos, escolhidos);
-        escolhidos.pop();
-        usados.delete(par.parcela.id);
-      });
-      backtrack(pos + 1, score, escolhidos);
-    }
-    backtrack(0, 0, []);
-    return melhor.pares;
-  }
-  const usadosMov = new Set();
-  const usadosParc = new Set();
-  return pares.sort((a, b) => b.pontos - a.pontos).filter(par => {
-    if (usadosMov.has(par.mov.id) || usadosParc.has(par.parcela.id)) return false;
-    usadosMov.add(par.mov.id);
-    usadosParc.add(par.parcela.id);
-    return true;
-  });
-}
-
-function nlrConciliarBancoParcelas(extratosNorm, parcelasNorm) {
-  const saidas = extratosNorm.filter(m => m.valorCent < 0 && m.tipoConciliacaoCmp.includes('parcelas de titulos'));
-  const parcelas = parcelasNorm.filter(p => p.liquidado && Math.abs(p.valorLiqCent) > 0);
-  const parcelasPorChave = new Map();
-  parcelas.forEach(p => {
-    const chave = nlrChaveParcelaPrimaria(p);
-    if (!parcelasPorChave.has(chave)) parcelasPorChave.set(chave, []);
-    parcelasPorChave.get(chave).push(p);
-  });
-  const saidasPorChave = new Map();
-  saidas.forEach(m => {
-    const chave = nlrChaveBancoPrimaria(m);
-    if (!saidasPorChave.has(chave)) saidasPorChave.set(chave, []);
-    saidasPorChave.get(chave).push(m);
-  });
-  const vinculadosMov = new Set();
-  const vinculadasParcelas = new Set();
-  const vinculos = [];
-  const pendencias = [];
-
-  saidasPorChave.forEach((movs, chave) => {
-    const candidatas = (parcelasPorChave.get(chave) || []).filter(p => !vinculadasParcelas.has(p.id));
-    if (!candidatas.length) return;
-    const totalMov = movs.reduce((s, m) => s + m.valorAbsCent, 0);
-    const totalParc = candidatas.reduce((s, p) => s + Math.abs(p.valorLiqCent), 0);
-    const movDuplicado = new Set(movs.map(nlrAssinaturaDuplicadoMov)).size === 1;
-    const parcDuplicada = new Set(candidatas.map(nlrAssinaturaDuplicadoParcela)).size === 1;
-    if (movs.length === candidatas.length && Math.abs(totalMov - totalParc) <= 2 && movDuplicado && parcDuplicada) {
-      movs.forEach((m, idx) => {
-        const p = candidatas[idx];
-        m.status = 'VALIDADO POR GRUPO DUPLICADO';
-        m.validadoPorGrupo = true;
-        m.vinculoParcelaId = p.id;
-        p.statusConciliacao = 'CONCILIADA POR GRUPO';
-        p.validadoPorGrupo = true;
-        p.movimentoId = m.id;
-        vinculadosMov.add(m.id);
-        vinculadasParcelas.add(p.id);
-        vinculos.push({ movimentoId: m.id, parcelaId: p.id, status: m.status, pontos: 0, criterios: ['Grupo duplicado validado por quantidade e soma'], grupo: chave });
-      });
-      return;
-    }
-    const pares = [];
-    movs.forEach(m => candidatas.forEach(p => {
-      const score = nlrPontuarCandidato(m, p);
-      pares.push({ mov: m, parcela: p, pontos: score.pontos, criterios: score.criterios });
-      m.candidatos.push({ parcelaId: p.id, pontos: score.pontos, criterios: score.criterios });
-      p.candidatos.push({ movimentoId: m.id, pontos: score.pontos, criterios: score.criterios });
-    }));
-    const escolhidos = nlrAtribuirUmParaUm(movs, candidatas, pares).filter(p => p.pontos > 0 || movs.length === 1 && candidatas.length === 1);
-    escolhidos.forEach(par => {
-      if (vinculadosMov.has(par.mov.id) || vinculadasParcelas.has(par.parcela.id)) return;
-      par.mov.status = 'VALIDADO INDIVIDUALMENTE';
-      par.mov.vinculoParcelaId = par.parcela.id;
-      par.parcela.statusConciliacao = 'CONCILIADA INDIVIDUALMENTE';
-      par.parcela.movimentoId = par.mov.id;
-      vinculadosMov.add(par.mov.id);
-      vinculadasParcelas.add(par.parcela.id);
-      vinculos.push({ movimentoId: par.mov.id, parcelaId: par.parcela.id, status: par.mov.status, pontos: par.pontos, criterios: par.criterios, grupo: chave });
-    });
-  });
-
-  saidas.forEach(m => {
-    if (!vinculadosMov.has(m.id)) {
-      m.status = m.candidatos.length ? 'AMBIGUIDADE NÃO RESOLVIDA' : 'SAÍDA SEM PARCELA';
-      pendencias.push({ tipo: m.status, movimentoId: m.id, valorCent: m.valorAbsCent, data: m.dataDia, conta: m.conta });
-    }
-  });
-  parcelas.forEach(p => {
-    if (!vinculadasParcelas.has(p.id)) {
-      p.statusConciliacao = p.candidatos.length ? 'AMBIGUIDADE NÃO RESOLVIDA' : 'PARCELA SEM SAÍDA';
-      pendencias.push({ tipo: p.statusConciliacao, parcelaId: p.id, valorCent: Math.abs(p.valorLiqCent), data: p.liquidacaoDia, conta: p.conta });
-    }
-  });
-  return { saidas, parcelas, vinculos, pendencias };
-}
-
-function nlrChaveRateioPrincipal(p) {
-  return [p.dataCriacao, p.empresaCodigo || p.empresa, p.fornecedorCmp, p.numeroCmp, nlrCmp(p.parcela)].join('|');
-}
-
-function nlrChaveRateioLinha(r) {
-  return [r.dataCriacao, r.empresaCodigo || r.empresa, r.fornecedorCmp, r.numeroCmp, nlrCmp(r.parcela)].join('|');
-}
-
-function nlrAbrirRateios(parcelasConciliadas, linhasRateioNorm) {
-  const mapaRateio = new Map();
-  linhasRateioNorm.forEach(l => {
-    const chave = nlrChaveRateioLinha(l);
-    if (!mapaRateio.has(chave)) mapaRateio.set(chave, []);
-    mapaRateio.get(chave).push(l);
-  });
-  const usados = new Map();
-  const resumo = [];
-  const linhas = [];
-  parcelasConciliadas.filter(p => p.movimentoId).forEach(p => {
-    if (!p.precisaRateio) {
-      const empresaEconomica = p.centroCusto || p.empresa;
-      p.rateio = { status: 'NAO_RATEADO', linhas: [{ parcelaId: p.id, empresaPagadora: p.empresa, empresaEconomica, empresaEconomicaCodigo: p.centroCodigo || p.empresaCodigo, fornecedor: p.fornecedor, plano: p.plano, valorCent: p.valorLiqCent, tipo: '' }], somaCent: p.valorLiqCent, diferencaCent: 0 };
-      resumo.push({ parcelaId: p.id, status: 'NAO_RATEADO', qtd: 1, somaCent: p.valorLiqCent, valorLiqCent: p.valorLiqCent, diferencaCent: 0 });
-      linhas.push(...p.rateio.linhas);
-      return;
-    }
-    const chave = nlrChaveRateioPrincipal(p);
-    const encontradas = (mapaRateio.get(chave) || []).filter(l => !l.usadoPorParcelaId || l.usadoPorParcelaId === p.id);
-    const somaCent = encontradas.reduce((s, l) => s + l.valorCent, 0);
-    let status = 'RATEIO VALIDADO';
-    if (!encontradas.length) status = 'RATEIO NÃO LOCALIZADO';
-    else if (Math.abs(somaCent - p.valorLiqCent) > 2) status = 'RATEIO COM SOMA DIVERGENTE';
-    else if (encontradas.some(l => !l.centroCodigo || nlrCmp(l.centroCusto).includes('rateado'))) status = 'RATEIO COM EMPRESA INVÁLIDA';
-    else if (encontradas.some(l => usados.has(l.id) && usados.get(l.id) !== p.id)) status = 'RATEIO UTILIZADO EM DUPLICIDADE';
-    encontradas.forEach(l => { usados.set(l.id, p.id); l.usadoPorParcelaId = p.id; });
-    const abertas = encontradas.map(l => ({ parcelaId: p.id, linhaRateioId: l.id, empresaPagadora: p.empresa, empresaPagadoraCodigo: p.empresaCodigo, empresaEconomica: l.centroCusto, empresaEconomicaCodigo: l.centroCodigo, fornecedor: l.fornecedor || p.fornecedor, plano: l.plano || p.plano, valorCent: l.valorCent, tipo: '' }));
-    p.rateio = { status, linhas: abertas, somaCent, diferencaCent: somaCent - p.valorLiqCent };
-    resumo.push({ parcelaId: p.id, status, qtd: abertas.length, somaCent, valorLiqCent: p.valorLiqCent, diferencaCent: somaCent - p.valorLiqCent, chave });
-    linhas.push(...abertas);
-  });
-  return { resumo, linhas, usadas: usados };
-}
-
-function nlrGerarLancamentosAuditaveis(parcelasNorm, aberturaRateio) {
-  const movimentos = [];
-  const bloqueados = [];
-  aberturaRateio.linhas.forEach((linha, idx) => {
-    const p = parcelasNorm.find(parc => parc.id === linha.parcelaId);
-    if (!p || (p.precisaRateio && p.rateio?.status !== 'RATEIO VALIDADO')) {
-      bloqueados.push({ parcelaId: linha.parcelaId, motivo: p?.rateio?.status || 'Parcela não conciliada' });
-      return;
-    }
-    const empresaBanco = empresaBancoRateioPorConta(p.conta, p.empresa) || p.empresa;
-    const bancoCodigo = nlrCodigoEmpresa(empresaBanco) || p.empresaCodigo;
-    const econCodigo = linha.empresaEconomicaCodigo || nlrCodigoEmpresa(linha.empresaEconomica);
-    const proprio = bancoCodigo && econCodigo && bancoCodigo === econCodigo;
-    const valorCent = Math.abs(linha.valorCent);
-    if (!valorCent) return;
-    if (proprio) {
-      movimentos.push({ id: nlrId('lan', idx, [linha.parcelaId, 'proprio']), parcelaId: linha.parcelaId, tipo: 'PRÓPRIO', empresa: linha.empresaEconomica, empresaCodigo: econCodigo, valorCent, lado: 'banco-economico', fornecedor: linha.fornecedor, plano: linha.plano });
-    } else {
-      movimentos.push({ id: nlrId('lan', idx, [linha.parcelaId, 'banco']), parcelaId: linha.parcelaId, tipo: 'TRANSFERÊNCIA DE NUMERÁRIOS', empresa: empresaBanco, empresaCodigo: bancoCodigo, valorCent, lado: 'empresa-do-banco', fornecedor: linha.fornecedor, plano: linha.plano });
-      movimentos.push({ id: nlrId('lan', idx, [linha.parcelaId, 'economica']), parcelaId: linha.parcelaId, tipo: 'TRANSFERÊNCIA DE NUMERÁRIOS', empresa: linha.empresaEconomica, empresaCodigo: econCodigo, valorCent, lado: 'empresa-economica', fornecedor: linha.fornecedor, plano: linha.plano });
-    }
-  });
-  return { movimentos, bloqueados };
-}
-
-function nlrValidarTravas(auditoria) {
-  const erros = [];
-  const somaSaidas = auditoria.banco.vinculos.reduce((s, v) => {
-    const m = auditoria.banco.saidas.find(x => x.id === v.movimentoId);
-    return s + (m?.valorAbsCent || 0);
-  }, 0);
-  const somaParcelas = auditoria.banco.vinculos.reduce((s, v) => {
-    const p = auditoria.banco.parcelas.find(x => x.id === v.parcelaId);
-    return s + Math.abs(p?.valorLiqCent || 0);
-  }, 0);
-  if (Math.abs(somaSaidas - somaParcelas) > 2) erros.push({ regra: 'Soma das saídas conciliadas = soma das parcelas conciliadas', esperado: somaSaidas, encontrado: somaParcelas });
-  const idsMov = auditoria.banco.vinculos.map(v => v.movimentoId);
-  const idsParc = auditoria.banco.vinculos.map(v => v.parcelaId);
-  if (new Set(idsMov).size !== idsMov.length) erros.push({ regra: 'Cada saída usada no máximo uma vez' });
-  if (new Set(idsParc).size !== idsParc.length) erros.push({ regra: 'Cada parcela usada no máximo uma vez' });
-  auditoria.rateio.resumo.filter(r => r.status !== 'NAO_RATEADO' && r.status !== 'RATEIO VALIDADO').forEach(r => erros.push({ regra: 'Rateio válido antes de exportar', parcelaId: r.parcelaId, status: r.status, diferenca: r.diferencaCent }));
-  auditoria.rateio.linhas.filter(l => !l.empresaEconomicaCodigo || nlrCmp(l.empresaEconomica).includes('rateado')).forEach(l => erros.push({ regra: 'Nenhuma linha econômica pode ser Rateado', parcelaId: l.parcelaId, empresa: l.empresaEconomica }));
-  return erros;
-}
-
-function executarNovaLogicaRateios({ silencioso = true } = {}) {
-  if (!FEATURE_NOVA_LOGICA_RATEIOS) return null;
-  const extratos = (extratoBancarioTemp || []).map(nlrNormalizarMovimentoBanco);
-  const parcelas = (linhasImportadas || []).map(nlrNormalizarParcela);
-  const rateios = (rateiosPagamentoApoioTemp || []).map(nlrNormalizarLinhaRateio);
-  const banco = nlrConciliarBancoParcelas(extratos, parcelas);
-  const rateio = nlrAbrirRateios(parcelas, rateios);
-  const geracao = nlrGerarLancamentosAuditaveis(parcelas, rateio);
-  const auditoria = {
-    versao: 'nova-logica-rateios-v1',
-    geradaEm: new Date().toISOString(),
-    banco,
-    rateio,
-    geracao,
-    resumo: {
-      saidasBancarias: banco.saidas.length,
-      saidasValidadasIndividualmente: banco.saidas.filter(s => s.status === 'VALIDADO INDIVIDUALMENTE').length,
-      saidasValidadasGrupoDuplicado: banco.saidas.filter(s => s.status === 'VALIDADO POR GRUPO DUPLICADO').length,
-      saidasSemParcela: banco.saidas.filter(s => s.status === 'SAÍDA SEM PARCELA').length,
-      ambiguidades: banco.saidas.filter(s => s.status === 'AMBIGUIDADE NÃO RESOLVIDA').length,
-      parcelasConciliadas: banco.parcelas.filter(p => p.movimentoId).length,
-      titulosRateados: rateio.resumo.filter(r => r.status !== 'NAO_RATEADO').length,
-      titulosRateadosValidados: rateio.resumo.filter(r => r.status === 'RATEIO VALIDADO').length,
-      linhasRateio: rateio.linhas.filter(l => l.linhaRateioId).length,
-      lancamentosAuditaveis: geracao.movimentos.length,
-      bloqueados: geracao.bloqueados.length
-    }
-  };
-  auditoria.travas = nlrValidarTravas(auditoria);
-  comparativoNovaLogicaRateios = {
-    antigo: {
-      pagamentosImportados: linhasImportadas.length,
-      extratosImportados: extratoBancarioTemp.length,
-      conciliacaoItens: conciliacaoItensTemp.length,
-      lancamentosGerados: lancamentosGerados.length
-    },
-    novo: auditoria.resumo,
-    travas: auditoria.travas
-  };
-  auditoriaNovaLogicaRateios = auditoria;
-  window.auditoriaNovaLogicaRateios = auditoriaNovaLogicaRateios;
-  window.comparativoNovaLogicaRateios = comparativoNovaLogicaRateios;
-  if (!silencioso) console.table([comparativoNovaLogicaRateios.antigo, comparativoNovaLogicaRateios.novo]);
-  return auditoria;
-}
-
-window.f360NovaLogicaRateios = {
-  executar: executarNovaLogicaRateios,
-  auditoria: () => auditoriaNovaLogicaRateios,
-  comparativo: () => comparativoNovaLogicaRateios
-};
 function codigoBancoConciliacao(conta) {
   const contaLimpa = limparTextoECD(conta);
   return codigoContaSemConciliacao(contaLimpa) || contaLimpa;
@@ -3465,12 +2328,7 @@ function gerarSugestoesConciliacao(opcoes = {}) {
   const pagamentos = pagamentosImportadosConciliacao(contasBanco);
   const movimentos = extratoBancarioTemp
     .filter(m => m.valor < 0 && normalizarTexto(m.tipoConciliacao).includes('parcelas de titulos'));
-  const diasContaClaimedPorRateio = new Set(recebimentosRateioTemp.map(r => `${r.dataKey}|${normalizarTexto(r.conta)}`));
-  const entradas = extratoBancarioTemp.filter((m, idx) => {
-    if (m.valor <= 0 || transferenciasPareadas.has(idx)) return false;
-    if (!extratoRelevantePlanilhaRecebimentos(m)) return true;
-    return !diasContaClaimedPorRateio.has(`${dataKey(m.data)}|${normalizarTexto(m.conta)}`);
-  });
+  const entradas = extratoBancarioTemp.filter((m, idx) => m.valor > 0 && !transferenciasPareadas.has(idx));
   const usadosMov = new Set();
   const sugestoesPorPagamento = new Map();
 
@@ -3613,17 +2471,11 @@ function gerarSugestoesConciliacao(opcoes = {}) {
     regra: 'Precisa conciliar',
     diferenca: pag.valor
   });
-  const saidasExtrasTitulo = movimentos
-    .map((mov, idxMov) => ({ mov, idxMov, origemTipo: 'titulo' }))
+  const saidasExtras = movimentos
+    .map((mov, idxMov) => ({ mov, idxMov }))
     .filter(item => !usadosMov.has(item.idxMov));
-  const saidasExtrasOutrosTipos = extratoBancarioTemp
-    .map((mov, idx) => ({ mov, idx }))
-    .filter(({ mov, idx }) => mov.valor < 0 && !transferenciasPareadas.has(idx) && !extratoRelevantePlanilhaRecebimentos(mov))
-    .map(({ mov }, i) => ({ mov, idxMov: `outro-${i}`, origemTipo: 'outro' }));
-  const saidasExtras = [...saidasExtrasTitulo, ...saidasExtrasOutrosTipos];
 
   const resultado = renderSugestoesConciliacao(sugestoes, pagamentos.length, movimentos.length, entradas, saidasExtras);
-  try { executarNovaLogicaRateios({ silencioso: true }); } catch (errNovaLogica) { console.warn('Nova lógica de rateios ainda não aplicada:', errNovaLogica); }
   if (redirecionarSeOk && resultado?.qtdParaResolver === 0) {
     setTimeout(() => mostrarTela('tela-resultado'), 0);
   }
@@ -3668,22 +2520,13 @@ function renderSugestoesConciliacao(sugestoes, qtdPagamentos, qtdMovimentos, ent
   const pendentesPagamento = sugestoes.filter(s => !s.mov);
   const linhasPagamentosPendentes = pendentesPagamento.map(renderLinhaPagamento).join('');
   const regrasRecebimentos = deparaRecebimentos[grupoAtivo] || {};
-  const itensRecebimentoExtrato = Array.from(entradasAgrupadas.values()).map((r, idx) => ({ ...r, id: `rec-${idx}`, movimento: 'recebimento', escopoRegra: '' }));
-  const itensRecebimentoRateio = criarItensRecebimentosRateioPorDia();
-  const itensSobraRecebimento = itensSobraRecebimentoRateio();
-  const totalExtratoRelevanteRecebimentos = arredondarMoeda(
-    extratoBancarioTemp.filter(m => m.valor > 0 && extratoRelevantePlanilhaRecebimentos(m)).reduce((s, m) => s + m.valor, 0)
-  );
-  const totalRateadoMaisSobra = arredondarMoeda(
-    itensRecebimentoRateio.reduce((s, i) => s + i.total, 0) + itensSobraRecebimento.reduce((s, i) => s + i.total, 0)
-  );
-  const diferencaRefinadaRecebimentos = arredondarMoeda(totalExtratoRelevanteRecebimentos - totalRateadoMaisSobra);
-  const itensRecebimento = [...itensRecebimentoExtrato, ...itensRecebimentoRateio, ...itensSobraRecebimento];
+  const itensRecebimentoExtrato = Array.from(entradasAgrupadas.values()).slice(0, 60).map((r, idx) => ({ ...r, id: `rec-${idx}`, movimento: 'recebimento', escopoRegra: '' }));
+  const itensRecebimentoRateio = criarItensRecebimentosRateioAgrupados();
+  const itensRecebimento = [...itensRecebimentoExtrato, ...itensRecebimentoRateio];
   const itensNumerarioRateio = itensNumerarioRecebimentosRateio(itensRecebimentoRateio);
-  const itensSaidaExtra = saidasExtras.map(({ mov, idxMov, origemTipo }) => ({
+  const itensSaidaExtra = saidasExtras.slice(0, 80).map(({ mov, idxMov }) => ({
     id: `saida-${idxMov}`,
     movimento: 'saida-pendente',
-    origemTipo: origemTipo || 'titulo',
     tipo: mov.tipoConciliacao || 'Saída não conciliada',
     historico: descricaoMovimentoExtrato(mov) || 'Sem histórico',
     qtd: 1,
@@ -3824,21 +2667,6 @@ function renderSugestoesConciliacao(sugestoes, qtdPagamentos, qtdMovimentos, ent
       ${itensRecebimentoRateio.length ? `<div class="metric metric-muted"><div class="metric-label">Recebimentos rateio</div><div class="metric-value metric-text">${itensRecebimentoRateio.length}</div><div class="metric-sub">${numerariosPendentes.length} numerário${numerariosPendentes.length !== 1 ? 's' : ''} pendente${numerariosPendentes.length !== 1 ? 's' : ''}</div></div>` : ''}
     </div>
     <p class="conciliacao-note" style="margin-bottom:10px">Pagamentos são validados contra as saídas do extrato. As pendências devem ser conciliadas manualmente quando não houver sugestão automática.</p>
-    ${avisosRecebimentoRateioDia.length ? `<div class="alert alert-warn" style="margin-bottom:12px">
-      <strong>⚠️ ${avisosRecebimentoRateioDia.length} dia(s) com movimento no extrato muito maior do que a planilha de recebimentos explica</strong> — o rateio desses dias foi limitado ao que a planilha realmente cobre. A sobra abaixo virou pendência na lista de recebimentos (procure "Sobra não explicada..."), preencha a conta certa pra ela entrar na exportação:
-      <div style="margin-top:8px;display:flex;flex-direction:column;gap:4px">
-        ${avisosRecebimentoRateioDia.map(a => `<div>${escapeHtml(a.periodo || a.data)} · conta ${escapeHtml(a.conta)} — extrato: <strong>R$ ${fmtValor(a.totalExtrato)}</strong>, planilha explica: <strong>R$ ${fmtValor(a.totalPlanilha)}</strong>, sobra não lançada: <strong>R$ ${fmtValor(a.diferenca)}</strong></div>`).join('')}
-      </div>
-    </div>` : ''}
-    ${avisosPlanilhaMaiorQueExtrato.length ? `<div class="alert alert-warn" style="margin-bottom:12px">
-      <strong>ℹ️ ${avisosPlanilhaMaiorQueExtrato.length} caso(s) em que a planilha de recebimentos mostra mais do que o extrato confirmou</strong> — isso normalmente é receita ainda não liquidada no banco (não é dinheiro faltando). O sistema usou só o valor do extrato pro rateio e <strong>não lançou nada extra</strong> pra essa diferença:
-      <div style="margin-top:8px;display:flex;flex-direction:column;gap:4px">
-        ${avisosPlanilhaMaiorQueExtrato.map(a => `<div>${escapeHtml(a.periodo)} · conta ${escapeHtml(a.conta)} — extrato: <strong>R$ ${fmtValor(a.totalExtrato)}</strong>, planilha mostra: <strong>R$ ${fmtValor(a.totalPlanilha)}</strong>, ainda não liquidado: <strong>R$ ${fmtValor(a.diferenca)}</strong></div>`).join('')}
-      </div>
-    </div>` : ''}
-    ${itensRecebimentoRateio.length || itensSobraRecebimento.length ? `<div class="alert ${Math.abs(diferencaRefinadaRecebimentos) < 1 ? 'alert-ok' : 'alert-warn'}" style="margin-bottom:12px">
-      <strong>Conferência dos recebimentos pelo extrato</strong> — extrato relevante (cartões/títulos): <strong>R$ ${fmtValor(totalExtratoRelevanteRecebimentos)}</strong>; valor rateado pelo centro de custo + sobras identificadas: <strong>R$ ${fmtValor(totalRateadoMaisSobra)}</strong>; diferença: <strong>R$ ${fmtValor(diferencaRefinadaRecebimentos)}</strong>${Math.abs(diferencaRefinadaRecebimentos) >= 1 ? ' — a sobra costuma ser dia/conta do extrato sem linha correspondente na planilha e entra como recebimento avulso para preencher.' : ' — valores conciliados pelo extrato; o centro de custo só define a empresa dona do lançamento.'}
-    </div>` : ''}
     <div class="conciliation-actions">
       ${qtdParaResolver > 0 ? '<button class="btn btn-primary" onclick="abrirModalPendenciasConciliacao()">Preencher pendências</button>' : ''}
       <button class="btn" onclick="mostrarTela('tela-resultado')">Voltar aos lançamentos</button>
@@ -3980,7 +2808,7 @@ function abrirModalPendenciasConciliacao() {
       return true;
     })
     .filter(item => !filtroPendenciasConciliacaoTemp || textoBuscaPendenciaConciliacao(item).includes(normalizarTexto(filtroPendenciasConciliacaoTemp)));
-  const limitePendencias = filtroPendenciasConciliacaoTemp ? 3000 : 1500;
+  const limitePendencias = filtroPendenciasConciliacaoTemp ? 650 : 280;
   const itensRenderizados = itensModal.slice(0, limitePendencias);
   const avisoLimitePendencias = itensModal.length > itensRenderizados.length
     ? `<div class="conciliacao-note pendencias-limite-aviso">Mostrando ${itensRenderizados.length} de ${itensModal.length} pendências. Use a pesquisa para localizar itens específicos sem travar a tela.</div>`
@@ -3991,8 +2819,7 @@ function abrirModalPendenciasConciliacao() {
       .filter(([id, valorSelecionado]) => id !== item.id && valorSelecionado !== '')
       .map(([, valorSelecionado]) => String(valorSelecionado)));
     const saidasDisponiveis = saidasPendentes.filter(saida =>
-      saida.origemTipo === 'titulo'
-      && !selecionadasEmOutros.has(String(saida.idxOriginal))
+      !selecionadasEmOutros.has(String(saida.idxOriginal))
       && (item.movimento !== 'pagamento-pendente' || !item.conta || !saida.conta || normalizarTexto(item.conta) === normalizarTexto(saida.conta))
     );
     const mesmasSaidas = saidasDisponiveis.filter(saida => Math.abs(saida.total - item.total) < 0.01);
@@ -4294,8 +3121,6 @@ function salvarModalPendenciasConciliacao() {
 const CABECALHO_DOMINIO = ['Data','Cód. Conta Débito','Cód. Conta Crédito','Valor','Cód. Histórico','Complemento Histórico','Inicia Lote','Código Matriz/Filial','Centro de Custo Débito','Centro de Custo Crédito','Tipo do Rateio'];
 
 function linhaDominio(data, debito, credito, valor, complemento, empresa, tipoRateio = '') {
-  const empresaFinal = empresa || grupoAtivo || '';
-  const empresaCodigo = codigoEmpresaMatrizFilial(empresaFinal) || empresaFinal;
   return [
     data || '',
     limparTextoExportacaoDominio(debito || ''),
@@ -4304,7 +3129,7 @@ function linhaDominio(data, debito, credito, valor, complemento, empresa, tipoRa
     '',
     limparTextoExportacaoDominio(complemento || ''),
     '',
-    limparTextoExportacaoDominio(empresaCodigo),
+    limparTextoExportacaoDominio(empresa || grupoAtivo || ''),
     '',
     '',
     limparTextoExportacaoDominio(tipoRateio || '')
@@ -4325,8 +3150,7 @@ function montarLinhasRecebimentoRateioDominio(item, codigoRecebimento, regrasNum
     : empresaBanco;
   const complemento = [item.tipo || primeiroMovimento.tipo, item.historico || primeiroMovimento.historico].filter(Boolean).join(' - ');
   const complementoNumerarios = [complemento, 'TRANSFERENCIA DE NUMERARIOS'].filter(Boolean).join(' - ');
-  const totalLiquidoGrupo = arredondarMoeda(item.total !== undefined && item.total !== null ? item.total : movimentos.reduce((s, mov) => s + (mov.valor || 0), 0));
-  const negativo = totalLiquidoGrupo < 0;
+  const negativo = movimentos.every(mov => arredondarMoeda(mov.valor || 0) < 0) || arredondarMoeda(item.valor || 0) < 0;
   if (item.intercompany || primeiroMovimento.intercompany) {
     const naturezaNumerarioBanco = naturezaNumerarioRecebimento('EMPRESA DO BANCO', negativo);
     const naturezaNumerarioCentro = naturezaNumerarioRecebimento('CENTRO DE CUSTO', negativo);
@@ -4383,7 +3207,7 @@ function montarLinhasDominioConciliacao({ validarPendencias = true } = {}) {
       if (idxMov >= 0 && transferenciasPareadas.has(idxMov)) return;
       linhas.push(linhaDominio(
         fmtDate(mov.data || item.data),
-        codigoBancoConciliacao(mov.conta || item.conta || infoExtratoBancarioTemp?.conta || ''),
+        mov.conta || item.conta || infoExtratoBancarioTemp?.conta || '',
         codigo,
         Math.abs(mov.valor || item.total),
         descricaoMovimentoExtrato(mov) || item.historico,
@@ -4410,27 +3234,6 @@ function montarLinhasDominioConciliacao({ validarPendencias = true } = {}) {
   });
   return linhas;
 }
-function resetarControleExportacoes() {
-  exportacoesRealizadas = { pagamentos: false, conciliacao: false, final: false };
-  showMsg('Controle de exportações desta sessão foi zerado.', 'ok');
-}
-
-function confirmarExportacaoSemSobreposicao(tipo) {
-  let mensagem = '';
-  if (tipo === 'pagamentos' && exportacoesRealizadas.final) {
-    mensagem = 'Você já exportou o arquivo "Final" nesta sessão, que já inclui os lançamentos de pagamentos. Exportar "Pagamentos" separado agora e importar os dois arquivos no Domínio vai DUPLICAR esses lançamentos.';
-  } else if (tipo === 'conciliacao' && exportacoesRealizadas.final) {
-    mensagem = 'Você já exportou o arquivo "Final" nesta sessão, que já inclui os lançamentos de conciliação/recebimentos por rateio. Exportar "Conciliação" separado agora e importar os dois arquivos no Domínio vai DUPLICAR esses lançamentos.';
-  } else if (tipo === 'final' && (exportacoesRealizadas.pagamentos || exportacoesRealizadas.conciliacao)) {
-    const partes = [];
-    if (exportacoesRealizadas.pagamentos) partes.push('"Pagamentos"');
-    if (exportacoesRealizadas.conciliacao) partes.push('"Conciliação"');
-    mensagem = `Você já exportou o arquivo ${partes.join(' e ')} nesta sessão. O arquivo "Final" também inclui esses mesmos lançamentos. Importar o Final além do(s) arquivo(s) já exportado(s) no Domínio vai DUPLICAR os lançamentos.`;
-  }
-  if (!mensagem) return true;
-  return confirm(mensagem + '\n\nSó exporte de novo se tiver certeza de que vai importar no Domínio apenas UM desses arquivos (e não os dois).\n\nDeseja exportar mesmo assim?');
-}
-
 function exportarConciliacaoBancaria() {
   const linhas = montarLinhasDominioConciliacao();
   if (linhas === null) return;
@@ -4438,14 +3241,12 @@ function exportarConciliacaoBancaria() {
     alert('Não há movimentos novos para exportar na conciliação. Os pagamentos já ficam no arquivo final.');
     return;
   }
-  if (!confirmarExportacaoSemSobreposicao('conciliacao')) return;
   linhas[0][6] = 1;
   const ws = XLSX.utils.aoa_to_sheet([CABECALHO_DOMINIO, ...linhas]);
   const wb = XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(wb, ws, 'Domínio Conciliação');
   const data = new Date().toLocaleDateString('pt-BR').replace(/\//g,'-');
   XLSX.writeFile(wb, `Dominio_Conciliacao_Bancaria_${grupoAtivo}_${data}.xlsx`);
-  exportacoesRealizadas.conciliacao = true;
 }
 
 function renderGrupos() {
@@ -4535,7 +3336,6 @@ function editarGrupoCadastro(g) {
 }
 function selecionarGrupo(g) {
   grupoAtivo = g;
-  exportacoesRealizadas = { pagamentos: false, conciliacao: false, final: false };
   renderGrupos();
   showMsg(`Grupo "${g}" selecionado.`, 'ok');
 }
@@ -4940,26 +3740,6 @@ function codigoContaSemConciliacao(conta) {
   return obterCodigoContaParaDominio(valor);
 }
 
-function codigoEmpresaMatrizFilial(empresa) {
-  const texto = limparTextoECD(empresa);
-  if (!texto || !grupoAtivo) return '';
-  const chaveNormalizada = normalizarTexto(texto);
-  const regrasGrupo = mapaEmpresas[grupoAtivo] || {};
-  const valor = regrasGrupo[texto] || regrasGrupo[chaveNormalizada] || '';
-  return String(valor || '').trim();
-}
-
-function salvarMapaEmpresaInput(input) {
-  if (!input?.dataset?.empresaMapa || !grupoAtivo) return;
-  const empresa = limparTextoECD(input.dataset.empresaMapa);
-  const codigo = String(input.value || '').trim();
-  mapaEmpresas[grupoAtivo] = mapaEmpresas[grupoAtivo] || {};
-  mapaEmpresas[grupoAtivo][empresa] = codigo;
-  mapaEmpresas[grupoAtivo][normalizarTexto(empresa)] = codigo;
-  input.value = codigo;
-  salvarStorage();
-}
-
 function salvarContaSemConciliacaoInput(input) {
   if (!input?.dataset?.contaSemConciliacao || !grupoAtivo) return;
   const conta = limparTextoECD(input.dataset.contaSemConciliacao);
@@ -5053,20 +3833,10 @@ async function classificarArquivoRateioImportacao(file) {
       if (recebimento) return recebimento;
     } catch (errRecebimento) {}
   }
-  if (nome.includes('rateio') && (nome.includes('pagar') || nome.includes('tituloapagar') || nome.includes('titulo a pagar'))) {
-    try {
-      const leituraPagamentoRateio = linhasPlanilhaRateio(wb);
-      if (leituraPagamentoRateio?.dados?.length) {
-        return { tipo: 'rateio-pagamento', arquivo: file.name, dados: leituraPagamentoRateio.dados, subtipo: 'apoio-rateio' };
-      }
-    } catch (errPagamentoRateio) {}
-  }
   try {
-    const leituraTitulos = linhasPlanilhaTitulos(wb);
-    if (leituraTitulos?.dados?.length) {
-      return { tipo: 'pagamento', arquivo: file.name, dados: marcarLinhasTitulosComoRateio(leituraTitulos.dados), subtipo: 'titulos' };
-    }
-  } catch (errTitulos) {}
+    const leituraPagamento = linhasPlanilhaRateio(wb);
+    if (leituraPagamento?.dados?.length) return { tipo: 'pagamento', arquivo: file.name, dados: leituraPagamento.dados };
+  } catch (errPagamento) {}
   try {
     const recebimento = tentarRecebimento();
     if (recebimento) return recebimento;
@@ -5111,7 +3881,6 @@ async function processarArquivosImportacao(files) {
           return;
         }
         linhasImportadasModo = modoImportacaoPagamentos;
-        rateiosPagamentoApoioTemp = [];
         prepararPagamentosImportados(dados, true);
       } catch(err) {
         alert('Erro ao ler o arquivo: ' + err.message);
@@ -5122,52 +3891,17 @@ async function processarArquivosImportacao(files) {
   }
 
   try {
-    const leituras = [];
-    for (const file of files) {
-      try {
-        const value = await classificarArquivoRateioImportacao(file);
-        leituras.push({ status: 'fulfilled', value });
-      } catch (reason) {
-        leituras.push({ status: 'rejected', reason });
-      }
-      await new Promise(resolve => setTimeout(resolve, 0));
-    }
-    const resultados = leituras.filter(r => r.status === 'fulfilled').map(r => r.value);
-    const errosLeitura = leituras.filter(r => r.status === 'rejected').map(r => r.reason?.message || String(r.reason || 'Erro ao ler arquivo.'));
-    if (resultados.length === 0) {
-      throw new Error(errosLeitura[0] || 'Nenhum arquivo reconhecido.');
-    }
-    const pagamentosBase = resultados.filter(r => r.tipo === 'pagamento').flatMap(r => r.dados || []);
-    const rateiosPagamento = resultados.filter(r => r.tipo === 'rateio-pagamento').flatMap(r => r.dados || []);
-    rateiosPagamentoApoioTemp = rateiosPagamento;
-    const rateioAplicado = aplicarRateioApoioPagamentos(pagamentosBase, rateiosPagamento);
-    const pagamentos = rateioAplicado.dados;
+    const resultados = await Promise.all(files.map(classificarArquivoRateioImportacao));
+    const pagamentos = resultados.filter(r => r.tipo === 'pagamento').flatMap(r => r.dados || []);
     const recebimentos = resultados.filter(r => r.tipo === 'recebimento');
     const qtdRecebimentos = recebimentos.length ? adicionarRecebimentosRateio(recebimentos) : 0;
-    if (pagamentosBase.length === 0) {
+    if (pagamentos.length === 0) {
       showMsg(`${qtdRecebimentos} recebimento${qtdRecebimentos !== 1 ? 's' : ''} por rateio importado${qtdRecebimentos !== 1 ? 's' : ''}. Nenhuma planilha de pagamento foi selecionada.`, 'ok');
       return;
     }
     linhasImportadasModo = 'rateio';
     prepararPagamentosImportados(pagamentos, true);
-    if (qtdRecebimentos > 0) {
-      const aviso = errosLeitura.length ? ` ${errosLeitura.length} arquivo${errosLeitura.length !== 1 ? 's' : ''} não reconhecido${errosLeitura.length !== 1 ? 's' : ''}.` : '';
-      const msgRateio = rateioAplicado.linhasRateadas
-        ? ` ${rateioAplicado.linhasRateadas} linha${rateioAplicado.linhasRateadas !== 1 ? 's' : ''} "Rateado" aberta${rateioAplicado.linhasRateadas !== 1 ? 's' : ''} em ${rateioAplicado.linhasApoioUsadas} linha${rateioAplicado.linhasApoioUsadas !== 1 ? 's' : ''} de centro de custo.`
-        : '';
-      const msgSemApoio = rateioAplicado.rateadosSemApoio
-        ? ` ${rateioAplicado.rateadosSemApoio} linha${rateioAplicado.rateadosSemApoio !== 1 ? 's' : ''} "Rateado" sem abertura compatível.`
-        : '';
-      showMsg(`${pagamentos.length} pagamento${pagamentos.length !== 1 ? 's' : ''} e ${qtdRecebimentos} recebimento${qtdRecebimentos !== 1 ? 's' : ''} por rateio importado${qtdRecebimentos !== 1 ? 's' : ''}.${msgRateio}${msgSemApoio}${aviso}`, errosLeitura.length || rateioAplicado.rateadosSemApoio ? 'warn' : 'ok');
-    } else {
-      const msgRateio = rateioAplicado.linhasRateadas
-        ? `${rateioAplicado.linhasRateadas} linha${rateioAplicado.linhasRateadas !== 1 ? 's' : ''} "Rateado" aberta${rateioAplicado.linhasRateadas !== 1 ? 's' : ''} em ${rateioAplicado.linhasApoioUsadas} linha${rateioAplicado.linhasApoioUsadas !== 1 ? 's' : ''} de centro de custo.`
-        : '';
-      const msgSemApoio = rateioAplicado.rateadosSemApoio
-        ? ` ${rateioAplicado.rateadosSemApoio} linha${rateioAplicado.rateadosSemApoio !== 1 ? 's' : ''} "Rateado" sem abertura compatível.`
-        : '';
-      if (msgRateio || msgSemApoio) showMsg(`${msgRateio}${msgSemApoio}`, rateioAplicado.rateadosSemApoio ? 'warn' : 'ok');
-    }
+    if (qtdRecebimentos > 0) showMsg(`${pagamentos.length} pagamento${pagamentos.length !== 1 ? 's' : ''} e ${qtdRecebimentos} recebimento${qtdRecebimentos !== 1 ? 's' : ''} por rateio importado${qtdRecebimentos !== 1 ? 's' : ''}.`, 'ok');
   } catch(err) {
     alert('Erro ao ler os arquivos: ' + err.message);
   }
@@ -5235,8 +3969,8 @@ function renderLinhaAjustePar(linha) {
   const historicoExibido = infoDoc.historico;
   const palavras = renderPalavrasHistorico(chave, historicoExibido, trechoHistorico);
   const tipoRateio = tipoRateioOperacao(empresaOrigem || empresa, centroCusto, !!rateio);
-  const tipoRateioTitulo = tipoRateio === 'TRANSFERENCIA DE NUMERARIOS' ? 'TRANSFERÊNCIA DE NUMERÁRIOS' : tipoRateio === 'PROPRIO' ? 'PRÓPRIO' : tipoRateio;
-  const tipoRateioSub = tipoRateio === 'TRANSFERENCIA DE NUMERARIOS' ? 'Empresa do banco x centro de custo' : '';
+  const tipoRateioTitulo = tipoRateio === 'TRANSFERENCIA DE NUMERARIOS' ? 'DESPESA' : tipoRateio === 'PROPRIO' ? 'PRÓPRIO' : tipoRateio;
+  const tipoRateioSub = tipoRateio === 'TRANSFERENCIA DE NUMERARIOS' ? 'Centro de custo' : '';
   const chavesPar = [linha.debito?.chave, linha.credito?.chave].filter(Boolean);
   const chavesParEncoded = encodeURIComponent(JSON.stringify(chavesPar));
   const selecionado = chavesPar.length > 0 && chavesPar.every(k => selecionadasLote.has(k));
@@ -5288,7 +4022,6 @@ function renderNovasChaves() {
     const infoDoc = separarNumeroDoHistorico(tipoDoc, numero, historico);
     const historicoExibido = infoDoc.historico;
     const isAjuste = tipoDoc === 'DESCONTO' || tipoDoc === 'ACRÉSCIMO' || tipoDoc.startsWith('DESCONTO -') || tipoDoc.startsWith('ACRÉSCIMO -');
-    const isRateadoSemApoio = tipoDoc === 'RATEADO SEM ABERTURA';
     const historicoVisual = isAjuste ? `${tipoDoc} - ${historicoExibido}` : historicoExibido;
     const numeroExibido = tipoUsaNumero(tipoDoc) ? infoDoc.numero : '';
     const palavrasHistorico = renderPalavrasHistorico(chave, historicoExibido, trechoHistorico);
@@ -5298,26 +4031,22 @@ function renderNovasChaves() {
     const tipoRateioTitulo = ehNumerario
       ? (naturezaLabel === 'PASSIVO' ? 'NUM. PASSIVO' : naturezaLabel === 'ATIVO' ? 'NUM. ATIVO' : 'NUMERÁRIOS')
       : tipoRateio === 'TRANSFERENCIA DE NUMERARIOS'
-        ? 'TRANSFERÊNCIA DE NUMERÁRIOS'
+        ? 'DESPESA'
         : tipoRateio === 'PROPRIO'
           ? 'PRÓPRIO'
           : tipoRateio;
     const tipoRateioSub = ehNumerario
       ? 'Transferência'
       : tipoRateio === 'TRANSFERENCIA DE NUMERARIOS'
-        ? 'Empresa do banco x centro de custo'
+        ? 'Centro de custo'
         : '';
     const placeholderCodigo = ehNumerario
       ? `Conta de numerários ${naturezaLabel.toLowerCase()}`
-      : isRateadoSemApoio
-        ? 'Conta da guia/obrigação'
       : tipoRateio === 'TRANSFERENCIA DE NUMERARIOS'
         ? 'Conta da despesa/fornecedor'
         : 'Digite o código ou nome da conta';
     const dicaCodigo = ehNumerario
       ? `Preencher a conta de transferência de numerários ${naturezaLabel.toLowerCase()}.`
-      : isRateadoSemApoio
-        ? 'Esta linha veio com Centro de Custo = Rateado e não encontrou abertura compatível na planilha de apoio. Confira se é guia consolidada (INSS/FGTS) ou se faltou importar o apoio correto.'
       : tipoRateio === 'TRANSFERENCIA DE NUMERARIOS'
         ? 'Preencher a conta contábil da despesa/fornecedor, não o banco.'
         : '';
@@ -5423,13 +4152,8 @@ function selecionarPalavraHistoricoRegra(btn) {
 
 function coletarCodigosNovasChaves() {
   document.querySelectorAll('#tbody-novas-chaves input[type=text][data-chave]').forEach(inp => {
-    const item = novasChavesTemp.find(n => n.chave === inp.dataset.chave);
-    if (item && item.tipoItem === 'empresaMapa') {
-      codigosTemp[inp.dataset.chave] = String(inp.value || '').trim();
-    } else {
-      codigosTemp[inp.dataset.chave] = obterCodigoContaParaDominio(inp.value);
-      inp.value = codigosTemp[inp.dataset.chave];
-    }
+    codigosTemp[inp.dataset.chave] = obterCodigoContaParaDominio(inp.value);
+    inp.value = codigosTemp[inp.dataset.chave];
   });
 }
 
@@ -5606,22 +4330,10 @@ function aplicarCodigoEmLote() {
   inputLote.value = codigo;
   // Aplica no codigosTemp para todas selecionadas
   selecionadasLote.forEach(chave => { codigosTemp[chave] = codigo; });
-  // Salva imediatamente no depara do grupo ativo (ou no mapa de contas/empresas, se for o caso)
+  // Salva imediatamente no depara do grupo ativo
   const regrasSalvas = Object.assign({}, depara[grupoAtivo] || {});
   selecionadasLote.forEach(chave => {
     const item = novasChavesTemp.find(n => n.chave === chave);
-    if (item && item.tipoItem === 'contaMapa') {
-      contasSemConciliacao[grupoAtivo] = contasSemConciliacao[grupoAtivo] || {};
-      contasSemConciliacao[grupoAtivo][item.nomeMapa] = codigo;
-      contasSemConciliacao[grupoAtivo][normalizarTexto(item.nomeMapa)] = codigo;
-      return;
-    }
-    if (item && item.tipoItem === 'empresaMapa') {
-      mapaEmpresas[grupoAtivo] = mapaEmpresas[grupoAtivo] || {};
-      mapaEmpresas[grupoAtivo][item.nomeMapa] = codigo;
-      mapaEmpresas[grupoAtivo][normalizarTexto(item.nomeMapa)] = codigo;
-      return;
-    }
     regrasSalvas[item ? obterChaveRegraNova(item) : chave] = codigo;
   });
   depara[grupoAtivo] = regrasSalvas;
@@ -5633,13 +4345,8 @@ function aplicarCodigoEmLote() {
 function salvarNovasChavesEGerar() {
   // Coletar valores dos inputs
   document.querySelectorAll('#tbody-novas-chaves input[type=text][data-chave]').forEach(inp => {
-    const item = novasChavesTemp.find(n => n.chave === inp.dataset.chave);
-    if (item && item.tipoItem === 'empresaMapa') {
-      codigosTemp[inp.dataset.chave] = String(inp.value || '').trim();
-    } else {
-      codigosTemp[inp.dataset.chave] = obterCodigoContaParaDominio(inp.value);
-      inp.value = codigosTemp[inp.dataset.chave];
-    }
+    codigosTemp[inp.dataset.chave] = obterCodigoContaParaDominio(inp.value);
+    inp.value = codigosTemp[inp.dataset.chave];
   });
   salvarCodigosPreenchidosNoGrupo();
   const regrasSalvas = Object.assign({}, depara[grupoAtivo] || {});
@@ -5675,70 +4382,8 @@ function arredondarMoeda(v) {
   return Math.round((numeroMoeda(v) + Number.EPSILON) * 100) / 100;
 }
 
-function chaveMovimentoRealPagamentoRateio(r) {
-  return [
-    dataKey(r[COLS.LIQUIDACAO]),
-    normalizarTexto(limparTextoECD(r[COLS.CONTA])),
-    normalizarTexto(empresaOrigemLinha(r)),
-    normalizarTexto(centroCustoLinha(r)),
-    normalizarTexto(String(r[COLS.NUMERO] ?? '')),
-    normalizarTexto(String(r[COLS.PARCELA] ?? ''))
-  ].join('|');
-}
-
-// Guia/título que uma mesma "Número" cobre pode ser rateada entre VÁRIAS empresas do grupo
-// (ex.: uma guia de INSS/IRPJ/CSLL única, dividida por centro de custo entre as filiais).
-// Para decidir se um desconto/retenção cabe na linha principal sem ficar negativo, é preciso
-// olhar a guia inteira (todas as empresas), não só a fatia de uma empresa — por isso essa
-// chave NÃO inclui empresa/centro de custo, diferente de chaveMovimentoRealPagamentoRateio
-// (que precisa da empresa/centro para separar corretamente o lado do banco no intercompany).
-function chaveGuiaAbsorverRateio(r) {
-  return [
-    dataKey(r[COLS.LIQUIDACAO]),
-    normalizarTexto(limparTextoECD(r[COLS.CONTA])),
-    normalizarTexto(String(r[COLS.NUMERO] ?? '')),
-    normalizarTexto(String(r[COLS.PARCELA] ?? ''))
-  ].join('|');
-}
-
 function gerarLancamentos(dados, regras) {
   lancamentosGerados = [];
-  const totaisMovimentoRateioBanco = new Map();
-  dados.forEach(r => {
-    if (!rateioIntercompanyLinha(r)) return;
-    const chaveMov = chaveMovimentoRealPagamentoRateio(r);
-    const valorLiqRow = arredondarMoeda(r[COLS.VALOR_LIQ]);
-    totaisMovimentoRateioBanco.set(chaveMov, arredondarMoeda((totaisMovimentoRateioBanco.get(chaveMov) || 0) + valorLiqRow));
-  });
-
-  // Linhas negativas de rateio (não-intercompany) nunca tocam o banco sozinhas — são
-  // desconto comercial ou retenção legal de folha (INSS/FGTS), ambos absorvidos na linha
-  // principal (maior valor positivo) do mesmo movimento bancário real, sem gerar
-  // lançamento nem pedir código próprio. Não afeta parcela de título nem intercompany.
-  const gruposAbsorverPreview = new Map();
-  dados.forEach((r, idx) => {
-    if (!r.__rateio || rateioIntercompanyLinha(r)) return;
-    const chave = chaveGuiaAbsorverRateio(r);
-    const valor = arredondarMoeda(r[COLS.VALOR_LIQ]);
-    const plano = limparTextoECD(r[COLS.PLANO]);
-    if (!gruposAbsorverPreview.has(chave)) gruposAbsorverPreview.set(chave, []);
-    gruposAbsorverPreview.get(chave).push({ idx, valor, plano });
-  });
-  const absorvedorPorGrupo = new Map();
-  const valorAbsorverPorGrupo = new Map();
-  gruposAbsorverPreview.forEach((linhas, chave) => {
-    const descontos = linhas.filter(l => ehDescontoComercialAbsorvivel(l.plano, l.valor));
-    if (descontos.length === 0) return;
-    const candidatos = linhas.filter(l => !ehDescontoComercialAbsorvivel(l.plano, l.valor) && l.valor > 0);
-    if (candidatos.length === 0) return;
-    const principal = candidatos.reduce((max, l) => (l.valor > max.valor ? l : max), candidatos[0]);
-    const totalDesconto = arredondarMoeda(descontos.reduce((s, l) => s + l.valor, 0));
-    if (arredondarMoeda(principal.valor + totalDesconto) <= 0) return;
-    absorvedorPorGrupo.set(chave, principal.idx);
-    valorAbsorverPorGrupo.set(chave, totalDesconto);
-  });
-
-  const bancoLegEmitidoRateio = new Set();
   let totalLiquido = 0;
   let totalBruto = 0;
   let totalDesconto = 0;
@@ -5753,12 +4398,6 @@ function gerarLancamentos(dados, regras) {
     const infoDoc = separarNumeroDoHistorico(tipoDoc, r[COLS.NUMERO], r[COLS.HISTORICO]);
     const historico = infoDoc.historico;
     if (!forn && !plano && !tipoDoc && !historico) return;
-    if (r.__rateio && !rateioIntercompanyLinha(r)) {
-      const valorRateioAtual = arredondarMoeda(r[COLS.VALOR_LIQ]);
-      if (ehRetencaoFolhaSemLancamento(plano, valorRateioAtual) && absorvedorPorGrupo.has(chaveGuiaAbsorverRateio(r))) {
-        return; // retenção (INSS/FGTS) absorvida no banco, sem lançamento próprio (obrigação já lançada à parte)
-      }
-    }
     const escopoRegra = escopoRegraLinha(r);
     const chave = montarChave(forn, plano, tipoDoc, historico, escopoRegra);
     const codDeparaPrincipal = obterCodigoContaParaDominio(encontrarCodigoRegra(regras, forn, plano, tipoDoc, historico, escopoRegra));
@@ -5775,18 +4414,9 @@ function gerarLancamentos(dados, regras) {
     const centroCustoRateio = centroCustoLinha(r);
     const linhaRateioNegativa = !!r.__rateio && valorLiq < 0;
     const intercompanyRateio = rateioIntercompanyLinha(r);
-    let valorLancamento = linhaRateioNegativa ? Math.abs(valorLiq) : valorLiq;
-    let notaDescontoAbsorvido = '';
-    if (r.__rateio && !intercompanyRateio) {
-      const chaveMovAbsorver = chaveGuiaAbsorverRateio(r);
-      if (absorvedorPorGrupo.get(chaveMovAbsorver) === idx) {
-        const totalAbsorvido = valorAbsorverPorGrupo.get(chaveMovAbsorver) || 0;
-        valorLancamento = arredondarMoeda(valorLancamento + totalAbsorvido);
-        notaDescontoAbsorvido = ` (inclui desconto de R$ ${fmtValor(Math.abs(totalAbsorvido))})`;
-      }
-    }
+    const valorLancamento = linhaRateioNegativa ? Math.abs(valorLiq) : valorLiq;
     if (valorLancamento === 0) return;
-    const complemento = [forn, tipoDoc, num, plano, historico].filter(Boolean).join(' - ') + notaDescontoAbsorvido;
+    const complemento = [forn, tipoDoc, num, plano, historico].filter(Boolean).join(' - ');
     const complementoIntercompany = [complemento, 'TRANSFERENCIA DE NUMERARIOS'].filter(Boolean).join(' - ');
     const tipoRateioAtual = tipoRateioLinha(r);
 
@@ -5794,7 +4424,7 @@ function gerarLancamentos(dados, regras) {
     totalBruto += valorBruto;
     if (acrescimoDesconto < 0) totalDesconto += Math.abs(acrescimoDesconto);
     if (acrescimoDesconto > 0) totalAcrescimo += acrescimoDesconto;
-    const tipoAjusteRateio = (r.__rateio && !intercompanyRateio && !ehDescontoComercialAbsorvivel(plano, valorLiq)) ? tipoAjusteRateioPlano(plano, valorLiq) : '';
+    const tipoAjusteRateio = r.__rateio ? tipoAjusteRateioPlano(plano, valorLiq) : '';
     if (tipoAjusteRateio) {
       const valorAjusteRateio = Math.abs(valorLiq);
       if (tipoAjusteRateio === 'DESCONTO') totalDesconto += valorAjusteRateio;
@@ -5829,11 +4459,7 @@ function gerarLancamentos(dados, regras) {
 
 
     if (intercompanyRateio) {
-      const chaveMovReal = chaveMovimentoRealPagamentoRateio(r);
-      const totalGrupoBanco = arredondarMoeda(totaisMovimentoRateioBanco.has(chaveMovReal) ? totaisMovimentoRateioBanco.get(chaveMovReal) : valorLiq);
-      const grupoNegativo = totalGrupoBanco < 0;
-      const valorGrupoBanco = Math.abs(totalGrupoBanco);
-      const naturezaNumerarioBanco = naturezaNumerarioPagamento('EMPRESA DO BANCO', grupoNegativo);
+      const naturezaNumerarioBanco = naturezaNumerarioPagamento('EMPRESA DO BANCO', linhaRateioNegativa);
       const naturezaNumerarioCentro = naturezaNumerarioPagamento('CENTRO DE CUSTO', linhaRateioNegativa);
       const codNumerarioBanco = codigoNumerarioRateio(regras, empresaBancoRateio, centroCustoRateio, 'EMPRESA DO BANCO', naturezaNumerarioBanco);
       const codNumerarioCentro = codigoNumerarioRateio(regras, empresaBancoRateio, centroCustoRateio, 'CENTRO DE CUSTO', naturezaNumerarioCentro);
@@ -5843,17 +4469,11 @@ function gerarLancamentos(dados, regras) {
       if (!codNumerarioCentro) pendentes.add(chaveNumerarioCentro);
       const semCodigoBanco = !codNumerarioBanco || !codCredito;
       const semCodigoCentro = !codDeparaPrincipal || !codNumerarioCentro;
-      if (!bancoLegEmitidoRateio.has(chaveMovReal) && valorGrupoBanco > 0) {
-        bancoLegEmitidoRateio.add(chaveMovReal);
-        if (grupoNegativo) {
-          lancamentosGerados.push({ idx, data: dataLiq, codDebito: codCredito, codCredito: codNumerarioBanco, valorLiq: valorGrupoBanco, valorFmt: fmtValor(valorGrupoBanco), complemento: complementoIntercompany, empresa: empresaBancoRateio, plano, acrescimoDesconto, semCodigo: semCodigoBanco, rateioNegativo: true, tipoRateio: tipoRateioAtual });
-        } else {
-          lancamentosGerados.push({ idx, data: dataLiq, codDebito: codNumerarioBanco, codCredito, valorLiq: valorGrupoBanco, valorFmt: fmtValor(valorGrupoBanco), complemento: complementoIntercompany, empresa: empresaBancoRateio, plano, acrescimoDesconto, semCodigo: semCodigoBanco, tipoRateio: tipoRateioAtual });
-        }
-      }
       if (linhaRateioNegativa) {
+        lancamentosGerados.push({ idx, data: dataLiq, codDebito: codCredito, codCredito: codNumerarioBanco, valorLiq: valorLancamento, valorFmt: fmtValor(valorLancamento), complemento: complementoIntercompany, empresa: empresaBancoRateio, plano, acrescimoDesconto, semCodigo: semCodigoBanco, rateioNegativo: true, tipoRateio: tipoRateioAtual });
         lancamentosGerados.push({ idx, data: dataLiq, codDebito: codNumerarioCentro, codCredito: codDeparaPrincipal, valorLiq: valorLancamento, valorFmt: fmtValor(valorLancamento), complemento: complementoIntercompany, empresa, plano, acrescimoDesconto, semCodigo: semCodigoCentro, rateioNegativo: true, tipoRateio: tipoRateioAtual });
       } else {
+        lancamentosGerados.push({ idx, data: dataLiq, codDebito: codNumerarioBanco, codCredito, valorLiq: valorLancamento, valorFmt: fmtValor(valorLancamento), complemento: complementoIntercompany, empresa: empresaBancoRateio, plano, acrescimoDesconto, semCodigo: semCodigoBanco, tipoRateio: tipoRateioAtual });
         lancamentosGerados.push({ idx, data: dataLiq, codDebito: codDeparaPrincipal, codCredito: codNumerarioCentro, valorLiq: valorLancamento, valorFmt: fmtValor(valorLancamento), complemento: complementoIntercompany, empresa, plano, acrescimoDesconto, semCodigo: semCodigoCentro, tipoRateio: tipoRateioAtual });
       }
       return;
@@ -5905,13 +4525,6 @@ function gerarLancamentos(dados, regras) {
   const metSem = document.getElementById('met-sem');
   metSem.textContent = semCod;
   metSem.className = 'metric-value ' + (semCod > 0 ? 'warn' : 'ok');
-  const { contasFaltando, empresasFaltando } = pendenciasMapaCodigos();
-  const totalMapaFaltando = contasFaltando.length + empresasFaltando.length;
-  const cardMapa = document.getElementById('metric-mapa-codigos');
-  if (cardMapa) {
-    cardMapa.style.display = totalMapaFaltando > 0 ? '' : 'none';
-    document.getElementById('met-mapa-codigos').textContent = totalMapaFaltando;
-  }
   document.getElementById('met-valor').textContent = 'R$ ' + fmtValor(totalLiquido);
   document.getElementById('met-total-bruto').textContent = 'Bruto: R$ ' + fmtValor(totalBruto);
   document.getElementById('met-total-liquido').textContent = 'Líquido: R$ ' + fmtValor(totalLiquido);
@@ -5977,59 +4590,32 @@ function gerarLancamentos(dados, regras) {
     </tr>
   `).join('');
 
-  if (extratoBancarioTemp.length > 0) gerarSugestoesConciliacao({ redirecionarSeOk: false });
   mostrarTela('tela-resultado');
-}
-
-function pendenciasMapaCodigos() {
-  const contas = coletarContasParaMapa();
-  const empresas = coletarEmpresasParaMapa();
-  const regrasContas = contasSemConciliacao[grupoAtivo] || {};
-  const regrasEmpresas = mapaEmpresas[grupoAtivo] || {};
-  const contasFaltando = contas.filter(c => !obterCodigoContaParaDominio(regrasContas[c] || ''));
-  const empresasFaltando = empresas.filter(e => !String(regrasEmpresas[e] || '').trim());
-  return { contasFaltando, empresasFaltando };
-}
-
-function bloquearExportacaoPorMapaCodigos() {
-  const { contasFaltando, empresasFaltando } = pendenciasMapaCodigos();
-  if (contasFaltando.length === 0 && empresasFaltando.length === 0) return false;
-  const partes = [];
-  if (contasFaltando.length) partes.push(`Conta(s) sem código: ${contasFaltando.join(', ')}`);
-  if (empresasFaltando.length) partes.push(`Empresa(s)/filial(is) sem código: ${empresasFaltando.join(', ')}`);
-  alert(`Antes de exportar, preencha o Mapa de Códigos (Regras → Mapa de códigos):\n\n${partes.join('\n')}`);
-  mostrarTela('tela-mapa-codigos');
-  return true;
 }
 
 function montarLinhasDominioPagamentos() {
   const lancamentosPagamentos = lancamentosGerados.filter(l => !l.origemConciliacao);
   return lancamentosPagamentos.map(l => [
     l.data, l.codDebito, limparTextoExportacaoDominio(l.codCredito), l.valorLiq, '', limparTextoExportacaoDominio(l.complemento),
-    '', limparTextoExportacaoDominio(codigoEmpresaMatrizFilial(l.empresa) || l.empresa), '', '', limparTextoExportacaoDominio(l.tipoRateio || '')
+    '', limparTextoExportacaoDominio(l.empresa), '', '', limparTextoExportacaoDominio(l.tipoRateio || '')
   ]);
 }
 
 function exportarDominioPagamentos() {
-  if (bloquearExportacaoPorMapaCodigos()) return;
   const linhas = montarLinhasDominioPagamentos();
   if (linhas.length === 0) {
     alert('Gere os lançamentos antes de exportar.');
     return;
   }
-  if (!confirmarExportacaoSemSobreposicao('pagamentos')) return;
   linhas[0][6] = 1;
   const ws = XLSX.utils.aoa_to_sheet([CABECALHO_DOMINIO, ...linhas]);
   const wb = XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(wb, ws, 'Lançamentos Domínio');
   const data = new Date().toLocaleDateString('pt-BR').replace(/\//g,'-');
   XLSX.writeFile(wb, `Dominio_Pagamentos_${grupoAtivo}_${data}.xlsx`);
-  exportacoesRealizadas.pagamentos = true;
 }
 
 function exportarDominioFinal() {
-  if (bloquearExportacaoPorMapaCodigos()) return;
-  if (extratoBancarioTemp.length > 0) gerarSugestoesConciliacao({ redirecionarSeOk: false });
   const linhasPagamentos = montarLinhasDominioPagamentos();
   if (linhasPagamentos.length === 0) {
     alert('Gere os lançamentos de pagamentos antes de exportar.');
@@ -6037,7 +4623,6 @@ function exportarDominioFinal() {
   }
   const linhasConciliacao = montarLinhasDominioConciliacao();
   if (linhasConciliacao === null) return;
-  if (!confirmarExportacaoSemSobreposicao('final')) return;
 
   const linhas = [...linhasPagamentos, ...linhasConciliacao];
   linhas.forEach(l => { l[6] = ''; });
@@ -6048,121 +4633,9 @@ function exportarDominioFinal() {
   XLSX.utils.book_append_sheet(wb, ws, 'Lançamentos Domínio');
   const data = new Date().toLocaleDateString('pt-BR').replace(/\//g,'-');
   XLSX.writeFile(wb, `Dominio_Final_${grupoAtivo}_${data}.xlsx`);
-  exportacoesRealizadas.final = true;
 }
 
 // ---------- REGRAS ----------
-function exportarRegrasNumerarioRateio() {
-  if (!grupoAtivo) { showMsg('Selecione um grupo primeiro.', 'warn'); return; }
-  const regras = depara[grupoAtivo] || {};
-  const linhas = Object.keys(regras)
-    .filter(chave => chave.startsWith('RATEIO NUMERARIOS'))
-    .map(chave => {
-      const partes = chave.split(' | ');
-      return {
-        empresaBanco: partes[1] || '',
-        centroCusto: partes[2] || '',
-        lado: partes[3] || '',
-        natureza: partes[4] || '',
-        codigo: regras[chave] || '',
-        chave
-      };
-    });
-  if (linhas.length === 0) {
-    showMsg('Nenhuma regra de numerário salva pra este grupo ainda.', 'warn');
-    return;
-  }
-  const cabecalho = ['Empresa do Banco', 'Centro de Custo', 'Lado', 'Natureza', 'Código da Conta', 'Chave completa'];
-  const dados = linhas.map(l => [l.empresaBanco, l.centroCusto, l.lado, l.natureza, l.codigo, l.chave]);
-  const ws = XLSX.utils.aoa_to_sheet([cabecalho, ...dados]);
-  const wb = XLSX.utils.book_new();
-  XLSX.utils.book_append_sheet(wb, ws, 'Regras Numerário');
-  const data = new Date().toLocaleDateString('pt-BR').replace(/\//g, '-');
-  XLSX.writeFile(wb, `Regras_Numerario_${grupoAtivo}_${data}.xlsx`);
-}
-
-function coletarContasParaMapa() {
-  const mapa = new Map(); // normalizado -> nome original
-  const add = v => {
-    const nome = limparTextoECD(v);
-    if (!nome) return;
-    const k = normalizarTexto(nome);
-    if (!mapa.has(k)) mapa.set(k, nome);
-  };
-  extratoBancarioTemp.forEach(m => add(m.conta));
-  linhasImportadas.forEach(r => add(r[COLS.CONTA]));
-  recebimentosRateioTemp.forEach(r => add(r.conta));
-  const salvas = contasSemConciliacao[grupoAtivo] || {};
-  Object.keys(salvas).forEach(k => {
-    // pula chaves puramente normalizadas ja cobertas por uma chave "bonita" equivalente
-    if (!mapa.has(normalizarTexto(k))) add(k);
-  });
-  return Array.from(mapa.values()).sort((a, b) => a.localeCompare(b, 'pt-BR'));
-}
-
-function coletarEmpresasParaMapa() {
-  const mapa = new Map();
-  const add = v => {
-    const nome = limparTextoECD(v);
-    if (!nome) return;
-    if (normalizarTexto(nome) === 'rateado') return;
-    const k = normalizarTexto(nome);
-    if (!mapa.has(k)) mapa.set(k, nome);
-  };
-  linhasImportadas.forEach(r => {
-    add(r[COLS.EMPRESA]);
-    add(centroCustoLinha(r));
-    add(empresaOrigemLinha(r));
-  });
-  recebimentosRateioTemp.forEach(r => {
-    add(r.centroCusto);
-    add(r.empresaBanco);
-  });
-  const salvas = mapaEmpresas[grupoAtivo] || {};
-  Object.keys(salvas).forEach(k => {
-    if (!mapa.has(normalizarTexto(k))) add(k);
-  });
-  return Array.from(mapa.values()).sort((a, b) => a.localeCompare(b, 'pt-BR'));
-}
-
-function renderMapaCodigos() {
-  const tituloEl = document.getElementById('titulo-mapa-codigos');
-  if (tituloEl) tituloEl.textContent = grupoAtivo || '';
-  const el = document.getElementById('container-mapa-codigos');
-  if (!el) return;
-  if (!grupoAtivo) {
-    el.innerHTML = `<div class="alert alert-warn">Selecione um grupo primeiro.</div>`;
-    return;
-  }
-  const contas = coletarContasParaMapa();
-  const empresas = coletarEmpresasParaMapa();
-  const regrasContas = contasSemConciliacao[grupoAtivo] || {};
-  const regrasEmpresas = mapaEmpresas[grupoAtivo] || {};
-  const linhaConta = nome => `<tr>
-    <td>${escapeHtml(nome)}</td>
-    <td><input type="text" style="width:160px" placeholder="Código no Domínio" value="${escapeAttr(regrasContas[nome] || '')}" data-conta-sem-conciliacao="${escapeAttr(nome)}" onchange="salvarContaSemConciliacaoInput(this)"></td>
-  </tr>`;
-  const linhaEmpresa = nome => `<tr>
-    <td>${escapeHtml(nome)}</td>
-    <td><input type="text" style="width:160px" placeholder="Código Matriz/Filial" value="${escapeAttr(regrasEmpresas[nome] || '')}" data-empresa-mapa="${escapeAttr(nome)}" onchange="salvarMapaEmpresaInput(this)"></td>
-  </tr>`;
-  el.innerHTML = `
-    <div class="card" style="margin-bottom:16px">
-      <h3 style="margin-top:0">Contas (bancos e caixas)</h3>
-      ${contas.length ? `<div class="table-wrap table-scroll"><table>
-        <thead><tr><th>Nome da conta (como aparece nas planilhas/extrato)</th><th>Código no Domínio</th></tr></thead>
-        <tbody>${contas.map(linhaConta).join('')}</tbody>
-      </table></div>` : `<div class="empty">Nenhuma conta detectada ainda — importe o extrato ou os pagamentos/recebimentos desse grupo primeiro.</div>`}
-    </div>
-    <div class="card">
-      <h3 style="margin-top:0">Empresas / Filiais</h3>
-      ${empresas.length ? `<div class="table-wrap table-scroll"><table>
-        <thead><tr><th>Nome da empresa (como aparece nas planilhas)</th><th>Código Matriz/Filial no Domínio</th></tr></thead>
-        <tbody>${empresas.map(linhaEmpresa).join('')}</tbody>
-      </table></div>` : `<div class="empty">Nenhuma empresa detectada ainda — importe os pagamentos/recebimentos desse grupo primeiro.</div>`}
-    </div>`;
-}
-
 function alterarTipoRegras(tipo) {
   if (editandoRegras && !confirm('Descartar a edição atual e trocar de lista?')) return;
   tipoRegrasAtivo = tipo;
@@ -6449,18 +4922,6 @@ iniciarSincronizacaoAutomatica();
 </script>
 </body>
 </html>
-
-
-
-
-
-
-
-
-
-
-
-
 
 
 
