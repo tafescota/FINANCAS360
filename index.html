@@ -1244,6 +1244,10 @@ function centroCustoEhRateado(r) {
   return normalizarTexto(r?.[COLS.CC]).includes('rateado');
 }
 
+function linhaPrecisaAberturaRateio(r) {
+  return centroCustoEhRateado(r) || normalizarTexto(r?.[COLS.PLANO]).includes('rateado');
+}
+
 function chaveRateioApoioPagamento(r) {
   const infoDoc = separarNumeroDoHistorico(limparTextoECD(r?.[COLS.TIPO_DOC]), r?.[COLS.NUMERO], r?.[COLS.HISTORICO]);
   return [
@@ -1258,17 +1262,94 @@ function chaveRateioApoioPagamento(r) {
   ].join('|');
 }
 
+function chaveRateioApoioPagamentoBase(r) {
+  return [
+    fmtDate(r?.[COLS.LIQUIDACAO]),
+    normalizarTexto(empresaOrigemLinha(r) || r?.[COLS.EMPRESA]),
+    normalizarTexto(r?.[COLS.CONTA])
+  ].join('|');
+}
+
+function textoRateioApoio(r) {
+  const infoDoc = separarNumeroDoHistorico(limparTextoECD(r?.[COLS.TIPO_DOC]), r?.[COLS.NUMERO], r?.[COLS.HISTORICO]);
+  return normalizarTexto([
+    r?.[COLS.FORNECEDOR],
+    r?.[COLS.PLANO],
+    r?.[COLS.TIPO_DOC],
+    infoDoc.numero,
+    infoDoc.historico,
+    r?.[COLS.HISTORICO]
+  ].filter(Boolean).join(' '));
+}
+
+function tagsRateioApoio(r) {
+  const texto = textoRateioApoio(r);
+  const tags = [];
+  ['inss', 'fgts', 'irpj', 'csll', 'pis', 'cofins', 'iss', 'irrf'].forEach(tag => {
+    if (texto.includes(tag)) tags.push(tag);
+  });
+  if (texto.includes('receita federal') || texto.includes('imposto')) tags.push('impostos');
+  if (texto.includes('mercado pago')) tags.push('mercado_pago');
+  if (texto.includes('porto seguro') || texto.includes('vida') || texto.includes('previdencia')) tags.push('vida_previdencia');
+  if (texto.includes('energia')) tags.push('energia');
+  if (texto.includes('agua') || texto.includes('esgoto')) tags.push('agua_esgoto');
+  if (texto.includes('internet')) tags.push('internet');
+  if (texto.includes('telefone') || texto.includes('telefonia') || texto.includes('vivo')) tags.push('telefonia');
+  if (texto.includes('aluguel')) tags.push('aluguel');
+  if (texto.includes('contabilidade')) tags.push('contabilidade');
+  if (texto.includes('uniforme')) tags.push('uniformes');
+  return [...new Set(tags)];
+}
+
+function scoreCompatibilidadeRateio(rowRateado, rowApoio) {
+  const tagsRateado = tagsRateioApoio(rowRateado);
+  const tagsApoio = tagsRateioApoio(rowApoio);
+  const tagsTributos = ['impostos', 'inss', 'fgts', 'irpj', 'csll', 'pis', 'cofins', 'iss', 'irrf'];
+  const tagsCompativeis = tagsRateado.some(tag => tagsApoio.includes(tag))
+    || (tagsRateado.includes('impostos') && tagsApoio.some(tag => tagsTributos.includes(tag)));
+  if (tagsRateado.length && !tagsCompativeis) return 0;
+  const textoRateado = textoRateioApoio(rowRateado);
+  const textoApoio = textoRateioApoio(rowApoio);
+  let score = tagsCompativeis ? 5 : 0;
+  [rowRateado?.[COLS.FORNECEDOR], rowRateado?.[COLS.PLANO], rowRateado?.[COLS.NUMERO]].forEach(valor => {
+    const token = normalizarTexto(valor);
+    if (token && token !== 'rateado' && token.length > 3 && textoApoio.includes(token)) score += 2;
+  });
+  if (textoRateado && textoApoio.includes(textoRateado)) score += 1;
+  return score;
+}
+
+function subsetRateioPorValor(candidatos, totalOriginal) {
+  const alvo = Math.round(Math.abs(totalOriginal) * 100);
+  if (!alvo || candidatos.length > 80) return [];
+  const dp = new Map([[0, []]]);
+  for (let i = 0; i < candidatos.length; i++) {
+    const valor = Math.round(Math.abs(arredondarMoeda(candidatos[i].row[COLS.VALOR_LIQ] || candidatos[i].row[COLS.VALOR_BRUTO])) * 100);
+    if (!valor) continue;
+    const entradas = Array.from(dp.entries());
+    for (const [soma, indices] of entradas) {
+      const novaSoma = soma + valor;
+      if (novaSoma > alvo + 2 || dp.has(novaSoma)) continue;
+      const novaLista = [...indices, i];
+      if (Math.abs(novaSoma - alvo) <= 2) return novaLista.map(idx => candidatos[idx]);
+      dp.set(novaSoma, novaLista);
+    }
+  }
+  return [];
+}
+
 function aplicarRateioApoioPagamentos(pagamentosBase, linhasRateioApoio) {
   const base = marcarLinhasTitulosComoRateio(pagamentosBase || []);
-  const apoio = (linhasRateioApoio || []).filter(r => r && !centroCustoEhRateado(r));
+  const apoio = (linhasRateioApoio || []).filter(r => r && !linhaPrecisaAberturaRateio(r)).map((row, idx) => ({ row, idx }));
   if (!apoio.length) return { dados: base, linhasRateadas: 0, linhasApoioUsadas: 0, rateadosSemApoio: 0 };
 
   const mapa = new Map();
-  apoio.forEach(r => {
-    const chave = chaveRateioApoioPagamento(r);
+  apoio.forEach(item => {
+    const chave = chaveRateioApoioPagamento(item.row);
     if (!mapa.has(chave)) mapa.set(chave, []);
-    mapa.get(chave).push(r);
+    mapa.get(chave).push(item);
   });
+  const usadosApoio = new Set();
 
   let linhasRateadas = 0;
   let linhasApoioUsadas = 0;
@@ -1276,14 +1357,28 @@ function aplicarRateioApoioPagamentos(pagamentosBase, linhasRateioApoio) {
   const dados = [];
 
   base.forEach(row => {
-    if (!centroCustoEhRateado(row)) {
+    if (!linhaPrecisaAberturaRateio(row)) {
       dados.push(row);
       return;
     }
     const chave = chaveRateioApoioPagamento(row);
-    const partes = mapa.get(chave) || [];
-    const totalPartes = arredondarMoeda(partes.reduce((s, r) => s + arredondarMoeda(r[COLS.VALOR_LIQ] || r[COLS.VALOR_BRUTO]), 0));
     const totalOriginal = arredondarMoeda(row[COLS.VALOR_LIQ] || row[COLS.VALOR_BRUTO]);
+    let partes = (mapa.get(chave) || []).filter(item => !usadosApoio.has(item.idx));
+    let totalPartes = arredondarMoeda(partes.reduce((s, item) => s + arredondarMoeda(item.row[COLS.VALOR_LIQ] || item.row[COLS.VALOR_BRUTO]), 0));
+    if (!partes.length || Math.abs(totalPartes - totalOriginal) > 0.02) {
+      const chaveBase = chaveRateioApoioPagamentoBase(row);
+      const candidatos = apoio
+        .filter(item => !usadosApoio.has(item.idx))
+        .filter(item => chaveRateioApoioPagamentoBase(item.row) === chaveBase)
+        .map(item => ({ ...item, score: scoreCompatibilidadeRateio(row, item.row) }))
+        .filter(item => item.score > 0)
+        .sort((a, b) => b.score - a.score);
+      const selecionados = subsetRateioPorValor(candidatos, totalOriginal);
+      if (selecionados.length) {
+        partes = selecionados;
+        totalPartes = arredondarMoeda(partes.reduce((s, item) => s + arredondarMoeda(item.row[COLS.VALOR_LIQ] || item.row[COLS.VALOR_BRUTO]), 0));
+      }
+    }
     if (!partes.length || Math.abs(totalPartes - totalOriginal) > 0.02) {
       rateadosSemApoio += 1;
       const linha = Array.isArray(row) ? row.slice() : row;
@@ -1294,7 +1389,9 @@ function aplicarRateioApoioPagamentos(pagamentosBase, linhasRateioApoio) {
     }
     linhasRateadas += 1;
     linhasApoioUsadas += partes.length;
-    partes.forEach(parte => {
+    partes.forEach(item => {
+      usadosApoio.add(item.idx);
+      const parte = item.row;
       const linha = parte.slice();
       linha[COLS.CONTA] = linha[COLS.CONTA] || row[COLS.CONTA];
       linha[COLS.MEIO_PAG] = linha[COLS.MEIO_PAG] || row[COLS.MEIO_PAG];
