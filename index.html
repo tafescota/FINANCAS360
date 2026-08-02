@@ -1284,13 +1284,10 @@ function textoRateioApoio(r) {
 
 function tagsRateioApoio(r) {
   const texto = textoRateioApoio(r);
-  const numero = normalizarTexto(r?.[COLS.NUMERO]);
   const tags = [];
   ['inss', 'fgts', 'irpj', 'csll', 'pis', 'cofins', 'iss', 'irrf'].forEach(tag => {
-    if (texto.includes(tag) || numero === tag) tags.push(tag);
+    if (texto.includes(tag)) tags.push(tag);
   });
-  if (texto.includes('receita federal') || texto.includes('imposto')) tags.push('impostos');
-  if (texto.includes('mercado pago')) tags.push('mercado_pago');
   if (texto.includes('porto seguro') || texto.includes('vida') || texto.includes('previdencia')) tags.push('vida_previdencia');
   if (texto.includes('energia')) tags.push('energia');
   if (texto.includes('agua') || texto.includes('esgoto')) tags.push('agua_esgoto');
@@ -1305,16 +1302,10 @@ function tagsRateioApoio(r) {
 function scoreCompatibilidadeRateio(rowRateado, rowApoio) {
   const tagsRateado = tagsRateioApoio(rowRateado);
   const tagsApoio = tagsRateioApoio(rowApoio);
-  const tagsTributos = ['impostos', 'inss', 'fgts', 'irpj', 'csll', 'pis', 'cofins', 'iss', 'irrf'];
-  const tagsEspecificasRateado = tagsRateado.filter(tag => tag !== 'impostos');
-  const tagsCompativeis = tagsEspecificasRateado.length
-    ? tagsEspecificasRateado.some(tag => tagsApoio.includes(tag))
-    : tagsRateado.some(tag => tagsApoio.includes(tag))
-    || (tagsRateado.includes('impostos') && tagsApoio.some(tag => tagsTributos.includes(tag)));
-  if (tagsRateado.length && !tagsCompativeis) return 0;
+  if (tagsRateado.length && !tagsRateado.some(tag => tagsApoio.includes(tag))) return 0;
   const textoRateado = textoRateioApoio(rowRateado);
   const textoApoio = textoRateioApoio(rowApoio);
-  let score = tagsCompativeis ? 5 : 0;
+  let score = tagsRateado.some(tag => tagsApoio.includes(tag)) ? 5 : 0;
   [rowRateado?.[COLS.FORNECEDOR], rowRateado?.[COLS.PLANO], rowRateado?.[COLS.NUMERO]].forEach(valor => {
     const token = normalizarTexto(valor);
     if (token && token !== 'rateado' && token.length > 3 && textoApoio.includes(token)) score += 2;
