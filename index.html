@@ -1283,7 +1283,10 @@ function aplicarRateioApoioPagamentos(pagamentosBase, linhasRateioApoio) {
     const totalOriginal = arredondarMoeda(row[COLS.VALOR_LIQ] || row[COLS.VALOR_BRUTO]);
     if (!partes.length || Math.abs(totalPartes - totalOriginal) > 0.02) {
       rateadosSemApoio += 1;
-      dados.push(row);
+      const linha = Array.isArray(row) ? row.slice() : row;
+      linha.__rateioSemApoio = true;
+      linha.__centroCusto = limparTextoECD(linha[COLS.CC] || 'Rateado');
+      dados.push(linha);
       return;
     }
     linhasRateadas += 1;
@@ -1673,9 +1676,12 @@ function prepararPagamentosImportados(dados, abrirTelaPendencias = true) {
   dados.forEach(r => {
     const forn = limparTextoECD(r[COLS.FORNECEDOR]);
     const plano = limparTextoECD(r[COLS.PLANO]);
-    const tipoDoc = limparTextoECD(r[COLS.TIPO_DOC]);
+    const tipoDocOriginal = limparTextoECD(r[COLS.TIPO_DOC]);
+    const tipoDoc = r.__rateioSemApoio ? 'RATEADO SEM ABERTURA' : tipoDocOriginal;
     const infoDoc = separarNumeroDoHistorico(tipoDoc, r[COLS.NUMERO], r[COLS.HISTORICO]);
-    const historico = infoDoc.historico;
+    const historico = r.__rateioSemApoio
+      ? [infoDoc.historico, 'Linha com centro de custo Rateado sem abertura compatível na planilha de apoio'].filter(Boolean).join(' - ')
+      : infoDoc.historico;
     const numero = infoDoc.numero;
     const empresaOrigem = empresaOrigemLinha(r);
     const centroCusto = centroCustoLinha(r);
@@ -1697,7 +1703,7 @@ function prepararPagamentosImportados(dados, abrirTelaPendencias = true) {
       });
       return;
     }
-    const chave = montarChave(forn, plano, tipoDoc, historico, escopoRegra);
+      const chave = montarChave(forn, plano, tipoDoc, historico, escopoRegra);
     if (!encontrarCodigoRegra(regrasSalvas, forn, plano, tipoDoc, historico, escopoRegra) && !vistas.has(chave)) {
       vistas.add(chave);
       novas.push({ chave, fornecedor: forn, plano, tipoDoc, historico, trechoHistorico: '', trechoHistoricoIndices: [], numero, empresa: empresaOrigem, empresaOrigem, centroCusto, empresaLancamento: empresaLancamentoLinha(r), rateio: !!r.__rateio, escopoRegra });
@@ -4749,6 +4755,7 @@ function renderNovasChaves() {
     const infoDoc = separarNumeroDoHistorico(tipoDoc, numero, historico);
     const historicoExibido = infoDoc.historico;
     const isAjuste = tipoDoc === 'DESCONTO' || tipoDoc === 'ACRÉSCIMO' || tipoDoc.startsWith('DESCONTO -') || tipoDoc.startsWith('ACRÉSCIMO -');
+    const isRateadoSemApoio = tipoDoc === 'RATEADO SEM ABERTURA';
     const historicoVisual = isAjuste ? `${tipoDoc} - ${historicoExibido}` : historicoExibido;
     const numeroExibido = tipoUsaNumero(tipoDoc) ? infoDoc.numero : '';
     const palavrasHistorico = renderPalavrasHistorico(chave, historicoExibido, trechoHistorico);
@@ -4769,11 +4776,15 @@ function renderNovasChaves() {
         : '';
     const placeholderCodigo = ehNumerario
       ? `Conta de numerários ${naturezaLabel.toLowerCase()}`
+      : isRateadoSemApoio
+        ? 'Conta da guia/obrigação'
       : tipoRateio === 'TRANSFERENCIA DE NUMERARIOS'
         ? 'Conta da despesa/fornecedor'
         : 'Digite o código ou nome da conta';
     const dicaCodigo = ehNumerario
       ? `Preencher a conta de transferência de numerários ${naturezaLabel.toLowerCase()}.`
+      : isRateadoSemApoio
+        ? 'Esta linha veio com Centro de Custo = Rateado e não encontrou abertura compatível na planilha de apoio. Confira se é guia consolidada (INSS/FGTS) ou se faltou importar o apoio correto.'
       : tipoRateio === 'TRANSFERENCIA DE NUMERARIOS'
         ? 'Preencher a conta contábil da despesa/fornecedor, não o banco.'
         : '';
