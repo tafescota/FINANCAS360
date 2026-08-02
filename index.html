@@ -5676,6 +5676,7 @@ function coletarEmpresasParaMapa() {
   const add = v => {
     const nome = limparTextoECD(v);
     if (!nome) return;
+    if (normalizarTexto(nome) === 'rateado') return;
     const k = normalizarTexto(nome);
     if (!mapa.has(k)) mapa.set(k, nome);
   };
