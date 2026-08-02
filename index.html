@@ -2864,32 +2864,6 @@ function itensSobraRecebimentoRateio() {
   }));
 }
 
-function validacaoRecebimentosPorUnidade(itensGerados) {
-  const porUnidadePlanilha = new Map();
-  recebimentosRateioTemp.forEach(r => {
-    const chave = normalizarTexto(r.centroCusto);
-    porUnidadePlanilha.set(chave, { nome: r.centroCusto, total: arredondarMoeda((porUnidadePlanilha.get(chave)?.total || 0) + r.valor) });
-  });
-  const porUnidadeLancado = new Map();
-  (itensGerados || []).forEach(item => {
-    const chave = normalizarTexto(item.centroCusto);
-    porUnidadeLancado.set(chave, { nome: item.centroCusto, total: arredondarMoeda((porUnidadeLancado.get(chave)?.total || 0) + item.total) });
-  });
-  const todasChaves = new Set([...porUnidadePlanilha.keys(), ...porUnidadeLancado.keys()]);
-  return Array.from(todasChaves).map(chave => {
-    const planilha = porUnidadePlanilha.get(chave);
-    const lancado = porUnidadeLancado.get(chave);
-    const totalPlanilha = planilha?.total || 0;
-    const totalLancado = lancado?.total || 0;
-    return {
-      nome: planilha?.nome || lancado?.nome || chave,
-      totalPlanilha,
-      totalLancado,
-      diferenca: arredondarMoeda(totalLancado - totalPlanilha)
-    };
-  }).sort((a, b) => Math.abs(b.diferenca) - Math.abs(a.diferenca));
-}
-
 function itensNumerarioRecebimentosRateio(itensRateio) {
   if (!grupoUsaNumerariosRateio()) return [];
   const vistos = new Set();
@@ -3159,7 +3133,6 @@ function renderSugestoesConciliacao(sugestoes, qtdPagamentos, qtdMovimentos, ent
   const regrasRecebimentos = deparaRecebimentos[grupoAtivo] || {};
   const itensRecebimentoExtrato = Array.from(entradasAgrupadas.values()).map((r, idx) => ({ ...r, id: `rec-${idx}`, movimento: 'recebimento', escopoRegra: '' }));
   const itensRecebimentoRateio = criarItensRecebimentosRateioPorDia();
-  const validacaoUnidades = validacaoRecebimentosPorUnidade(itensRecebimentoRateio);
   const itensSobraRecebimento = itensSobraRecebimentoRateio();
   const totalExtratoRelevanteRecebimentos = arredondarMoeda(
     extratoBancarioTemp.filter(m => m.valor > 0 && extratoRelevantePlanilhaRecebimentos(m)).reduce((s, m) => s + m.valor, 0)
@@ -3327,21 +3300,7 @@ function renderSugestoesConciliacao(sugestoes, qtdPagamentos, qtdMovimentos, ent
       </div>
     </div>` : ''}
     ${itensRecebimentoRateio.length || itensSobraRecebimento.length ? `<div class="alert ${Math.abs(diferencaRefinadaRecebimentos) < 1 ? 'alert-ok' : 'alert-warn'}" style="margin-bottom:12px">
-      <strong>Diferença refinada pós-rateio (recebimentos)</strong> — depois de ratear pelo extrato e considerar as sobras já identificadas: extrato relevante (cartões/títulos): <strong>R$ ${fmtValor(totalExtratoRelevanteRecebimentos)}</strong>, rateado + sobra: <strong>R$ ${fmtValor(totalRateadoMaisSobra)}</strong>, diferença: <strong>R$ ${fmtValor(diferencaRefinadaRecebimentos)}</strong>${Math.abs(diferencaRefinadaRecebimentos) >= 1 ? ' — a sobra costuma ser dia/conta do extrato sem nenhuma linha correspondente na planilha (cai direto como recebimento avulso, fora do rateio).' : ''}
-    </div>` : ''}
-    ${validacaoUnidades.length ? `<div class="alert ${validacaoUnidades.every(u => Math.abs(u.diferenca) < 1) ? 'alert-ok' : 'alert-warn'}" style="margin-bottom:12px">
-      <strong>Validação de recebimentos por unidade (centro de custo)</strong> — total da planilha de rateio × total efetivamente rateado pelo extrato, por unidade:
-      <table style="width:100%;margin-top:8px;border-collapse:collapse;font-size:13px">
-        <thead><tr><th style="text-align:left;padding:4px 8px">Unidade</th><th style="text-align:right;padding:4px 8px">Planilha</th><th style="text-align:right;padding:4px 8px">Rateado (extrato)</th><th style="text-align:right;padding:4px 8px">Diferença</th></tr></thead>
-        <tbody>
-          ${validacaoUnidades.map(u => `<tr class="${Math.abs(u.diferenca) < 1 ? '' : 'sem-codigo'}">
-            <td style="padding:4px 8px">${escapeHtml(u.nome)}</td>
-            <td style="text-align:right;padding:4px 8px">R$ ${fmtValor(u.totalPlanilha)}</td>
-            <td style="text-align:right;padding:4px 8px">R$ ${fmtValor(u.totalLancado)}</td>
-            <td style="text-align:right;padding:4px 8px"><strong>R$ ${fmtValor(u.diferenca)}</strong></td>
-          </tr>`).join('')}
-        </tbody>
-      </table>
+      <strong>Conferência dos recebimentos pelo extrato</strong> — extrato relevante (cartões/títulos): <strong>R$ ${fmtValor(totalExtratoRelevanteRecebimentos)}</strong>; valor rateado pelo centro de custo + sobras identificadas: <strong>R$ ${fmtValor(totalRateadoMaisSobra)}</strong>; diferença: <strong>R$ ${fmtValor(diferencaRefinadaRecebimentos)}</strong>${Math.abs(diferencaRefinadaRecebimentos) >= 1 ? ' — a sobra costuma ser dia/conta do extrato sem linha correspondente na planilha e entra como recebimento avulso para preencher.' : ' — valores conciliados pelo extrato; o centro de custo só define a empresa dona do lançamento.'}
     </div>` : ''}
     <div class="conciliation-actions">
       ${qtdParaResolver > 0 ? '<button class="btn btn-primary" onclick="abrirModalPendenciasConciliacao()">Preencher pendências</button>' : ''}
