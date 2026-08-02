@@ -1284,9 +1284,10 @@ function textoRateioApoio(r) {
 
 function tagsRateioApoio(r) {
   const texto = textoRateioApoio(r);
+  const numero = normalizarTexto(r?.[COLS.NUMERO]);
   const tags = [];
   ['inss', 'fgts', 'irpj', 'csll', 'pis', 'cofins', 'iss', 'irrf'].forEach(tag => {
-    if (texto.includes(tag)) tags.push(tag);
+    if (texto.includes(tag) || numero === tag) tags.push(tag);
   });
   if (texto.includes('receita federal') || texto.includes('imposto')) tags.push('impostos');
   if (texto.includes('mercado pago')) tags.push('mercado_pago');
@@ -1305,7 +1306,10 @@ function scoreCompatibilidadeRateio(rowRateado, rowApoio) {
   const tagsRateado = tagsRateioApoio(rowRateado);
   const tagsApoio = tagsRateioApoio(rowApoio);
   const tagsTributos = ['impostos', 'inss', 'fgts', 'irpj', 'csll', 'pis', 'cofins', 'iss', 'irrf'];
-  const tagsCompativeis = tagsRateado.some(tag => tagsApoio.includes(tag))
+  const tagsEspecificasRateado = tagsRateado.filter(tag => tag !== 'impostos');
+  const tagsCompativeis = tagsEspecificasRateado.length
+    ? tagsEspecificasRateado.some(tag => tagsApoio.includes(tag))
+    : tagsRateado.some(tag => tagsApoio.includes(tag))
     || (tagsRateado.includes('impostos') && tagsApoio.some(tag => tagsTributos.includes(tag)));
   if (tagsRateado.length && !tagsCompativeis) return 0;
   const textoRateado = textoRateioApoio(rowRateado);
