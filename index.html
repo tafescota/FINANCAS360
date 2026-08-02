@@ -774,6 +774,11 @@ function naturezaNumerarioRecebimento(lado, negativo = false) {
 }
 
 function codigoNumerarioRateio(regras, empresaBanco, centroCusto, lado, natureza = '') {
+  // No grupo CP Aromas, a contrapartida intercompany deve ser sempre a conta
+  // Numerários Disponíveis (63). Isso evita que um de-para antigo/errado use a
+  // própria conta da despesa como contrapartida (ex.: 321 x 321).
+  if (normalizarTexto(grupoAtivo).includes('aromas')) return '63';
+
   const codigoNovo = obterCodigoContaParaDominio(regras[chaveNumerarioRateio(empresaBanco, centroCusto, lado, natureza)] || '');
   if (codigoNovo) return codigoNovo;
   return obterCodigoContaParaDominio(regras[chaveNumerarioRateio(empresaBanco, centroCusto, lado)] || '');
@@ -5675,13 +5680,19 @@ function arredondarMoeda(v) {
 }
 
 function chaveMovimentoRealPagamentoRateio(r) {
+  // A chave precisa identificar o TÍTULO real. Somente data/conta/empresa/CC/
+  // número/parcela não basta, pois vários títulos sem número (ou PREVISÃO)
+  // podem existir no mesmo dia e centro de custo. Isso fazia valores de
+  // fornecedores diferentes serem somados no lado do banco (ex.: 520 + 382).
   return [
     dataKey(r[COLS.LIQUIDACAO]),
     normalizarTexto(limparTextoECD(r[COLS.CONTA])),
     normalizarTexto(empresaOrigemLinha(r)),
     normalizarTexto(centroCustoLinha(r)),
+    normalizarTexto(limparTextoECD(r[COLS.FORNECEDOR])),
     normalizarTexto(String(r[COLS.NUMERO] ?? '')),
-    normalizarTexto(String(r[COLS.PARCELA] ?? ''))
+    normalizarTexto(String(r[COLS.PARCELA] ?? '')),
+    normalizarTexto(String(r[COL_DATA_CRIACAO] ?? r.__dataCriacao ?? ''))
   ].join('|');
 }
 
@@ -6009,6 +6020,29 @@ function montarLinhasDominioPagamentos() {
   ]);
 }
 
+function validarLinhasDominioAntesExportar(linhas, nomeArquivo = 'arquivo') {
+  const erros = [];
+  linhas.forEach((linha, idx) => {
+    const debito = limparTextoECD(linha?.[1]);
+    const credito = limparTextoECD(linha?.[2]);
+    const valor = arredondarMoeda(linha?.[3]);
+    if (!debito || !credito) {
+      erros.push(`Linha ${idx + 2}: débito ou crédito não preenchido.`);
+    } else if (debito === credito) {
+      erros.push(`Linha ${idx + 2}: débito e crédito iguais (${debito}).`);
+    }
+    if (!valor || valor <= 0) {
+      erros.push(`Linha ${idx + 2}: valor inválido (${linha?.[3] ?? ''}).`);
+    }
+  });
+
+  if (!erros.length) return true;
+  const exemplos = erros.slice(0, 12).join('\n');
+  const restante = erros.length > 12 ? `\n... e mais ${erros.length - 12} erro(s).` : '';
+  alert(`Exportação de ${nomeArquivo} bloqueada.\n\n${exemplos}${restante}\n\nCorrija o de-para ou a regra antes de exportar.`);
+  return false;
+}
+
 function exportarDominioPagamentos() {
   if (bloquearExportacaoPorMapaCodigos()) return;
   const linhas = montarLinhasDominioPagamentos();
@@ -6016,6 +6050,7 @@ function exportarDominioPagamentos() {
     alert('Gere os lançamentos antes de exportar.');
     return;
   }
+  if (!validarLinhasDominioAntesExportar(linhas, 'pagamentos')) return;
   if (!confirmarExportacaoSemSobreposicao('pagamentos')) return;
   linhas[0][6] = 1;
   const ws = XLSX.utils.aoa_to_sheet([CABECALHO_DOMINIO, ...linhas]);
@@ -6039,6 +6074,7 @@ function exportarDominioFinal() {
   if (!confirmarExportacaoSemSobreposicao('final')) return;
 
   const linhas = [...linhasPagamentos, ...linhasConciliacao];
+  if (!validarLinhasDominioAntesExportar(linhas, 'arquivo final')) return;
   linhas.forEach(l => { l[6] = ''; });
   if (linhas.length > 0) linhas[0][6] = 1;
 
