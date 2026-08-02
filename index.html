@@ -4737,8 +4737,8 @@ function renderLinhaAjustePar(linha) {
   const historicoExibido = infoDoc.historico;
   const palavras = renderPalavrasHistorico(chave, historicoExibido, trechoHistorico);
   const tipoRateio = tipoRateioOperacao(empresaOrigem || empresa, centroCusto, !!rateio);
-  const tipoRateioTitulo = tipoRateio === 'TRANSFERENCIA DE NUMERARIOS' ? 'DESPESA' : tipoRateio === 'PROPRIO' ? 'PRÓPRIO' : tipoRateio;
-  const tipoRateioSub = tipoRateio === 'TRANSFERENCIA DE NUMERARIOS' ? 'Centro de custo' : '';
+  const tipoRateioTitulo = tipoRateio === 'TRANSFERENCIA DE NUMERARIOS' ? 'TRANSFERÊNCIA DE NUMERÁRIOS' : tipoRateio === 'PROPRIO' ? 'PRÓPRIO' : tipoRateio;
+  const tipoRateioSub = tipoRateio === 'TRANSFERENCIA DE NUMERARIOS' ? 'Empresa do banco x centro de custo' : '';
   const chavesPar = [linha.debito?.chave, linha.credito?.chave].filter(Boolean);
   const chavesParEncoded = encodeURIComponent(JSON.stringify(chavesPar));
   const selecionado = chavesPar.length > 0 && chavesPar.every(k => selecionadasLote.has(k));
@@ -4799,14 +4799,14 @@ function renderNovasChaves() {
     const tipoRateioTitulo = ehNumerario
       ? (naturezaLabel === 'PASSIVO' ? 'NUM. PASSIVO' : naturezaLabel === 'ATIVO' ? 'NUM. ATIVO' : 'NUMERÁRIOS')
       : tipoRateio === 'TRANSFERENCIA DE NUMERARIOS'
-        ? 'DESPESA'
+        ? 'TRANSFERÊNCIA DE NUMERÁRIOS'
         : tipoRateio === 'PROPRIO'
           ? 'PRÓPRIO'
           : tipoRateio;
     const tipoRateioSub = ehNumerario
       ? 'Transferência'
       : tipoRateio === 'TRANSFERENCIA DE NUMERARIOS'
-        ? 'Centro de custo'
+        ? 'Empresa do banco x centro de custo'
         : '';
     const placeholderCodigo = ehNumerario
       ? `Conta de numerários ${naturezaLabel.toLowerCase()}`
