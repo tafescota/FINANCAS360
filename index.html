@@ -1,4 +1,4 @@
-<!DOCTYPE html>
+﻿<!DOCTYPE html>
 <html lang="pt-BR">
 <head>
 <meta charset="UTF-8">
@@ -513,6 +513,7 @@ let filtroPendenciasConciliacaoTemp = '';
 let timerFiltroPendenciasConciliacao = null;
 let selecaoFiltroPendenciasConciliacao = { start: 0, end: 0 };
 let pendenciasConciliacaoSelecionadas = new Set();
+const VINCULO_PAGAMENTO_SEM_EXTRATO = '__sem_movimento_extrato__';
 let recebimentosRateioTemp = [];
 let infoRecebimentosRateioTemp = null;
 let provisaoRateioTemp = [];
@@ -2335,6 +2336,10 @@ function gerarSugestoesConciliacao(opcoes = {}) {
   pagamentos.forEach(pag => {
     const vinculo = vinculosPagamentoConciliacaoTemp[`pag-${pag.idx}`];
     if (vinculo === undefined || vinculo === '') return;
+    if (vinculo === VINCULO_PAGAMENTO_SEM_EXTRATO) {
+      sugestoesPorPagamento.set(pag.idx, { pag, mov: null, idxMov: null, status: 'revisado', regra: 'Prosseguir sem movimento do extrato', diferenca: pag.valor, pendenciaRevisada: true });
+      return;
+    }
     const idxOriginal = Number(vinculo);
     const mov = extratoBancarioTemp[idxOriginal];
     if (!mov || mov.valor >= 0) return;
@@ -2485,7 +2490,8 @@ function gerarSugestoesConciliacao(opcoes = {}) {
 function renderSugestoesConciliacao(sugestoes, qtdPagamentos, qtdMovimentos, entradas = [], saidasExtras = []) {
   const el = document.getElementById('resultado-conciliacao-bancaria');
   const conciliadas = sugestoes.filter(s => s.mov);
-  const semSugestao = sugestoes.length - conciliadas.length;
+  const pagamentosRevisadosSemExtrato = sugestoes.filter(s => s.pendenciaRevisada);
+  const semSugestao = sugestoes.length - conciliadas.length - pagamentosRevisadosSemExtrato.length;
   const totalEntradas = arredondarMoeda(entradas.reduce((s, m) => s + Math.abs(m.valor), 0));
   const entradasAgrupadas = new Map();
   entradas.forEach(m => {
@@ -2499,13 +2505,16 @@ function renderSugestoesConciliacao(sugestoes, qtdPagamentos, qtdMovimentos, ent
   });
   const renderLinhaPagamento = s => {
     const temSugestao = !!s.mov;
-    const classeLinha = temSugestao ? 'conciliacao-row-ok' : 'conciliacao-row-warn';
-    const classeStatus = temSugestao ? (s.status === 'conciliado' ? 'ok' : 'mid') : 'warn';
+    const revisadoSemExtrato = !!s.pendenciaRevisada;
+    const classeLinha = temSugestao ? 'conciliacao-row-ok' : revisadoSemExtrato ? 'conciliacao-row-filled' : 'conciliacao-row-warn';
+    const classeStatus = temSugestao ? (s.status === 'conciliado' ? 'ok' : 'mid') : revisadoSemExtrato ? 'ok' : 'warn';
     const extratoTxt = s.movs?.length > 1
       ? `<strong>${s.movs.length} saídas no extrato</strong><br><span class="muted-line">${s.movs.map(m => `R$ ${fmtValor(Math.abs(m.valor))}`).join(' + ')} = R$ ${fmtValor(s.pag.valor)}</span><br>${descTruncada(s.movs.map(descricaoMovimentoExtrato).join(' | '))}`
       : s.mov
       ? `${descTruncada(descricaoMovimentoExtrato(s.mov))}<br><span class="muted-line">R$ ${fmtValor(Math.abs(s.mov.valor))} - Doc. ${escapeHtml(s.mov.documento || 's/n')}</span>`
-      : '<span style="color:#991b1b;font-weight:600">Não encontrado no extrato. Precisa preencher na janela de pendências.</span>';
+      : revisadoSemExtrato
+        ? '<span style="color:#166534;font-weight:600">Revisado sem movimento correspondente no extrato.</span>'
+        : '<span style="color:#991b1b;font-weight:600">Não encontrado no extrato. Precisa preencher na janela de pendências.</span>';
     return `<tr class="${classeLinha}">
       <td><span class="badge ${temSugestao ? 'badge-blue' : ''}">Pagamento</span></td>
       <td class="col-secondary" style="white-space:nowrap">${escapeHtml(fmtDate(s.pag.data))}</td>
@@ -2517,7 +2526,10 @@ function renderSugestoesConciliacao(sugestoes, qtdPagamentos, qtdMovimentos, ent
     </tr>`;
   };
   const linhasConciliadas = conciliadas.slice(0, 160).map(renderLinhaPagamento).join('');
-  const pendentesPagamento = sugestoes.filter(s => !s.mov);
+  const pendentesPagamento = sugestoes.filter(s => !s.mov && !s.pendenciaRevisada);
+  const linhasPagamentosRevisados = mostrarPendenciasPreenchidas
+    ? pagamentosRevisadosSemExtrato.map(renderLinhaPagamento).join('')
+    : '';
   const linhasPagamentosPendentes = pendentesPagamento.map(renderLinhaPagamento).join('');
   const regrasRecebimentos = deparaRecebimentos[grupoAtivo] || {};
   const itensRecebimentoExtrato = Array.from(entradasAgrupadas.values()).slice(0, 60).map((r, idx) => ({ ...r, id: `rec-${idx}`, movimento: 'recebimento', escopoRegra: '' }));
@@ -2638,8 +2650,8 @@ function renderSugestoesConciliacao(sugestoes, qtdPagamentos, qtdMovimentos, ent
       </div>
     </td>
   </tr>${mostrarLancamentosConciliados ? linhasConciliadas : ''}`;
-  const pendenciasPreenchidas = entradasPreenchidas.length + saidasExtrasPreenchidas.length;
-  const qtdPendencias = pendentesPagamento.length + itensSaidaExtra.length + itensRecebimento.length;
+  const pendenciasPreenchidas = entradasPreenchidas.length + saidasExtrasPreenchidas.length + pagamentosRevisadosSemExtrato.length;
+  const qtdPendencias = pendentesPagamento.length + pagamentosRevisadosSemExtrato.length + itensSaidaExtra.length + itensRecebimento.length;
   const qtdParaResolver = pendentesPagamento.length + saidasExtrasPendentes.length + entradasPendentes.length + numerariosPendentes.length;
   const textoBotaoPreenchidas = mostrarPendenciasPreenchidas ? 'Recolher pendências preenchidas' : 'Expandir pendências preenchidas';
   const pendenciasOk = qtdParaResolver === 0;
@@ -2654,7 +2666,7 @@ function renderSugestoesConciliacao(sugestoes, qtdPagamentos, qtdMovimentos, ent
       </div>
     </td>
   </tr>`;
-  const linhas = secaoConciliados + secaoPendencias + linhasPagamentosPendentes + linhasSaidasExtrasPendentes + linhasNumerariosPendentes + linhasEntradasPendentes + linhasSaidasExtrasPreenchidas + linhasEntradasPreenchidas;
+  const linhas = secaoConciliados + secaoPendencias + linhasPagamentosPendentes + linhasSaidasExtrasPendentes + linhasNumerariosPendentes + linhasEntradasPendentes + linhasPagamentosRevisados + linhasSaidasExtrasPreenchidas + linhasEntradasPreenchidas;
 
   el.innerHTML = `<div class="card conciliacao-panel">
     <h3>Conciliação e de-para</h3>
@@ -2813,10 +2825,10 @@ function abrirModalPendenciasConciliacao() {
   const avisoLimitePendencias = itensModal.length > itensRenderizados.length
     ? `<div class="conciliacao-note pendencias-limite-aviso">Mostrando ${itensRenderizados.length} de ${itensModal.length} pendências. Use a pesquisa para localizar itens específicos sem travar a tela.</div>`
     : '';
-  const linhas = itensRenderizados.map(item => {
+    const linhas = itensRenderizados.map(item => {
     const valor = codigosConciliacaoTemp[item.id] || '';
     const selecionadasEmOutros = new Set(Object.entries(vinculosPagamentoConciliacaoTemp)
-      .filter(([id, valorSelecionado]) => id !== item.id && valorSelecionado !== '')
+      .filter(([id, valorSelecionado]) => id !== item.id && valorSelecionado !== '' && valorSelecionado !== VINCULO_PAGAMENTO_SEM_EXTRATO)
       .map(([, valorSelecionado]) => String(valorSelecionado)));
     const saidasDisponiveis = saidasPendentes.filter(saida =>
       !selecionadasEmOutros.has(String(saida.idxOriginal))
@@ -2859,6 +2871,7 @@ function abrirModalPendenciasConciliacao() {
     const campoAcao = item.movimento === 'pagamento-pendente'
       ? `<select data-vinculo-pagamento-id="${escapeAttr(item.id)}" onchange="atualizarVinculoPagamentoConciliacao(this)" style="width:100%;padding:8px 10px;border:1px solid var(--border2);border-radius:var(--radius-sm);background:var(--bg);color:var(--text)">
           <option value="">Selecione o movimento do extrato</option>
+          <option value="${VINCULO_PAGAMENTO_SEM_EXTRATO}" ${vinculosPagamentoConciliacaoTemp[item.id] === VINCULO_PAGAMENTO_SEM_EXTRATO ? 'selected' : ''}>Prosseguir sem movimento do extrato</option>
           <optgroup label="Mesmo valor do pagamento">
           ${mesmasSaidas
             .map(saida => `<option value="${saida.idxOriginal}" ${String(vinculosPagamentoConciliacaoTemp[item.id] || '') === String(saida.idxOriginal) ? 'selected' : ''}>${escapeHtml(saida.data)} - R$ ${fmtValor(saida.total)} - ${escapeHtml(saida.historico)}</option>`)
