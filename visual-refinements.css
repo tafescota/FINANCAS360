@@ -1944,6 +1944,19 @@ input[type=search]:focus {
   min-width: 0;
 }
 
+#modal-pendencias-conciliacao .pendencias-conciliacao-table td:last-child .btn {
+  display: block;
+  width: 100%;
+  min-width: 0;
+  max-width: 100%;
+  padding: 7px 6px;
+  font-size: 11px;
+  line-height: 1.25;
+  white-space: normal;
+  overflow-wrap: anywhere;
+  text-align: center;
+}
+
 @media (max-width: 1200px) {
 
   #modal-pendencias-conciliacao .pendencias-conciliacao-table th:nth-child(9),
