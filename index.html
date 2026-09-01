@@ -197,7 +197,7 @@
   .tela { display: none; }
   .tela.ativa { display: block; }
 </style>
-<link rel="stylesheet" href="visual-refinements.css?v=20260901-arquivos-corrigidos-1">
+<link rel="stylesheet" href="visual-refinements.css?v=20260901-telas-atualizadas-1">
 </head>
 <body>
 
@@ -470,7 +470,23 @@ const STORAGE_DEPARA_PROVISAO = 'zip_depara_regras_provisao';
 const STORAGE_PLANO_CONTAS = 'zip_depara_plano_contas';
 const STORAGE_CONTAS_SEM_CONCILIACAO = 'zip_depara_contas_sem_conciliacao';
 const STORAGE_CONFIG_GRUPOS = 'zip_depara_config_grupos';
+const STORAGE_DEPARA_SAIDAS_EXTRATO = 'zip_depara_regras_saidas_extrato';
 const API_BASE_DEPARA = '/.netlify/functions/depara-base';
+
+function limparResiduosSessao() {
+  try {
+    sessionStorage.clear();
+  } catch (_) {}
+  try {
+    document.cookie.split(';').forEach(cookie => {
+      const nome = cookie.split('=')[0].trim();
+      if (nome) document.cookie = `${nome}=;expires=Thu, 01 Jan 1970 00:00:00 GMT;path=/`;
+    });
+  } catch (_) {}
+  localStorage.removeItem('zip_depara_percentuais_rateio_fixo');
+}
+
+limparResiduosSessao();
 
 let grupos = JSON.parse(localStorage.getItem(STORAGE_GRUPOS) || '[]');
 let depara = JSON.parse(localStorage.getItem(STORAGE_DEPARA) || '{}');
@@ -479,6 +495,7 @@ let deparaProvisao = JSON.parse(localStorage.getItem(STORAGE_DEPARA_PROVISAO) ||
 let planoContas = JSON.parse(localStorage.getItem(STORAGE_PLANO_CONTAS) || '{}');
 let contasSemConciliacao = JSON.parse(localStorage.getItem(STORAGE_CONTAS_SEM_CONCILIACAO) || '{}');
 let configGrupos = JSON.parse(localStorage.getItem(STORAGE_CONFIG_GRUPOS) || '{}');
+let deparaSaidasExtrato = JSON.parse(localStorage.getItem(STORAGE_DEPARA_SAIDAS_EXTRATO) || '{}');
 let grupoAtivo = null;
 let linhasImportadas = [];
 let modoImportacaoPagamentos = 'parcelas';
@@ -905,6 +922,7 @@ function salvarStorage() {
   localStorage.setItem(STORAGE_PLANO_CONTAS, JSON.stringify(planoContas));
   localStorage.setItem(STORAGE_CONTAS_SEM_CONCILIACAO, JSON.stringify(contasSemConciliacao));
   localStorage.setItem(STORAGE_CONFIG_GRUPOS, JSON.stringify(configGrupos));
+  localStorage.setItem(STORAGE_DEPARA_SAIDAS_EXTRATO, JSON.stringify(deparaSaidasExtrato));
   salvarBaseCompartilhada();
 }
 
@@ -931,6 +949,7 @@ async function carregarBaseCompartilhada(mostrarMensagem = false) {
     planoContas = data.planoContas && typeof data.planoContas === 'object' ? data.planoContas : {};
     contasSemConciliacao = data.contasSemConciliacao && typeof data.contasSemConciliacao === 'object' ? data.contasSemConciliacao : {};
     configGrupos = data.configGrupos && typeof data.configGrupos === 'object' ? data.configGrupos : {};
+    deparaSaidasExtrato = data.deparaSaidasExtrato && typeof data.deparaSaidasExtrato === 'object' ? data.deparaSaidasExtrato : {};
     ultimaSyncLocal = remoteUpdatedAt || Date.now();
     localStorage.setItem(STORAGE_GRUPOS, JSON.stringify(grupos));
     localStorage.setItem(STORAGE_DEPARA, JSON.stringify(depara));
@@ -939,6 +958,7 @@ async function carregarBaseCompartilhada(mostrarMensagem = false) {
     localStorage.setItem(STORAGE_PLANO_CONTAS, JSON.stringify(planoContas));
     localStorage.setItem(STORAGE_CONTAS_SEM_CONCILIACAO, JSON.stringify(contasSemConciliacao));
     localStorage.setItem(STORAGE_CONFIG_GRUPOS, JSON.stringify(configGrupos));
+    localStorage.setItem(STORAGE_DEPARA_SAIDAS_EXTRATO, JSON.stringify(deparaSaidasExtrato));
     if (grupoAtivo && !grupos.includes(grupoAtivo)) grupoAtivo = null;
     renderGrupos();
     atualizarStatusBanco('Base compartilhada do site conectada. Todos usam os mesmos grupos e regras.', 'ok');
@@ -958,7 +978,7 @@ async function salvarBaseCompartilhada(forcar = false) {
   try {
     salvandoBaseCompartilhada = true;
     ultimaSyncLocal = Date.now();
-    const payload = { grupos, depara, deparaRecebimentos, deparaProvisao, planoContas, contasSemConciliacao, configGrupos };
+    const payload = { grupos, depara, deparaRecebimentos, deparaProvisao, planoContas, contasSemConciliacao, configGrupos, deparaSaidasExtrato };
     const resp = await fetch(API_BASE_DEPARA, {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
@@ -983,7 +1003,8 @@ function exportarBaseDePara() {
     deparaRecebimentos,
     deparaProvisao,
     contasSemConciliacao,
-    configGrupos
+    configGrupos,
+    deparaSaidasExtrato
   };
   const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json;charset=utf-8' });
   const url = URL.createObjectURL(blob);
@@ -1014,6 +1035,7 @@ function importarBaseDePara(event) {
       deparaProvisao = payload.deparaProvisao && typeof payload.deparaProvisao === 'object' ? payload.deparaProvisao : {};
       contasSemConciliacao = payload.contasSemConciliacao && typeof payload.contasSemConciliacao === 'object' ? payload.contasSemConciliacao : {};
       configGrupos = payload.configGrupos && typeof payload.configGrupos === 'object' ? payload.configGrupos : {};
+      deparaSaidasExtrato = payload.deparaSaidasExtrato && typeof payload.deparaSaidasExtrato === 'object' ? payload.deparaSaidasExtrato : {};
       grupoAtivo = grupos.includes(grupoAtivo) ? grupoAtivo : null;
       salvarStorage();
       renderGrupos();
@@ -2847,6 +2869,7 @@ function renderSugestoesConciliacao(sugestoes, qtdPagamentos, qtdMovimentos, ent
     data: fmtDate(mov.data),
     conta: mov.conta,
     empresa: mov.empresa || '',
+    chaveRegraSaida: chaveRegraSaidaExtrato(mov),
     idxMov,
     idxOriginal: extratoBancarioTemp.indexOf(mov)
   }));
@@ -2870,6 +2893,9 @@ function renderSugestoesConciliacao(sugestoes, qtdPagamentos, qtdMovimentos, ent
   conciliacaoAplicadaTemp = false;
   conciliacaoItensTemp.forEach(item => {
     if (!(item.id in codigosConciliacaoTemp)) codigosConciliacaoTemp[item.id] = '';
+    if (item.movimento === 'saida-pendente' && !codigosConciliacaoTemp[item.id]) {
+      codigosConciliacaoTemp[item.id] = obterCodigoContaParaDominio((deparaSaidasExtrato[grupoAtivo] || {})[item.chaveRegraSaida] || '');
+    }
     if (item.movimento === 'recebimento' && !codigosConciliacaoTemp[item.id]) {
       codigosConciliacaoTemp[item.id] = obterCodigoContaParaDominio(encontrarCodigoRegraRecebimentoConciliacao(regrasRecebimentos, item.tipo, item.historico, item.escopoRegra || ''));
     }
@@ -3452,10 +3478,17 @@ function aplicarRegraRecebimentoConciliacao(id, codigo) {
   });
 }
 
+function chaveRegraSaidaExtrato(movimento = {}) {
+  return [movimento.conta, movimento.tipoConciliacao || 'Saída não conciliada', descricaoMovimentoExtrato(movimento)]
+    .map(v => normalizarTexto(v || ''))
+    .join(' | ');
+}
+
 function salvarRegrasRecebimentoConciliacao() {
   if (!grupoAtivo) return;
   const regras = Object.assign({}, deparaRecebimentos[grupoAtivo] || {});
   const regrasPagamentos = Object.assign({}, depara[grupoAtivo] || {});
+  const regrasSaidas = Object.assign({}, deparaSaidasExtrato[grupoAtivo] || {});
   conciliacaoItensTemp.forEach(item => {
     const codigo = obterCodigoContaParaDominio(codigosConciliacaoTemp[item.id]);
     if (!codigo) return;
@@ -3465,12 +3498,16 @@ function salvarRegrasRecebimentoConciliacao() {
     if (item.movimento === 'numerario-rateio' && item.chave) {
       regrasPagamentos[item.chave] = codigo;
     }
+    if (item.movimento === 'saida-pendente' && item.chaveRegraSaida) {
+      regrasSaidas[item.chaveRegraSaida] = codigo;
+    }
       if (item.movimento === 'numerario-rateio' && !codigosConciliacaoTemp[item.id]) {
       codigosConciliacaoTemp[item.id] = obterCodigoContaParaDominio((depara[grupoAtivo] || {})[item.chave] || '');
     }
   });
   deparaRecebimentos[grupoAtivo] = regras;
   depara[grupoAtivo] = regrasPagamentos;
+  deparaSaidasExtrato[grupoAtivo] = regrasSaidas;
   salvarStorage();
 }
 
@@ -3695,11 +3732,13 @@ function editarGrupoCadastro(g) {
       planoContas[nomeLimpo] = planoContas[atual] || [];
       contasSemConciliacao[nomeLimpo] = contasSemConciliacao[atual] || {};
       configGrupos[nomeLimpo] = configGrupos[atual] || {};
+      deparaSaidasExtrato[nomeLimpo] = deparaSaidasExtrato[atual] || {};
       delete depara[atual];
       delete deparaRecebimentos[atual];
       delete planoContas[atual];
       delete contasSemConciliacao[atual];
       delete configGrupos[atual];
+      delete deparaSaidasExtrato[atual];
       if (grupoAtivo === atual) grupoAtivo = nomeLimpo;
     }
     configGrupos[nomeLimpo] = Object.assign({}, configGrupos[nomeLimpo] || {}, { modoImportacaoPagamentos: novoModoNorm });
@@ -3764,6 +3803,7 @@ function excluirGrupo(g) {
     delete depara[g];
     delete deparaRecebimentos[g];
     delete configGrupos[g];
+    delete deparaSaidasExtrato[g];
     if (grupoAtivo === g) grupoAtivo = null;
     salvarStorage();
     renderGrupos();
