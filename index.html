@@ -139,6 +139,11 @@
 
   .progress-bar { height: 4px; background: var(--bg3); border-radius: 2px; margin: 12px 0; overflow: hidden; }
   .progress-fill { height: 100%; background: var(--blue); border-radius: 2px; transition: width 0.3s; }
+  .import-progress { position: sticky; top: 0; z-index: 20; max-width: 1180px; margin: 0 auto; padding: 9px 24px 10px; background: #fff; border-bottom: 1px solid var(--border); box-shadow: 0 2px 8px rgba(15, 23, 42, .08); }
+  .import-progress-head { display: flex; align-items: center; justify-content: space-between; gap: 16px; color: var(--navy); font-size: 12px; }
+  .import-progress-head span { color: var(--blue); font-variant-numeric: tabular-nums; font-weight: 700; }
+  .import-progress .progress-bar { margin: 6px 0 0; }
+  .import-progress-file { min-height: 15px; margin-top: 4px; color: var(--text2); font-size: 11px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .conciliacao-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 12px; margin-bottom: 16px; }
   .conciliacao-note { color: var(--text2); font-size: 13px; line-height: 1.55; }
   .package-list { display: grid; gap: 8px; margin-top: 12px; }
@@ -200,6 +205,12 @@
   <span class="topbar-logo"><img src="zip-logo-topbar.webp?v=2" alt="Zip Contabilidade" class="topbar-logo-img"></span>
   <span class="topbar-sub">Conciliação F360</span>
   <span class="topbar-grupo" id="topbar-grupo" style="display:none"></span>
+</div>
+
+<div id="progresso-importacao" class="import-progress" style="display:none" role="status" aria-live="polite">
+  <div class="import-progress-head"><strong id="progresso-importacao-etapa">Preparando importação...</strong><span id="progresso-importacao-percentual">0%</span></div>
+  <div class="progress-bar"><div id="progresso-importacao-barra" class="progress-fill" style="width:0%"></div></div>
+  <div id="progresso-importacao-arquivo" class="import-progress-file"></div>
 </div>
 
 <div class="container">
@@ -1098,24 +1109,72 @@ function showMsg(texto, tipo = 'ok') {
   setTimeout(() => el.innerHTML = '', 4000);
 }
 
+let progressoImportacaoAtivo = false;
 
-function lerWorkbookArquivo(file, callback, onError = alert) {
+function iniciarProgressoImportacao(etapa = 'Preparando importação...') {
+  progressoImportacaoAtivo = true;
+  atualizarProgressoImportacao(0, etapa, '');
+}
+
+function atualizarProgressoImportacao(percentual, etapa, arquivo = '') {
+  const p = Math.max(0, Math.min(100, Math.round(percentual)));
+  const el = document.getElementById('progresso-importacao');
+  if (!el) return;
+  el.style.display = '';
+  const barra = document.getElementById('progresso-importacao-barra');
+  const pct = document.getElementById('progresso-importacao-percentual');
+  const etapaEl = document.getElementById('progresso-importacao-etapa');
+  const arquivoEl = document.getElementById('progresso-importacao-arquivo');
+  if (barra) barra.style.width = `${p}%`;
+  if (pct) pct.textContent = `${p}%`;
+  if (etapaEl) etapaEl.textContent = etapa || 'Processando...';
+  if (arquivoEl) arquivoEl.textContent = arquivo ? `Arquivo: ${arquivo}` : '';
+}
+
+function finalizarProgressoImportacao(mensagem = 'Importação concluída.') {
+  atualizarProgressoImportacao(100, mensagem, '');
+  setTimeout(() => {
+    const el = document.getElementById('progresso-importacao');
+    if (el) el.style.display = 'none';
+    progressoImportacaoAtivo = false;
+  }, 700);
+}
+
+function erroProgressoImportacao(mensagem = 'Não foi possível concluir a importação.') {
+  atualizarProgressoImportacao(100, mensagem, '');
+  setTimeout(() => {
+    const el = document.getElementById('progresso-importacao');
+    if (el) el.style.display = 'none';
+    progressoImportacaoAtivo = false;
+  }, 1800);
+}
+
+function lerWorkbookArquivo(file, callback, onError = alert, onProgress = null) {
   const reader = new FileReader();
+  reader.onprogress = function(e) {
+    if (!e.lengthComputable) return;
+    const percentual = Math.round((e.loaded / e.total) * 85);
+    if (progressoImportacaoAtivo) atualizarProgressoImportacao(percentual, 'Lendo planilha...', file.name);
+    if (onProgress) onProgress(percentual, file);
+  };
   reader.onload = function(e) {
     try {
+      if (progressoImportacaoAtivo) atualizarProgressoImportacao(88, 'Interpretando planilha...', file.name);
       const data = new Uint8Array(e.target.result);
       const wb = XLSX.read(data, { type: 'array', cellDates: true });
       callback(wb, file);
+      if (progressoImportacaoAtivo) atualizarProgressoImportacao(96, 'Preparando dados...', file.name);
     } catch (err) {
       onError(err);
     }
   };
+  reader.onerror = function() { onError(new Error(`${file.name}: erro ao ler o arquivo.`)); };
   reader.readAsArrayBuffer(file);
 }
 
-function lerWorkbookArquivoAsync(file) {
+function lerWorkbookArquivoAsync(file, onProgress = null) {
   return new Promise((resolve, reject) => {
-    lerWorkbookArquivo(file, (wb) => resolve(wb), reject);
+    lerWorkbookArquivo(file, (wb) => resolve(wb), reject, onProgress);
   });
 }
 
@@ -1272,12 +1331,13 @@ function linhasPlanilhaRateio(wb) {
   if (headerIdx === -1) throw new Error('Não encontrei o cabeçalho do Rateio de Títulos.');
   const headers = raw[headerIdx].map(h => normalizarTexto(h));
   const idx = nome => headers.indexOf(normalizarTexto(nome));
+  const indiceFornecedor = idx('cliente / fornecedor') >= 0 ? idx('cliente / fornecedor') : idx('fornecedor');
   const col = {
     tipo: idx('tipo'),
     numero: idx('numero'),
     parcela: idx('parcela'),
     empresa: idx('empresa'),
-    fornecedor: idx('cliente / fornecedor'),
+    fornecedor: indiceFornecedor,
     emissao: idx('emissao'),
     vencimento: idx('vencimento'),
     liquidacao: idx('liquidacao'),
@@ -1351,9 +1411,10 @@ async function processarProvisaoRateio(files) {
     mostrarMsgProvisaoRateio('A provisão por rateio fica disponível apenas para grupos em Rateio de Títulos.', 'warn');
     return;
   }
+  iniciarProgressoImportacao('Lendo provisão por rateio...');
   try {
     const resultados = await Promise.all(files.map(async file => {
-      const wb = await lerWorkbookArquivoAsync(file);
+      const wb = await lerWorkbookArquivoAsync(file, p => atualizarProgressoImportacao(p, 'Lendo provisão por rateio...', file.name));
       const leitura = linhasPlanilhaRateio(wb);
       return {
         arquivo: file.name,
@@ -1364,8 +1425,10 @@ async function processarProvisaoRateio(files) {
     infoProvisaoRateioTemp = { arquivos: resultados.map(r => r.arquivo) };
     renderProvisaoRateio();
     mostrarMsgProvisaoRateio(`${provisaoRateioTemp.length} linhas de provisão carregadas.`, 'ok');
+    finalizarProgressoImportacao('Provisão carregada.');
   } catch (err) {
     mostrarMsgProvisaoRateio('Erro ao importar provisão: ' + err.message, 'warn');
+    erroProgressoImportacao('Erro ao carregar a provisão.');
   }
 }
 
@@ -1945,9 +2008,12 @@ function linhasRateioTitulosReceber(wb, arquivoOrigem) {
   return { tipo: 'titulos', nomePlanilha, linhas };
 }
 
-function lerRecebimentosRateioArquivo(file) {
+function lerRecebimentosRateioArquivo(file, onProgress = null) {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
+    reader.onprogress = function(e) {
+      if (e.lengthComputable && onProgress) onProgress(Math.round((e.loaded / e.total) * 85), file);
+    };
     reader.onload = function(e) {
       try {
         const data = new Uint8Array(e.target.result);
@@ -1975,8 +2041,9 @@ async function processarRecebimentosRateio(files) {
     mostrarMsgConciliacao('Recebimentos por rateio só ficam disponíveis para grupos em Rateio de Títulos.', 'warn');
     return;
   }
+  iniciarProgressoImportacao('Lendo recebimentos por rateio...');
   try {
-    const resultados = await Promise.all(files.map(lerRecebimentosRateioArquivo));
+    const resultados = await Promise.all(files.map(file => lerRecebimentosRateioArquivo(file, p => atualizarProgressoImportacao(p, 'Lendo recebimentos por rateio...', file.name))));
     const novos = resultados.flatMap(r => r.linhas);
     const existentes = new Set(recebimentosRateioTemp.map(chaveRecebimentoRateio));
     const novosUnicos = novos.filter(r => {
@@ -1996,8 +2063,10 @@ async function processarRecebimentosRateio(files) {
     mostrarMsgConciliacao(`${novosUnicos.length} recebimento${novosUnicos.length !== 1 ? 's' : ''} por rateio importado${novosUnicos.length !== 1 ? 's' : ''}.`, 'ok');
     renderConciliacaoBancaria();
     if (extratoBancarioTemp.length > 0) gerarSugestoesConciliacao({ redirecionarSeOk: false });
+    finalizarProgressoImportacao('Recebimentos carregados.');
   } catch (err) {
     mostrarMsgConciliacao('Erro ao importar recebimentos por rateio: ' + err.message, 'warn');
+    erroProgressoImportacao('Erro ao carregar os recebimentos.');
   }
 }
 
@@ -2063,8 +2132,12 @@ function onFileChangeExtratoBancario(e) {
 function lerMovimentosExtratoArquivo(file) {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
+    reader.onprogress = function(e) {
+      if (e.lengthComputable) atualizarProgressoImportacao((e.loaded / e.total) * 85, 'Lendo extrato bancário...', file.name);
+    };
     reader.onload = function(e) {
       try {
+        atualizarProgressoImportacao(88, 'Interpretando extrato bancário...', file.name);
         const data = new Uint8Array(e.target.result);
         const wb = XLSX.read(data, { type: 'array', cellDates: true });
         const nomePlanilha = wb.SheetNames.find(n => normalizarTexto(n).includes('extrato')) || wb.SheetNames[0];
@@ -2121,6 +2194,7 @@ function lerMovimentosExtratoArquivo(file) {
 }
 
 async function processarExtratosBancarios(files) {
+  iniciarProgressoImportacao('Lendo extrato bancário...');
   try {
     const resultados = await Promise.all(files.map(lerMovimentosExtratoArquivo));
     const novosMovimentos = resultados.flatMap(r => r.movimentos);
@@ -2170,8 +2244,10 @@ async function processarExtratosBancarios(files) {
         setTimeout(() => abrirModalPendenciasConciliacao(), 0);
       }
     }
+    finalizarProgressoImportacao('Extrato carregado.');
   } catch (err) {
     mostrarMsgConciliacao('Erro ao importar extrato: ' + err.message, 'warn');
+    erroProgressoImportacao('Erro ao carregar o extrato.');
   }
 }
 
@@ -2825,6 +2901,10 @@ function renderSugestoesConciliacao(sugestoes, qtdPagamentos, qtdMovimentos, ent
     movimento: 'pagamento-pendente',
     tipo: 'Pagamento não encontrado',
     historico: s.pag.fornecedor || 'Sem fornecedor',
+    fornecedor: s.pag.fornecedor || '',
+    fornecedorNorm: s.pag.fornecedorNorm || textoConciliacao(s.pag.fornecedor || ''),
+    numero: s.pag.numero || '',
+    plano: s.pag.plano || '',
     total: s.pag.valor,
     data: fmtDate(s.pag.data),
     conta: s.pag.conta,
@@ -3741,7 +3821,10 @@ function excluirGrupo(g) {
 // ---------- ARQUIVO ----------
 function onFileChange(e) {
   const files = Array.from(e.target.files || []);
-  if (files.length > 0) processarArquivosImportacao(files);
+  if (files.length > 0) {
+    iniciarProgressoImportacao('Preparando importação...');
+    processarArquivosImportacao(files);
+  }
   e.target.value = '';
 }
 function dragOver(e) { e.preventDefault(); document.getElementById('drop-area').classList.add('drag'); }
@@ -3750,24 +3833,37 @@ function onDrop(e) {
   e.preventDefault();
   document.getElementById('drop-area').classList.remove('drag');
   const files = Array.from(e.dataTransfer.files || []);
-  if (files.length > 0) processarArquivosImportacao(files);
+  if (files.length > 0) {
+    iniciarProgressoImportacao('Preparando importação...');
+    processarArquivosImportacao(files);
+  }
 }
 
 function onFileChangePlano(e) {
-  if (e.target.files[0]) processarPlanoContas(e.target.files[0]);
+  if (e.target.files[0]) {
+    iniciarProgressoImportacao('Lendo plano de contas...');
+    processarPlanoContas(e.target.files[0]);
+  }
   e.target.value = '';
 }
 function onDropPlano(e) {
   e.preventDefault();
   document.getElementById('drop-area-plano').classList.remove('drag');
-  if (e.dataTransfer.files[0]) processarPlanoContas(e.dataTransfer.files[0]);
+  if (e.dataTransfer.files[0]) {
+    iniciarProgressoImportacao('Lendo plano de contas...');
+    processarPlanoContas(e.dataTransfer.files[0]);
+  }
 }
 
 function processarPlanoContas(file) {
   if (!grupoAtivo) { alert('Selecione um grupo antes de importar o plano de contas.'); return; }
   const reader = new FileReader();
+  reader.onprogress = function(e) {
+    if (e.lengthComputable) atualizarProgressoImportacao((e.loaded / e.total) * 85, 'Lendo plano de contas...', file.name);
+  };
   reader.onload = function(e) {
     try {
+      atualizarProgressoImportacao(88, 'Interpretando plano de contas...', file.name);
       const data = new Uint8Array(e.target.result);
       const wb = XLSX.read(data, { type: 'array', cellDates: false, bookFiles: true });
 
@@ -3962,6 +4058,7 @@ function processarPlanoContas(file) {
 
       if (contas.length === 0) {
         showMsgPlanoContas('Não encontrei contas analíticas nesse arquivo. Verifique se é um export de plano de contas no formato esperado.', 'warn');
+        erroProgressoImportacao('Nenhuma conta analítica encontrada.');
         return;
       }
 
@@ -3969,8 +4066,10 @@ function processarPlanoContas(file) {
       salvarStorage();
       renderResumoPlanoContas();
       showMsgPlanoContas(`${contas.length} contas analíticas carregadas com sucesso para "${grupoAtivo}".`, 'ok');
+      finalizarProgressoImportacao('Plano de contas carregado.');
     } catch (err) {
       showMsgPlanoContas('Erro ao ler o arquivo: ' + err.message, 'warn');
+      erroProgressoImportacao('Erro ao carregar o plano de contas.');
     }
   };
   reader.readAsArrayBuffer(file);
@@ -4160,7 +4259,7 @@ function processarArquivo(file) {
 }
 
 async function classificarArquivoRateioImportacao(file) {
-  const wb = await lerWorkbookArquivoAsync(file);
+  const wb = await lerWorkbookArquivoAsync(file, p => atualizarProgressoImportacao(p, 'Lendo arquivos de rateio...', file.name));
   const nome = normalizarTexto(file.name);
   const tentarRecebimento = () => {
     const cartoes = linhasRateioCartoesReceber(wb, file.name);
@@ -4208,13 +4307,17 @@ function adicionarRecebimentosRateio(resultados) {
 }
 
 async function processarArquivosImportacao(files) {
-  if (!grupoAtivo) { alert('Selecione um grupo antes de importar.'); return; }
+  if (!grupoAtivo) { alert('Selecione um grupo antes de importar.'); erroProgressoImportacao('Selecione um grupo antes de importar.'); return; }
   selecionarModoImportacaoPagamentos(modoImportacaoDoGrupo(grupoAtivo));
   if (modoImportacaoPagamentos !== 'rateio') {
     const file = files[0];
     const reader = new FileReader();
+    reader.onprogress = function(e) {
+      if (e.lengthComputable) atualizarProgressoImportacao((e.loaded / e.total) * 85, 'Lendo planilha...', file.name);
+    };
     reader.onload = function(e) {
       try {
+        atualizarProgressoImportacao(88, 'Interpretando planilha...', file.name);
         const data = new Uint8Array(e.target.result);
         const wb = XLSX.read(data, { type: 'array', cellDates: true });
         const leitura = linhasPlanilhaTitulos(wb);
@@ -4224,12 +4327,15 @@ async function processarArquivosImportacao(files) {
           : leitura.dados;
         if (dados.length === 0) {
           alert('Nenhum dado encontrado. Verifique se é a planilha de Parcelas de Títulos.');
+          erroProgressoImportacao('Nenhum dado encontrado.');
           return;
         }
         linhasImportadasModo = modoImportacaoPagamentos;
         prepararPagamentosImportados(dados, true);
+        finalizarProgressoImportacao('Arquivo carregado.');
       } catch(err) {
         alert('Erro ao ler o arquivo: ' + err.message);
+        erroProgressoImportacao('Erro ao carregar o arquivo.');
       }
     };
     reader.readAsArrayBuffer(file);
@@ -4243,13 +4349,16 @@ async function processarArquivosImportacao(files) {
     const qtdRecebimentos = recebimentos.length ? adicionarRecebimentosRateio(recebimentos) : 0;
     if (pagamentos.length === 0) {
       showMsg(`${qtdRecebimentos} recebimento${qtdRecebimentos !== 1 ? 's' : ''} por rateio importado${qtdRecebimentos !== 1 ? 's' : ''}. Nenhuma planilha de pagamento foi selecionada.`, 'ok');
+      finalizarProgressoImportacao('Arquivos carregados.');
       return;
     }
     linhasImportadasModo = 'rateio';
     prepararPagamentosImportados(pagamentos, true);
     if (qtdRecebimentos > 0) showMsg(`${pagamentos.length} pagamento${pagamentos.length !== 1 ? 's' : ''} e ${qtdRecebimentos} recebimento${qtdRecebimentos !== 1 ? 's' : ''} por rateio importado${qtdRecebimentos !== 1 ? 's' : ''}.`, 'ok');
+    finalizarProgressoImportacao('Arquivos carregados.');
   } catch(err) {
     alert('Erro ao ler os arquivos: ' + err.message);
+    erroProgressoImportacao('Erro ao carregar os arquivos.');
   }
 }
 
@@ -5075,17 +5184,19 @@ function expandirPorPercentualFixo(dados, regra) {
 
 async function processarArquivoPagamentoFixo(files) {
   if (!grupoAtivo) return alert('Selecione um grupo antes de importar.');
+  iniciarProgressoImportacao('Lendo pagamentos sem banco...');
   const msg = document.getElementById('msg-pagamentos-fixo');
   try {
     const resultados = await Promise.all(Array.from(files).map(classificarArquivoRateioImportacao));
     const pagamentos = resultados.filter(r => r.tipo === 'pagamento').flatMap(r => r.dados || []);
-    if (!pagamentos.length) { if (msg) msg.innerHTML = '<div class="alert alert-warn">Nenhuma planilha de pagamento foi reconhecida.</div>'; return; }
+    if (!pagamentos.length) { if (msg) msg.innerHTML = '<div class="alert alert-warn">Nenhuma planilha de pagamento foi reconhecida.</div>'; erroProgressoImportacao('Nenhum pagamento reconhecido.'); return; }
     linhasPagamentoFixoTemp = pagamentos;
     const semUnidade = pagamentos.filter(r => ehCentroCustoPlaceholder(r[COLS.CC])).length;
     document.getElementById('resumo-pagamentos-fixo').innerHTML = `<div class="card" style="margin-bottom:16px"><div class="metric-label">Importado</div><p class="conciliacao-note">${pagamentos.length} linha(s), sendo ${semUnidade} sem unidade e ${pagamentos.length - semUnidade} já rateada(s).</p></div>`;
     document.getElementById('acoes-pagamentos-fixo').style.display = 'flex';
     if (msg) msg.innerHTML = '';
-  } catch (err) { if (msg) msg.innerHTML = `<div class="alert alert-warn">Erro ao ler os arquivos: ${escapeHtml(err.message)}</div>`; }
+    finalizarProgressoImportacao('Pagamentos carregados.');
+  } catch (err) { if (msg) msg.innerHTML = `<div class="alert alert-warn">Erro ao ler os arquivos: ${escapeHtml(err.message)}</div>`; erroProgressoImportacao('Erro ao carregar os pagamentos.'); }
 }
 
 function onFileChangePagamentoFixo(e) { const files = Array.from(e.target.files || []); if (files.length) processarArquivoPagamentoFixo(files); e.target.value = ''; }
