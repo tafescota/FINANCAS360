@@ -3017,7 +3017,9 @@ function renderSugestoesConciliacao(sugestoes, qtdPagamentos, qtdMovimentos, ent
     <div class="conciliation-actions">
       ${qtdParaResolver > 0 ? '<button class="btn btn-primary" onclick="abrirModalPendenciasConciliacao()">Preencher pendências</button>' : ''}
       <button class="btn" onclick="mostrarTela('tela-resultado')">Voltar aos lançamentos</button>
-      <span class="conciliacao-note">${qtdParaResolver > 0 ? 'Saídas do extrato sem pagamento precisam de conta informada para entrar na exportação final.' : 'Tudo preenchido para esta conciliação. A exportação fica no arquivo final.'}</span>
+      ${qtdParaResolver > 0
+        ? '<span class="conciliacao-note">Saídas do extrato sem pagamento precisam de conta informada para entrar na exportação final.</span>'
+        : '<span class="conciliacao-status ok">✓ Extrato conciliado para exportação</span><span class="conciliacao-note">A diferença exibida na conferência é informativa e não bloqueia a geração do arquivo final.</span>'}
     </div>
     <div class="table-wrap table-scroll conciliacao-table-wrap">
       <table class="conciliation-table">
@@ -3747,7 +3749,38 @@ function editarGrupoCadastro(g) {
     showMsg(`Cadastro do grupo "${nomeLimpo}" atualizado.`, 'ok');
   });
 }
+function limparSessaoImportacao() {
+  linhasImportadas = [];
+  linhasImportadasModo = 'parcelas';
+  novasChavesTemp = [];
+  codigosTemp = {};
+  selecionadasLote.clear();
+  lancamentosGerados = [];
+  editandoRegras = false;
+  editTemp = {};
+  regrasSelecionadasEdicao.clear();
+  extratoBancarioTemp = [];
+  infoExtratoBancarioTemp = null;
+  mostrarPreviewExtrato = false;
+  conciliacaoItensTemp = [];
+  codigosConciliacaoTemp = {};
+  vinculosPagamentoConciliacaoTemp = {};
+  saidasExtratoRevisadasConciliacaoTemp = {};
+  trechosRecebimentoConciliacaoTemp = {};
+  conciliacaoAplicadaTemp = false;
+  recebimentosRateioTemp = [];
+  infoRecebimentosRateioTemp = null;
+  provisaoRateioTemp = [];
+  infoProvisaoRateioTemp = null;
+  mostrarLancamentosConciliados = false;
+  mostrarPendenciasPreenchidas = false;
+  filtroPendenciasConciliacaoTemp = '';
+  pendenciasConciliacaoSelecionadas.clear();
+  document.getElementById('modal-pendencias-conciliacao')?.remove();
+}
+
 function selecionarGrupo(g) {
+  if (grupoAtivo && grupoAtivo !== g) limparSessaoImportacao();
   grupoAtivo = g;
   renderGrupos();
   showMsg(`Grupo "${g}" selecionado.`, 'ok');
