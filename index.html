@@ -310,13 +310,45 @@
       <button class="btn" onclick="aplicarRegrasSalvasProvisao()">🔁 Reaplicar regras salvas</button>
       <button class="btn" onclick="limparProvisaoRateio()">Limpar provisão</button>
     </div>
-    <div class="table-wrap table-scroll" id="preview-provisao-rateio" style="display:none;margin-bottom:16px">
+  <div class="table-wrap table-scroll" id="preview-provisao-rateio" style="display:none;margin-bottom:16px">
       <table>
         <thead>
           <tr><th>Emissão</th><th>Débito</th><th>Crédito</th><th style="text-align:right">Valor</th><th>Empresa</th><th>Fornecedor</th><th>Documento</th><th>Complemento</th></tr>
         </thead>
         <tbody id="tbody-provisao-rateio"></tbody>
       </table>
+    </div>
+  </div>
+
+  <!-- TELA PAGAMENTOS SEM BANCO: rateio fixo por percentual, exclusiva do modo Rateio de Títulos -->
+  <div class="tela" id="tela-pagamentos-fixo">
+    <div class="section-header">
+      <button class="btn btn-sm" onclick="voltarTela()">← Voltar</button>
+      <h2>Pagamentos sem banco</h2>
+    </div>
+    <div id="msg-pagamentos-fixo"></div>
+    <div class="card" style="margin-bottom:16px">
+      <div class="metric-label" style="margin-bottom:8px">Módulo de rateio sem extrato bancário</div>
+      <p class="conciliacao-note" style="margin-bottom:14px">
+        Importe somente a planilha de pagamentos. Linhas com unidade preenchida seguem normalmente; linhas sem unidade são divididas pela regra percentual abaixo.
+      </p>
+      <div class="drop-area" id="drop-area-pagamentos-fixo" onclick="document.getElementById('file-input-pagamentos-fixo').click()" ondragover="dragOver(event)" ondragleave="dragLeave(event)" ondrop="onDropPagamentoFixo(event)">
+        <div class="drop-icon">📄</div>
+        <div class="drop-title">Arraste a planilha de pagamentos aqui ou clique para selecionar</div>
+        <div class="drop-sub">Arquivo no padrão Rateio de Títulos a Pagar (.xlsx, .xlsm ou .xls)</div>
+      </div>
+      <input type="file" id="file-input-pagamentos-fixo" accept=".xlsx,.xlsm,.xls" multiple style="display:none" onchange="onFileChangePagamentoFixo(event)">
+    </div>
+    <div class="card" style="margin-bottom:16px">
+      <div class="metric-label" style="margin-bottom:8px">Regra fixa de rateio por percentual</div>
+      <p class="conciliacao-note" style="margin-bottom:10px">A regra é usada somente nas linhas sem unidade e fica salva para o grupo atual.</p>
+      <div id="tabela-percentuais-fixo"></div>
+      <div class="btn-row" style="margin-top:12px"><button class="btn btn-blue" onclick="salvarPercentuaisRateioFixo()">💾 Salvar regra de %</button></div>
+    </div>
+    <div id="resumo-pagamentos-fixo"></div>
+    <div id="acoes-pagamentos-fixo" style="display:none;gap:10px;flex-wrap:wrap;margin:0 0 16px">
+      <button class="btn btn-blue" onclick="gerarPagamentosFixoComPercentual()">Aplicar % e continuar →</button>
+      <button class="btn" onclick="linhasPagamentoFixoTemp=[];document.getElementById('acoes-pagamentos-fixo').style.display='none';document.getElementById('resumo-pagamentos-fixo').innerHTML=''">Limpar</button>
     </div>
   </div>
 
@@ -459,6 +491,7 @@ const STORAGE_DEPARA_PROVISAO = 'zip_depara_regras_provisao';
 const STORAGE_PLANO_CONTAS = 'zip_depara_plano_contas';
 const STORAGE_CONTAS_SEM_CONCILIACAO = 'zip_depara_contas_sem_conciliacao';
 const STORAGE_CONFIG_GRUPOS = 'zip_depara_config_grupos';
+const STORAGE_PERCENTUAIS_RATEIO = 'zip_depara_percentuais_rateio_fixo';
 const API_BASE_DEPARA = '/.netlify/functions/depara-base';
 
 let grupos = JSON.parse(localStorage.getItem(STORAGE_GRUPOS) || '[]');
@@ -468,6 +501,7 @@ let deparaProvisao = JSON.parse(localStorage.getItem(STORAGE_DEPARA_PROVISAO) ||
 let planoContas = JSON.parse(localStorage.getItem(STORAGE_PLANO_CONTAS) || '{}');
 let contasSemConciliacao = JSON.parse(localStorage.getItem(STORAGE_CONTAS_SEM_CONCILIACAO) || '{}');
 let configGrupos = JSON.parse(localStorage.getItem(STORAGE_CONFIG_GRUPOS) || '{}');
+let percentuaisRateioFixo = JSON.parse(localStorage.getItem(STORAGE_PERCENTUAIS_RATEIO) || '{}');
 let grupoAtivo = null;
 let linhasImportadas = [];
 let modoImportacaoPagamentos = 'parcelas';
@@ -478,6 +512,7 @@ let codigosTemp = {};
 let selecionadasLote = new Set();
 let filtrosNovasChaves = { empresa: '', centroCusto: '', fornecedor: '', plano: '', historico: '', tipoRateio: '', numero: '', tipoDoc: '', codigo: '' };
 let lancamentosGerados = [];
+let linhasPagamentoFixoTemp = [];
 let editandoRegras = false;
 let editTemp = {};
 let regrasSelecionadasEdicao = new Set();
@@ -725,6 +760,7 @@ function empresaBancoRateioPorConta(conta, empresaFallback = '') {
 }
 
 function rateioIntercompanyLinha(r) {
+  if (r?.__mesmaEmpresaBanco) return false;
   const empresaBanco = empresaOrigemLinha(r);
   const empresaCentro = centroCustoLinha(r);
   return grupoUsaNumerariosRateio()
@@ -743,10 +779,12 @@ function tipoRateioOperacao(empresaOrigem, centroCusto, rateio = false) {
 }
 
 function tipoRateioItem(item) {
+  if (item?.mesmaEmpresaBanco) return 'PROPRIO';
   return tipoRateioOperacao(item?.empresaOrigem || item?.empresa, item?.centroCusto, !!item?.rateio || !!item?.parcelasNumerarios);
 }
 
 function tipoRateioLinha(r) {
+  if (r?.__mesmaEmpresaBanco) return 'PROPRIO';
   return tipoRateioOperacao(empresaOrigemLinha(r), centroCustoLinha(r), !!r?.__rateio || linhaEhParcelasNumerarios(r));
 }
 function chaveNumerarioRateio(empresaBanco, centroCusto, lado, natureza = '') {
@@ -894,6 +932,7 @@ function salvarStorage() {
   localStorage.setItem(STORAGE_PLANO_CONTAS, JSON.stringify(planoContas));
   localStorage.setItem(STORAGE_CONTAS_SEM_CONCILIACAO, JSON.stringify(contasSemConciliacao));
   localStorage.setItem(STORAGE_CONFIG_GRUPOS, JSON.stringify(configGrupos));
+  localStorage.setItem(STORAGE_PERCENTUAIS_RATEIO, JSON.stringify(percentuaisRateioFixo));
   salvarBaseCompartilhada();
 }
 
@@ -920,6 +959,7 @@ async function carregarBaseCompartilhada(mostrarMensagem = false) {
     planoContas = data.planoContas && typeof data.planoContas === 'object' ? data.planoContas : {};
     contasSemConciliacao = data.contasSemConciliacao && typeof data.contasSemConciliacao === 'object' ? data.contasSemConciliacao : {};
     configGrupos = data.configGrupos && typeof data.configGrupos === 'object' ? data.configGrupos : {};
+    percentuaisRateioFixo = data.percentuaisRateioFixo && typeof data.percentuaisRateioFixo === 'object' ? data.percentuaisRateioFixo : {};
     ultimaSyncLocal = remoteUpdatedAt || Date.now();
     localStorage.setItem(STORAGE_GRUPOS, JSON.stringify(grupos));
     localStorage.setItem(STORAGE_DEPARA, JSON.stringify(depara));
@@ -928,6 +968,7 @@ async function carregarBaseCompartilhada(mostrarMensagem = false) {
     localStorage.setItem(STORAGE_PLANO_CONTAS, JSON.stringify(planoContas));
     localStorage.setItem(STORAGE_CONTAS_SEM_CONCILIACAO, JSON.stringify(contasSemConciliacao));
     localStorage.setItem(STORAGE_CONFIG_GRUPOS, JSON.stringify(configGrupos));
+    localStorage.setItem(STORAGE_PERCENTUAIS_RATEIO, JSON.stringify(percentuaisRateioFixo));
     if (grupoAtivo && !grupos.includes(grupoAtivo)) grupoAtivo = null;
     renderGrupos();
     atualizarStatusBanco('Base compartilhada do site conectada. Todos usam os mesmos grupos e regras.', 'ok');
@@ -947,7 +988,7 @@ async function salvarBaseCompartilhada(forcar = false) {
   try {
     salvandoBaseCompartilhada = true;
     ultimaSyncLocal = Date.now();
-    const payload = { grupos, depara, deparaRecebimentos, deparaProvisao, planoContas, contasSemConciliacao, configGrupos };
+    const payload = { grupos, depara, deparaRecebimentos, deparaProvisao, planoContas, contasSemConciliacao, configGrupos, percentuaisRateioFixo };
     const resp = await fetch(API_BASE_DEPARA, {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
@@ -972,7 +1013,8 @@ function exportarBaseDePara() {
     deparaRecebimentos,
     deparaProvisao,
     contasSemConciliacao,
-    configGrupos
+    configGrupos,
+    percentuaisRateioFixo
   };
   const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json;charset=utf-8' });
   const url = URL.createObjectURL(blob);
@@ -1003,6 +1045,7 @@ function importarBaseDePara(event) {
       deparaProvisao = payload.deparaProvisao && typeof payload.deparaProvisao === 'object' ? payload.deparaProvisao : {};
       contasSemConciliacao = payload.contasSemConciliacao && typeof payload.contasSemConciliacao === 'object' ? payload.contasSemConciliacao : {};
       configGrupos = payload.configGrupos && typeof payload.configGrupos === 'object' ? payload.configGrupos : {};
+      percentuaisRateioFixo = payload.percentuaisRateioFixo && typeof payload.percentuaisRateioFixo === 'object' ? payload.percentuaisRateioFixo : {};
       grupoAtivo = grupos.includes(grupoAtivo) ? grupoAtivo : null;
       salvarStorage();
       renderGrupos();
@@ -1037,6 +1080,7 @@ function mostrarTela(id, registrarHistorico = true) {
   if (id === 'tela-conciliacao-bancaria') renderConciliacaoBancaria();
   if (id === 'tela-resultado') renderResumoConferenciaResultado();
   if (id === 'tela-provisao-rateio') renderProvisaoRateio();
+  if (id === 'tela-pagamentos-fixo') renderPercentuaisRateioFixo();
   if (id === 'tela-importar' && grupoAtivo) {
     document.getElementById('titulo-importar').textContent = 'Importar planilha — ' + grupoAtivo;
     selecionarModoImportacaoPagamentos(modoImportacaoDoGrupo(grupoAtivo));
@@ -1191,8 +1235,8 @@ function indiceCabecalhoPlanilha(raw) {
 function normalizarLinhaRateio(row, col) {
   const linha = [];
   const empresaOrigem = limparTextoECD(row[col.empresa]);
-  const centroCusto = limparTextoECD(row[col.centroCustos]);
-  const unidadeDespesa = unidadeDespesaPorEmpresa(empresaOrigem, centroCusto || empresaOrigem);
+  const centroCustoInformado = limparTextoECD(row[col.centroCustos]);
+  const unidadeDespesa = unidadeDespesaPorEmpresa(empresaOrigem, centroCustoInformado || empresaOrigem);
   linha[COLS.TIPO] = row[col.tipo];
   linha[COLS.NUMERO] = row[col.numero];
   linha[COLS.PARCELA] = row[col.parcela];
@@ -1216,6 +1260,7 @@ function normalizarLinhaRateio(row, col) {
   linha.__rateio = true;
   linha.__empresaOriginal = empresaOrigem;
   linha.__centroCusto = unidadeDespesa;
+  linha.__semCentroCusto = !centroCustoInformado;
   return linha;
 }
 
@@ -1501,7 +1546,7 @@ function prepararPagamentosImportados(dados, abrirTelaPendencias = true) {
         const chaveAjuste = montarChave(forn, plano, tipoPonta, historico, escopoRegra);
         if (!encontrarCodigoRegraAjuste(regrasSalvas, forn, plano, tipoAjusteRateio, ponta, historico, escopoRegra) && !vistas.has(chaveAjuste)) {
           vistas.add(chaveAjuste);
-          novas.push({ chave: chaveAjuste, fornecedor: forn, plano, tipoDoc: tipoPonta, historico, trechoHistorico: '', trechoHistoricoIndices: [], numero, empresa: empresaOrigem, empresaOrigem, centroCusto, empresaLancamento: empresaLancamentoLinha(r), rateio: !!r.__rateio, parcelasNumerarios: linhaEhParcelasNumerarios(r), escopoRegra });
+      novas.push({ chave: chaveAjuste, fornecedor: forn, plano, tipoDoc: tipoPonta, historico, trechoHistorico: '', trechoHistoricoIndices: [], numero, empresa: empresaOrigem, empresaOrigem, centroCusto, empresaLancamento: empresaLancamentoLinha(r), rateio: !!r.__rateio, mesmaEmpresaBanco: !!r.__mesmaEmpresaBanco, parcelasNumerarios: linhaEhParcelasNumerarios(r), escopoRegra });
         }
       });
       return;
@@ -1509,7 +1554,7 @@ function prepararPagamentosImportados(dados, abrirTelaPendencias = true) {
     const chave = montarChave(forn, plano, tipoDoc, historico, escopoRegra);
     if (!encontrarCodigoRegra(regrasSalvas, forn, plano, tipoDoc, historico, escopoRegra) && !vistas.has(chave)) {
       vistas.add(chave);
-      novas.push({ chave, fornecedor: forn, plano, tipoDoc, historico, trechoHistorico: '', trechoHistoricoIndices: [], numero, empresa: empresaOrigem, empresaOrigem, centroCusto, empresaLancamento: empresaLancamentoLinha(r), rateio: !!r.__rateio, parcelasNumerarios: linhaEhParcelasNumerarios(r), escopoRegra });
+      novas.push({ chave, fornecedor: forn, plano, tipoDoc, historico, trechoHistorico: '', trechoHistoricoIndices: [], numero, empresa: empresaOrigem, empresaOrigem, centroCusto, empresaLancamento: empresaLancamentoLinha(r), rateio: !!r.__rateio, mesmaEmpresaBanco: !!r.__mesmaEmpresaBanco, parcelasNumerarios: linhaEhParcelasNumerarios(r), escopoRegra });
     }
     if (rateioIntercompanyLinha(r)) {
       const linhaRateioNegativa = arredondarMoeda(r[COLS.VALOR_LIQ]) < 0;
@@ -3584,6 +3629,7 @@ function renderGrupos() {
           <button class="btn btn-sm" onclick="mostrarTela('tela-regras')">📋 Regras</button>
           <button class="btn btn-sm" onclick="mostrarTela('tela-plano-contas')">📑 Plano de Contas</button>
           <button class="btn btn-sm btn-blue" onclick="mostrarTela('tela-importar')">⬆ Importar planilha</button>
+          ${modoGrupo === 'rateio' ? `<button class="btn btn-sm" onclick="mostrarTela('tela-pagamentos-fixo')">💵 Pagamentos sem banco</button>` : ''}
           ${modoGrupo === 'rateio' ? `<button class="btn btn-sm" onclick="mostrarTela('tela-provisao-rateio')">Provisão</button>` : ''}
         ` : ''}
         <button class="btn btn-sm btn-danger" onclick="excluirGrupo('${g}')">🗑</button>
@@ -3614,11 +3660,13 @@ function editarGrupoCadastro(g) {
       planoContas[nomeLimpo] = planoContas[atual] || [];
       contasSemConciliacao[nomeLimpo] = contasSemConciliacao[atual] || {};
       configGrupos[nomeLimpo] = configGrupos[atual] || {};
+      percentuaisRateioFixo[nomeLimpo] = percentuaisRateioFixo[atual] || [];
       delete depara[atual];
       delete deparaRecebimentos[atual];
       delete planoContas[atual];
       delete contasSemConciliacao[atual];
       delete configGrupos[atual];
+      delete percentuaisRateioFixo[atual];
       if (grupoAtivo === atual) grupoAtivo = nomeLimpo;
     }
     configGrupos[nomeLimpo] = Object.assign({}, configGrupos[nomeLimpo] || {}, { modoImportacaoPagamentos: novoModoNorm });
@@ -3683,6 +3731,7 @@ function excluirGrupo(g) {
     delete depara[g];
     delete deparaRecebimentos[g];
     delete configGrupos[g];
+    delete percentuaisRateioFixo[g];
     if (grupoAtivo === g) grupoAtivo = null;
     salvarStorage();
     renderGrupos();
@@ -4927,6 +4976,130 @@ function gerarLancamentos(dados, regras) {
   `).join('');
 
   mostrarTela('tela-resultado');
+}
+
+// Pagamentos sem banco: pré-processamento isolado do modo Rateio de Títulos.
+function regraPercentualAtual() {
+  return grupoAtivo ? (percentuaisRateioFixo[grupoAtivo] || []).slice() : [];
+}
+
+function renderPercentuaisRateioFixo() {
+  const el = document.getElementById('tabela-percentuais-fixo');
+  if (!el) return;
+  const regra = regraPercentualAtual();
+  const total = regra.reduce((s, r) => s + (parseFloat(r.percentual) || 0), 0);
+  const ok = Math.abs(total - 100) <= 0.01;
+  const linhas = regra.map((r, i) => `
+    <tr>
+      <td><input type="text" value="${escapeAttr(r.empresa || '')}" oninput="editarPercentualFixo(${i}, 'empresa', this.value)" placeholder="Ex.: 14463 - CACHOEIRA - LOJA" style="width:100%"></td>
+      <td><input type="number" step="0.01" value="${r.percentual || 0}" oninput="editarPercentualFixo(${i}, 'percentual', this.value)" style="width:82px;text-align:right"></td>
+      <td style="text-align:center"><input type="checkbox" ${r.ehEmpresaBanco ? 'checked' : ''} onchange="editarPercentualFixo(${i}, 'ehEmpresaBanco', this.checked)" title="Esta unidade é a dona da conta bancária"></td>
+      <td><button class="btn btn-sm" onclick="removerPercentualFixo(${i})">🗑</button></td>
+    </tr>`).join('');
+  const vazio = '<tr><td colspan="4" style="text-align:center;color:var(--text2);padding:16px">Nenhuma unidade cadastrada.</td></tr>';
+  el.innerHTML = `<div class="table-wrap"><table><thead><tr><th>Empresa / unidade</th><th style="width:100px">%</th><th style="width:150px;text-align:center">É a empresa do banco?</th><th style="width:52px"></th></tr></thead><tbody>${linhas || vazio}</tbody></table></div><div style="margin-top:10px;display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap"><button class="btn btn-sm" onclick="adicionarPercentualFixo()">+ Adicionar unidade</button><span id="badge-total-percentual-fixo" class="conciliacao-status ${ok ? 'ok' : 'warn'}">Total: ${total.toFixed(2)}%${ok ? '' : ' — precisa somar 100%'}</span></div>`;
+}
+
+function atualizarTotalPercentualFixo() {
+  const el = document.getElementById('badge-total-percentual-fixo');
+  if (!el) return;
+  const total = regraPercentualAtual().reduce((s, r) => s + (parseFloat(r.percentual) || 0), 0);
+  const ok = Math.abs(total - 100) <= 0.01;
+  el.className = `conciliacao-status ${ok ? 'ok' : 'warn'}`;
+  el.textContent = `Total: ${total.toFixed(2)}%${ok ? '' : ' — precisa somar 100%'}`;
+}
+
+function adicionarPercentualFixo() {
+  if (!grupoAtivo) return alert('Selecione um grupo primeiro.');
+  percentuaisRateioFixo[grupoAtivo] = percentuaisRateioFixo[grupoAtivo] || [];
+  percentuaisRateioFixo[grupoAtivo].push({ empresa: '', percentual: 0, ehEmpresaBanco: false });
+  renderPercentuaisRateioFixo();
+}
+
+function editarPercentualFixo(i, campo, valor) {
+  if (!grupoAtivo || !percentuaisRateioFixo[grupoAtivo]?.[i]) return;
+  percentuaisRateioFixo[grupoAtivo][i][campo] = campo === 'ehEmpresaBanco' ? !!valor : (campo === 'percentual' ? valor : limparTextoECD(valor));
+  if (campo === 'percentual') atualizarTotalPercentualFixo();
+}
+
+function removerPercentualFixo(i) {
+  if (!grupoAtivo || !percentuaisRateioFixo[grupoAtivo]) return;
+  percentuaisRateioFixo[grupoAtivo].splice(i, 1);
+  renderPercentuaisRateioFixo();
+}
+
+function salvarPercentuaisRateioFixo() {
+  if (!grupoAtivo) return;
+  const total = regraPercentualAtual().reduce((s, r) => s + (parseFloat(r.percentual) || 0), 0);
+  if (Math.abs(total - 100) > 0.5 && !confirm(`A soma está em ${total.toFixed(2)}%, não 100%. Salvar mesmo assim?`)) return;
+  salvarStorage();
+  const msg = document.getElementById('msg-pagamentos-fixo');
+  if (msg) msg.innerHTML = `<div class="alert alert-ok">Regra de percentual salva para o grupo ${escapeHtml(grupoAtivo)}.</div>`;
+}
+
+function ehCentroCustoPlaceholder(cc) {
+  const valor = normalizarTexto(cc);
+  return !valor || valor.includes('adm central');
+}
+
+function expandirPorPercentualFixo(dados, regra) {
+  const total = regra.reduce((s, r) => s + (parseFloat(r.percentual) || 0), 0);
+  const valida = regra.length > 0 && Math.abs(total - 100) <= 0.5;
+  const expandido = [];
+  let qtd = 0;
+  dados.forEach(linha => {
+    if (!(linha.__semCentroCusto || ehCentroCustoPlaceholder(linha[COLS.CC])) || !valida) { expandido.push(linha); return; }
+    const original = arredondarMoeda(linha[COLS.VALOR_BRUTO]);
+    if (!original) { expandido.push(linha); return; }
+    qtd++;
+    let soma = 0;
+    regra.forEach((r, i) => {
+      const ultima = i === regra.length - 1;
+      const parte = ultima ? arredondarMoeda(original - soma) : arredondarMoeda(original * (parseFloat(r.percentual) || 0) / 100);
+      soma = arredondarMoeda(soma + parte);
+      if (!parte || !limparTextoECD(r.empresa)) return;
+      const nova = linha.slice();
+      nova[COLS.CC] = limparTextoECD(r.empresa);
+      nova[COLS.VALOR_BRUTO] = parte;
+      nova[COLS.VALOR_LIQ] = parte;
+      nova.__rateio = true;
+      nova.__empresaOriginal = linha.__empresaOriginal;
+      nova.__centroCusto = limparTextoECD(r.empresa);
+      nova.__percentualFixoAplicado = r.percentual;
+      nova.__mesmaEmpresaBanco = !!r.ehEmpresaBanco;
+      expandido.push(nova);
+    });
+  });
+  return { linhas: expandido, linhasExpandidas: qtd };
+}
+
+async function processarArquivoPagamentoFixo(files) {
+  if (!grupoAtivo) return alert('Selecione um grupo antes de importar.');
+  const msg = document.getElementById('msg-pagamentos-fixo');
+  try {
+    const resultados = await Promise.all(Array.from(files).map(classificarArquivoRateioImportacao));
+    const pagamentos = resultados.filter(r => r.tipo === 'pagamento').flatMap(r => r.dados || []);
+    if (!pagamentos.length) { if (msg) msg.innerHTML = '<div class="alert alert-warn">Nenhuma planilha de pagamento foi reconhecida.</div>'; return; }
+    linhasPagamentoFixoTemp = pagamentos;
+    const semUnidade = pagamentos.filter(r => ehCentroCustoPlaceholder(r[COLS.CC])).length;
+    document.getElementById('resumo-pagamentos-fixo').innerHTML = `<div class="card" style="margin-bottom:16px"><div class="metric-label">Importado</div><p class="conciliacao-note">${pagamentos.length} linha(s), sendo ${semUnidade} sem unidade e ${pagamentos.length - semUnidade} já rateada(s).</p></div>`;
+    document.getElementById('acoes-pagamentos-fixo').style.display = 'flex';
+    if (msg) msg.innerHTML = '';
+  } catch (err) { if (msg) msg.innerHTML = `<div class="alert alert-warn">Erro ao ler os arquivos: ${escapeHtml(err.message)}</div>`; }
+}
+
+function onFileChangePagamentoFixo(e) { const files = Array.from(e.target.files || []); if (files.length) processarArquivoPagamentoFixo(files); e.target.value = ''; }
+function onDropPagamentoFixo(e) { e.preventDefault(); dragLeave(e); const files = Array.from(e.dataTransfer.files || []); if (files.length) processarArquivoPagamentoFixo(files); }
+
+function gerarPagamentosFixoComPercentual() {
+  if (!linhasPagamentoFixoTemp.length) return alert('Importe a planilha de pagamentos primeiro.');
+  const regra = regraPercentualAtual().filter(r => limparTextoECD(r.empresa) && parseFloat(r.percentual) > 0);
+  const total = regra.reduce((s, r) => s + (parseFloat(r.percentual) || 0), 0);
+  if (regra.length && Math.abs(total - 100) > 0.5 && !confirm(`A regra soma ${total.toFixed(2)}%, não 100%. Continuar sem dividir as linhas sem unidade?`)) return;
+  const resultado = expandirPorPercentualFixo(linhasPagamentoFixoTemp, regra);
+  linhasImportadasModo = 'rateio';
+  prepararPagamentosImportados(resultado.linhas, true);
+  if (resultado.linhasExpandidas) showMsg(`${resultado.linhasExpandidas} pagamento(s) sem unidade foram divididos pela regra de %.`, 'ok');
 }
 
 function montarLinhasDominioPagamentos() {
