@@ -76,7 +76,7 @@
 </div>
 <script>
 const STORAGE='f360_rateio_depara_planilha_pronta_v1';
-const CAB=['Data','Cód. Conta Débito','Cód. Conta Crédito','Valor','Cód. Histórico','Complemento Histórico','Inicia Lote','Código Matriz/Filial','Centro de Custo Débito','Centro de Custo Crédito','Tipo do Rateio'];
+const CAB=['Data','Cód. Conta Débito','Cód. Conta Crédito','Valor','Cód. Histórico','Complemento Histórico','Inicia Lote','Código Matriz/Filial','Centro de Custo Débito','Centro de Custo Crédito','Tipo de Operação'];
 let linhas=[]; let contas=[]; let depara=JSON.parse(localStorage.getItem(STORAGE)||'{}'); let selecionadas=new Set(); let previewAberto=false;
 function norm(v){return String(v??'').normalize('NFD').replace(/[\u0300-\u036f]/g,'').replace(/\s+/g,' ').trim().toLowerCase()}
 function texto(v){return String(v??'').replace(/[;|·•]/g,' - ').replace(/[–—]/g,'-').replace(/[*$&#@]/g,' - ').replace(/\s*[-]\s*/g,' - ').replace(/\s+/g,' ').trim()}

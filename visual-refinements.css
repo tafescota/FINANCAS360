@@ -603,50 +603,6 @@ tr.sem-codigo {
   background: #fff7ed;
 }
 
-.table-novas {
-  font-size: 12px;
-  min-width: 0;
-}
-
-.table-novas th {
-  white-space: normal;
-}
-
-.table-novas td {
-  line-height: 1.4;
-}
-
-.table-novas-wrap {
-  overflow-x: hidden;
-}
-
-.table-novas th:nth-child(1) { width: 40px; }
-.table-novas th:nth-child(2) { width: 9%; }
-.table-novas th:nth-child(3) { width: 10%; }
-.table-novas th:nth-child(4) { width: 14%; }
-.table-novas th:nth-child(5) { width: 13%; }
-.table-novas th:nth-child(6) { width: 20%; }
-.table-novas th:nth-child(7) { width: 9%; }
-.table-novas th:nth-child(8) { width: 7%; }
-.table-novas th:nth-child(9) { width: 9%; }
-.table-novas th:nth-child(10) { width: 9%; }
-
-.table-novas td:nth-child(6) {
-  overflow-wrap: normal;
-  word-break: normal;
-}
-
-.table-novas .historico-regra-label {
-  white-space: nowrap;
-}
-
-.table-novas input[type=text],
-input[type=text],
-input[type=search] {
-  border-color: var(--ui-border-strong);
-  border-radius: 8px;
-}
-
 input[type=text]:focus,
 input[type=search]:focus {
   border-color: var(--ui-blue);
@@ -886,34 +842,42 @@ input[type=search]:focus {
 }
 
 @media (max-width: 760px) {
+
   .container {
     padding: 22px 14px 34px;
   }
+
 
   .section-header {
     margin-bottom: 18px;
   }
 
+
   .metric {
     min-height: auto;
   }
 
+
   .btn {
     width: 100%;
   }
+
 
   .section-header .btn,
   .topbar .btn {
     width: auto;
   }
 
+
   .conciliation-actions .btn {
     width: 100%;
   }
 
+
   .conciliation-table {
     min-width: 0;
   }
+
 
   .conciliation-table th:nth-child(2),
   .conciliation-table td:nth-child(2),
@@ -924,20 +888,24 @@ input[type=search]:focus {
     display: none;
   }
 
+
   .conciliation-table th:nth-child(1),
   .conciliation-table td:nth-child(1) {
     width: 92px;
   }
+
 
   .conciliation-table th:nth-child(4),
   .conciliation-table td:nth-child(4) {
     width: 102px;
   }
 
+
   .conciliation-table th:nth-child(6),
   .conciliation-table td:nth-child(6) {
     width: 92px;
   }
+
 
   .conciliation-table th,
   .conciliation-table td {
@@ -945,9 +913,11 @@ input[type=search]:focus {
     padding-right: 9px;
   }
 
+
   .desc-truncate {
     max-width: 36vw;
   }
+
 
   .package-row {
     grid-template-columns: 1fr;
@@ -955,24 +925,12 @@ input[type=search]:focus {
     padding: 10px 12px;
   }
 
+
   .package-row > div:first-child {
     white-space: normal;
   }
 }
 
-
-.table-novas td,
-.table-novas th {
-  padding-top: 7px;
-  padding-bottom: 7px;
-  vertical-align: middle;
-}
-
-.table-novas .badge {
-  white-space: normal;
-  line-height: 1.2;
-  text-align: center;
-}
 
 .btn-icon-edit {
   display: inline-flex;
@@ -1155,92 +1113,6 @@ input[type=search]:focus {
   justify-content: center;
 }
 
-#tela-novas-chaves .table-novas-wrap {
-  overflow-x: auto;
-  max-height: calc(100vh - 310px);
-}
-
-#tela-novas-chaves .table-novas {
-  table-layout: fixed;
-  width: 100%;
-  min-width: 1680px;
-  font-size: 11px;
-}
-
-#tela-novas-chaves .table-novas th,
-#tela-novas-chaves .table-novas td {
-  padding: 8px 8px;
-  vertical-align: middle;
-}
-
-#tela-novas-chaves .table-novas th:nth-child(1),
-#tela-novas-chaves .table-novas td:nth-child(1) { width: 34px; }
-#tela-novas-chaves .table-novas th:nth-child(2),
-#tela-novas-chaves .table-novas td:nth-child(2) { width: 8%; }
-#tela-novas-chaves .table-novas th:nth-child(3),
-#tela-novas-chaves .table-novas td:nth-child(3) { width: 9%; }
-#tela-novas-chaves .table-novas th:nth-child(4),
-#tela-novas-chaves .table-novas td:nth-child(4) { width: 15%; }
-#tela-novas-chaves .table-novas th:nth-child(5),
-#tela-novas-chaves .table-novas td:nth-child(5) { width: 14%; }
-#tela-novas-chaves .table-novas th:nth-child(6),
-#tela-novas-chaves .table-novas td:nth-child(6) { width: 19%; }
-#tela-novas-chaves .table-novas th:nth-child(7),
-#tela-novas-chaves .table-novas td:nth-child(7) { width: 82px; }
-#tela-novas-chaves .table-novas th:nth-child(8),
-#tela-novas-chaves .table-novas td:nth-child(8) { width: 66px; }
-#tela-novas-chaves .table-novas th:nth-child(9),
-#tela-novas-chaves .table-novas td:nth-child(9) { width: 82px; }
-#tela-novas-chaves .table-novas th:nth-child(10),
-#tela-novas-chaves .table-novas td:nth-child(10) { width: 310px; }
-
-#tela-novas-chaves .table-novas td:nth-child(2),
-#tela-novas-chaves .table-novas td:nth-child(3),
-#tela-novas-chaves .table-novas td:nth-child(4),
-#tela-novas-chaves .table-novas td:nth-child(5),
-#tela-novas-chaves .table-novas td:nth-child(8),
-#tela-novas-chaves .table-novas td:nth-child(9) {
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-
-#tela-novas-chaves .table-novas .badge {
-  display: inline-flex;
-  max-width: 86px;
-  min-height: 22px;
-  align-items: center;
-  justify-content: center;
-  padding: 4px 8px;
-  border-radius: 999px;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  line-height: 1;
-  font-size: 10px;
-  letter-spacing: 0;
-}
-
-#tela-novas-chaves .table-novas .cell-subtle {
-  max-width: 86px;
-  margin-top: 3px;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  color: #64748b;
-  font-size: 10px;
-  font-weight: 600;
-  text-transform: none;
-}
-
-#tela-novas-chaves .table-novas input.conta-autocomplete {
-  width: 100%;
-  min-width: 0;
-  height: 32px;
-  padding-left: 8px;
-  padding-right: 8px;
-  font-size: 11.5px;
-}
-
 #tela-novas-chaves .tipo-ajuste-badge {
   max-width: 74px;
   padding: 3px 7px;
@@ -1293,9 +1165,388 @@ input[type=search]:focus {
 }
 
 @media (max-width: 980px) {
+
   #tela-novas-chaves .bulk-tool-top {
     grid-template-columns: 1fr 1fr;
   }
+}
+
+
+/* Tela de novas combinações: acabamento operacional contábil */
+#tela-novas-chaves {
+  --novas-row-border: #e7edf5;
+  --novas-header-bg: #f4f7fb;
+  --novas-strong: #172033;
+}
+
+#tela-novas-chaves .section-header {
+  margin-bottom: 14px;
+}
+
+#tela-novas-chaves .section-header h2 {
+  font-size: 22px;
+  letter-spacing: 0;
+}
+
+#tela-novas-chaves .tag-novas {
+  background: #eef6ff;
+  border-color: #bfdcf7;
+  color: #0d5fa8;
+  font-weight: 800;
+  padding: 4px 10px;
+}
+
+#tela-novas-chaves > .alert {
+  border-left: 4px solid #d97706;
+  box-shadow: none;
+  margin-bottom: 14px !important;
+}
+
+#tela-novas-chaves .novas-bulk-tool {
+  padding: 16px 18px 14px;
+  margin-bottom: 18px;
+  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04);
+}
+
+#tela-novas-chaves .novas-bulk-tool:hover {
+  border-color: var(--ui-border);
+  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04);
+  transform: none;
+}
+
+#tela-novas-chaves .bulk-tool-top {
+  display: grid;
+  grid-template-columns: minmax(280px, 1.2fr) minmax(170px, 210px) minmax(240px, 0.95fr) auto auto auto;
+  gap: 10px;
+  align-items: center;
+}
+
+#tela-novas-chaves .bulk-tool-top .btn {
+  min-height: 40px;
+  white-space: nowrap;
+}
+
+#tela-novas-chaves #filtro-lote,
+#tela-novas-chaves #filtro-tipo-lote,
+#tela-novas-chaves #codigo-lote {
+  height: 40px;
+  border-radius: 7px;
+  font-size: 13px;
+}
+
+#tela-novas-chaves .btn-save-fill {
+  background: #ffffff;
+  border-color: rgba(27, 142, 242, 0.48);
+  color: #0d5fa8;
+}
+
+#tela-novas-chaves .btn-save-fill:hover {
+  background: #eef6ff;
+  border-color: var(--ui-blue);
+}
+
+#tela-novas-chaves .novas-statusbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-top: 12px;
+  padding-top: 12px;
+  border-top: 1px solid #e7edf5;
+}
+
+#tela-novas-chaves .bulk-tool-options {
+  margin-top: 0;
+}
+
+#tela-novas-chaves .compact-check {
+  background: #f8fafc;
+  border: 1px solid #dbe3ee;
+  border-radius: 999px;
+  color: #475569;
+  min-height: 30px;
+  padding: 5px 10px;
+}
+
+#tela-novas-chaves .compact-check input[type=checkbox] {
+  accent-color: var(--ui-blue);
+  height: 15px;
+  width: 15px;
+}
+
+#tela-novas-chaves .bulk-tool-status {
+  background: #f8fafc;
+  border: 1px solid #dbe3ee;
+  border-radius: 999px;
+  color: #475569;
+  display: inline-flex;
+  align-items: center;
+  justify-content: flex-end;
+  min-height: 30px;
+  margin-top: 0;
+  max-width: 100%;
+  padding: 5px 11px;
+  white-space: nowrap;
+}
+
+#tela-novas-chaves .historico-regra-label {
+  color: #9aa7b8;
+  font-size: 10px;
+  font-weight: 600;
+  margin-bottom: 4px;
+}
+
+#tela-novas-chaves .historico-palavras {
+  color: #68778c;
+  line-height: 1.7;
+}
+
+#tela-novas-chaves .historico-palavra {
+  color: #68778c;
+  padding: 1px 1px;
+}
+
+#tela-novas-chaves .historico-palavra:hover,
+#tela-novas-chaves .historico-palavra.ativo {
+  background: #e8f3fe;
+  color: #0d5fa8;
+}
+
+#tela-novas-chaves .tipo-ajuste-badge {
+  max-width: 100%;
+}
+
+#tela-novas-chaves .novas-footer-actions {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-end;
+  margin-top: 16px;
+  padding-top: 14px;
+  border-top: 1px solid #e1e8f0;
+}
+
+#tela-novas-chaves .btn-finish-generate {
+  min-width: 240px;
+  min-height: 42px;
+  box-shadow: 0 2px 6px rgba(13, 27, 62, 0.14);
+}
+
+@media (max-width: 1200px) {
+
+  #tela-novas-chaves .bulk-tool-top {
+    grid-template-columns: minmax(260px, 1fr) minmax(170px, 220px) minmax(220px, 1fr);
+  }
+}
+
+
+@media (max-width: 760px) {
+
+  #tela-novas-chaves .bulk-tool-top {
+    grid-template-columns: 1fr;
+  }
+
+
+  #tela-novas-chaves .novas-statusbar {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+
+  #tela-novas-chaves .bulk-tool-status {
+    justify-content: flex-start;
+    white-space: normal;
+  }
+
+
+  #tela-novas-chaves .novas-footer-actions {
+    justify-content: stretch;
+  }
+
+
+  #tela-novas-chaves .novas-footer-actions .btn {
+    width: 100%;
+  }
+}
+
+
+/* Inspiração Cashboard: mais clareza e leitura sem perder densidade operacional */
+#tela-novas-chaves {
+  max-width: none;
+}
+
+#tela-novas-chaves .section-header {
+  align-items: center;
+  background: #ffffff;
+  border: 1px solid #e2e8f0;
+  border-radius: 10px;
+  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.035);
+  margin-bottom: 12px;
+  padding: 12px 14px;
+}
+
+#tela-novas-chaves .section-header .btn-sm {
+  background: #f8fafc;
+}
+
+#tela-novas-chaves .section-header h2 {
+  font-size: 19px;
+  font-weight: 780;
+  margin-right: 2px;
+}
+
+#tela-novas-chaves > .alert {
+  background: #fffaf0;
+  border: 1px solid #f4c27a;
+  border-left: 4px solid #c76a12;
+  color: #8a3b0b;
+  font-size: 13px;
+  line-height: 1.45;
+  padding: 10px 14px;
+}
+
+#tela-novas-chaves .novas-bulk-tool {
+  background: #ffffff;
+  border-color: #dce5ef;
+  border-radius: 10px;
+  padding: 14px 16px 12px;
+}
+
+#tela-novas-chaves .bulk-tool-top {
+  grid-template-columns: minmax(320px, 1.18fr) minmax(178px, 218px) minmax(260px, 1fr) minmax(142px, auto) minmax(120px, auto) minmax(178px, auto);
+  gap: 10px;
+}
+
+#tela-novas-chaves #filtro-lote,
+#tela-novas-chaves #filtro-tipo-lote,
+#tela-novas-chaves #codigo-lote {
+  background: #ffffff;
+  border-color: #ccd7e5;
+  color: #162033;
+}
+
+#tela-novas-chaves #filtro-lote::placeholder,
+#tela-novas-chaves #codigo-lote::placeholder {
+  color: #8a97aa;
+}
+
+#tela-novas-chaves .btn {
+  border-radius: 7px;
+  box-shadow: none;
+  transform: none;
+}
+
+#tela-novas-chaves .btn:hover {
+  box-shadow: none;
+  transform: none;
+}
+
+#tela-novas-chaves .novas-statusbar {
+  border-top-color: #edf2f7;
+  margin-top: 10px;
+  padding-top: 10px;
+}
+
+#tela-novas-chaves .compact-check,
+#tela-novas-chaves .bulk-tool-status {
+  background: #ffffff;
+  border-color: #e1e8f0;
+  border-radius: 8px;
+}
+
+#tela-novas-chaves .bulk-tool-status {
+  color: #5b6980;
+  font-weight: 650;
+}
+
+#tela-novas-chaves .historico-regra-label {
+  color: #a1adbc;
+  font-size: 9.8px;
+}
+
+#tela-novas-chaves .historico-palavra {
+  border-radius: 4px;
+  color: #6d7a8d;
+  line-height: 1.65;
+}
+
+#tela-novas-chaves .ajuste-par-inputs {
+  grid-template-columns: minmax(0, 1fr) 12px minmax(0, 1fr);
+  gap: 7px;
+}
+
+#tela-novas-chaves .ajuste-par-field input.conta-autocomplete {
+  min-height: 36px;
+}
+
+#tela-novas-chaves .novas-footer-actions {
+  background: #f5f7fb;
+  bottom: 0;
+  margin-top: 12px;
+  padding: 12px 0 0;
+  position: sticky;
+  z-index: 10;
+}
+
+#tela-novas-chaves .btn-save-fill {
+  font-weight: 760;
+}
+
+#tela-novas-chaves .btn-finish-generate {
+  background: #0d1b3e;
+  border-color: #0d1b3e;
+  font-weight: 820;
+}
+
+@media (max-width: 1280px) {
+
+  #tela-novas-chaves .bulk-tool-top {
+    grid-template-columns: minmax(280px, 1fr) minmax(170px, 220px) minmax(240px, 1fr);
+  }
+}
+
+
+/* Correção fina: legibilidade, espaçamento e cortes na tabela de novas combinações */
+#tela-novas-chaves .container {
+  padding-left: 24px;
+  padding-right: 24px;
+}
+
+#tela-novas-chaves .novas-bulk-tool {
+  margin-bottom: 14px;
+  padding: 12px 14px;
+}
+
+#tela-novas-chaves .bulk-tool-top {
+  grid-template-columns: minmax(300px, 1.15fr) 190px minmax(250px, 0.9fr) auto auto auto;
+}
+
+#tela-novas-chaves .novas-statusbar {
+  margin-top: 8px;
+  padding-top: 8px;
+}
+
+#tela-novas-chaves .historico-regra-label {
+  font-size: 10.5px;
+  margin-bottom: 5px;
+}
+
+#tela-novas-chaves .historico-palavras {
+  font-size: 12px;
+  line-height: 1.75;
+}
+
+#tela-novas-chaves .novas-footer-actions {
+  padding-top: 10px;
+}
+
+/* Correção operacional: novas combinações cabendo sem rolagem lateral */
+#tela-novas-chaves .container {
+  width: calc(100vw - 36px) !important;
+  max-width: none !important;
+  padding-left: 18px !important;
+  padding-right: 18px !important;
 }
 
 /* Janela de pendências da conciliação: leitura parecida com de-para */
@@ -1694,10 +1945,12 @@ input[type=search]:focus {
 }
 
 @media (max-width: 1200px) {
+
   #modal-pendencias-conciliacao .pendencias-conciliacao-table th:nth-child(9),
   #modal-pendencias-conciliacao .pendencias-conciliacao-table td:nth-child(9) {
     display: none;
   }
+
 
   #modal-pendencias-conciliacao .pendencias-conciliacao-table th:nth-child(6),
   #modal-pendencias-conciliacao .pendencias-conciliacao-table td:nth-child(6),
@@ -1706,3 +1959,458 @@ input[type=search]:focus {
     width: 19% !important;
   }
 }
+
+
+/* Ajuste final: a tela de novas combinações deve caber inteira na largura visível */
+#tela-novas-chaves {
+  overflow-x: hidden !important;
+}
+
+#tela-novas-chaves .container {
+  box-sizing: border-box !important;
+  width: 100% !important;
+  max-width: none !important;
+  padding-left: 16px !important;
+  padding-right: 16px !important;
+}
+
+#tela-novas-chaves .novas-bulk-tool {
+  box-sizing: border-box !important;
+  max-width: 100% !important;
+  overflow: hidden !important;
+}
+
+#tela-novas-chaves .bulk-tool-top {
+  grid-template-columns:
+    minmax(260px, 1.2fr)
+    minmax(160px, 190px)
+    minmax(220px, 0.9fr)
+    minmax(132px, auto)
+    minmax(112px, auto)
+    minmax(170px, auto) !important;
+  gap: 8px !important;
+  max-width: 100% !important;
+}
+
+#tela-novas-chaves .bulk-tool-top input,
+#tela-novas-chaves .bulk-tool-top select,
+#tela-novas-chaves .bulk-tool-top .btn {
+  min-width: 0 !important;
+  max-width: 100% !important;
+}
+
+@media (max-width: 1500px) {
+
+  #tela-novas-chaves .bulk-tool-top {
+    grid-template-columns: minmax(260px, 1fr) minmax(160px, 190px) minmax(220px, 1fr) !important;
+  }
+
+
+  #tela-novas-chaves .bulk-tool-top .btn {
+    min-height: 38px !important;
+  }
+}
+
+
+/* Layout definitivo: novas combinações em grade compacta sem deslocamento lateral */
+#tela-novas-chaves.ativa {
+  max-width: 100% !important;
+}
+
+.container:has(#tela-novas-chaves.ativa) {
+  width: 100vw !important;
+  max-width: 100vw !important;
+  overflow-x: hidden !important;
+  padding-left: 14px !important;
+  padding-right: 14px !important;
+}
+
+.container:has(#tela-novas-chaves.ativa) .section-header {
+  margin-bottom: 10px !important;
+}
+
+#tela-novas-chaves .alert-pendentes {
+  padding: 10px 12px !important;
+  margin-bottom: 10px !important;
+}
+
+#tela-novas-chaves .novas-bulk-tool {
+  padding: 12px !important;
+  margin-bottom: 12px !important;
+}
+
+#tela-novas-chaves .bulk-tool-top {
+  display: grid !important;
+  grid-template-columns: minmax(260px, 1fr) 180px minmax(220px, 0.8fr) repeat(3, max-content) !important;
+  gap: 8px !important;
+  align-items: center !important;
+}
+
+#tela-novas-chaves .bulk-tool-top .btn {
+  padding-left: 12px !important;
+  padding-right: 12px !important;
+}
+
+#tela-novas-chaves .historico-regra-label {
+  margin-bottom: 4px !important;
+  font-size: 9.8px !important;
+  line-height: 1.15 !important;
+}
+
+#tela-novas-chaves .historico-palavras {
+  line-height: 1.45 !important;
+}
+
+#tela-novas-chaves .historico-palavra {
+  padding: 0 1px !important;
+  margin: 0 !important;
+  font-size: 10.8px !important;
+}
+
+#tela-novas-chaves .novas-footer-actions {
+  margin-top: 10px !important;
+}
+
+@media (max-width: 1500px) {
+
+  #tela-novas-chaves .bulk-tool-top {
+    grid-template-columns: minmax(260px, 1fr) 180px minmax(220px, 1fr) !important;
+  }
+}
+
+
+/* Registros compactos: solução para visualizar tudo sem rolagem horizontal */
+.container:has(#tela-novas-chaves.ativa) {
+  width: 100% !important;
+  max-width: 100% !important;
+  overflow-x: hidden !important;
+  padding: 12px 16px 18px !important;
+}
+
+#tela-novas-chaves .historico-regra-label {
+  display: none !important;
+}
+
+#tela-novas-chaves .historico-palavras {
+  display: block !important;
+  width: 100% !important;
+  max-height: 54px !important;
+  overflow-y: auto !important;
+  color: #64748b !important;
+  line-height: 1.35 !important;
+}
+
+#tela-novas-chaves .historico-palavra {
+  display: inline !important;
+  padding: 0 1px !important;
+  margin: 0 !important;
+  border-radius: 3px !important;
+  font-size: 10.5px !important;
+  line-height: 1.25 !important;
+  white-space: normal !important;
+}
+
+#tela-novas-chaves .bulk-tool-top {
+  grid-template-columns: minmax(260px, 1fr) 180px minmax(220px, 0.9fr) repeat(3, auto) !important;
+}
+
+@media (max-width: 1500px) {
+
+  #tela-novas-chaves .bulk-tool-top {
+    grid-template-columns: minmax(240px, 1fr) 170px minmax(210px, 1fr) !important;
+  }
+}
+
+
+/* Linha-card final: leitura horizontal sem barra lateral */
+html,
+body {
+  overflow-x: hidden;
+}
+
+.container:has(#tela-novas-chaves.ativa) {
+  width: auto !important;
+  max-width: 100% !important;
+  overflow-x: hidden !important;
+  padding: 12px 16px 18px !important;
+}
+
+#tela-novas-chaves .novas-bulk-tool {
+  overflow: visible !important;
+}
+
+#tela-novas-chaves .bulk-tool-top {
+  grid-template-columns: minmax(260px, 1fr) 180px minmax(220px, 1fr) !important;
+  gap: 8px !important;
+}
+
+#tela-novas-chaves .bulk-tool-top .btn {
+  min-height: 38px !important;
+}
+
+#tela-novas-chaves .historico-regra-label {
+  display: block !important;
+  color: #94a3b8 !important;
+  font-size: 10px !important;
+}
+
+#tela-novas-chaves .historico-palavras {
+  max-height: 68px !important;
+  overflow-y: auto !important;
+  line-height: 1.45 !important;
+}
+
+#tela-novas-chaves .historico-palavra {
+  display: inline !important;
+  white-space: normal !important;
+  overflow-wrap: normal !important;
+  word-break: normal !important;
+  font-size: 11px !important;
+}
+/* ==========================================================================
+   TELA "Novas combinações encontradas" — tabela final (bloco único)
+   Esta é a ÚNICA fonte de estilo para .table-novas. Não duplicar regras
+   de .table-novas em outro lugar deste arquivo nem no <style> do index.html
+   — foi exatamente essa duplicação/conflito entre blocos antigos que
+   quebrava o layout (texto quebrando letra por letra). Qualquer ajuste
+   futuro nesta tabela deve editar apenas este bloco.
+   ========================================================================== */
+
+#tela-novas-chaves .table-novas-wrap {
+  border-radius: 10px;
+  overflow-x: auto;
+  overflow-y: auto;
+  max-height: calc(100vh - 300px);
+  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04);
+}
+
+#tela-novas-chaves .table-novas {
+  table-layout: fixed;
+  width: 100%;
+  min-width: 1520px;
+  font-size: 12.5px;
+  border-collapse: separate;
+  border-spacing: 0;
+}
+
+/* Larguras de coluna — somam 1520px; abaixo disso a tabela rola
+   horizontalmente dentro do wrapper, o que é preferível a espremer
+   texto até quebrar caractere por caractere. */
+#tela-novas-chaves .table-novas col.col-check,
+#tela-novas-chaves .table-novas th:nth-child(1),
+#tela-novas-chaves .table-novas td:nth-child(1)  { width: 40px; }
+#tela-novas-chaves .table-novas th:nth-child(2),
+#tela-novas-chaves .table-novas td:nth-child(2)  { width: 120px; }
+#tela-novas-chaves .table-novas th:nth-child(3),
+#tela-novas-chaves .table-novas td:nth-child(3)  { width: 130px; }
+#tela-novas-chaves .table-novas th:nth-child(4),
+#tela-novas-chaves .table-novas td:nth-child(4)  { width: 190px; }
+#tela-novas-chaves .table-novas th:nth-child(5),
+#tela-novas-chaves .table-novas td:nth-child(5)  { width: 180px; }
+#tela-novas-chaves .table-novas th:nth-child(6),
+#tela-novas-chaves .table-novas td:nth-child(6)  { width: 290px; }
+#tela-novas-chaves .table-novas th:nth-child(7),
+#tela-novas-chaves .table-novas td:nth-child(7)  { width: 130px; }
+#tela-novas-chaves .table-novas th:nth-child(8),
+#tela-novas-chaves .table-novas td:nth-child(8)  { width: 90px; }
+#tela-novas-chaves .table-novas th:nth-child(9),
+#tela-novas-chaves .table-novas td:nth-child(9)  { width: 100px; }
+#tela-novas-chaves .table-novas th:nth-child(10),
+#tela-novas-chaves .table-novas td:nth-child(10) { width: 240px; }
+
+/* Cabeçalho */
+#tela-novas-chaves .table-novas thead th {
+  position: sticky;
+  top: 0;
+  z-index: 5;
+  background: #f4f7fb;
+  border-bottom: 1px solid #d7e0eb;
+  box-shadow: 0 1px 0 #d7e0eb;
+  color: #52637a;
+  font-size: 10.8px;
+  font-weight: 800;
+  letter-spacing: 0.04em;
+  line-height: 1.3;
+  padding: 10px 10px;
+  text-transform: uppercase;
+  white-space: normal;
+  overflow-wrap: normal;
+  word-break: normal;
+  vertical-align: middle;
+}
+
+#tela-novas-chaves .table-novas th:first-child,
+#tela-novas-chaves .table-novas td:first-child {
+  text-align: center;
+  padding-left: 10px;
+  padding-right: 10px;
+}
+
+/* Células — a regra crítica é NUNCA usar overflow-wrap:anywhere aqui.
+   Com overflow-wrap:normal o texto só quebra entre palavras; uma
+   palavra maior que a coluna simplesmente estoura com reticências
+   via .cell-main/.cell-subtle abaixo, em vez de quebrar letra a letra. */
+#tela-novas-chaves .table-novas tbody td {
+  border-bottom: 1px solid #e7edf5;
+  color: #334155;
+  font-size: 12.5px;
+  line-height: 1.4;
+  padding: 10px 10px;
+  vertical-align: middle;
+  white-space: normal;
+  overflow-wrap: normal;
+  word-break: normal;
+}
+
+#tela-novas-chaves .table-novas tbody tr:nth-child(even) td {
+  background: #fbfdff;
+}
+
+#tela-novas-chaves .table-novas tbody tr:hover td {
+  background: #f7fbff;
+}
+
+#tela-novas-chaves .table-novas .cell-main {
+  color: #172033;
+  font-size: 12.5px;
+  font-weight: 700;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+#tela-novas-chaves .table-novas .cell-subtle {
+  margin-top: 3px;
+  color: #718096;
+  font-size: 10.5px;
+  font-weight: 650;
+  text-transform: none;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+#tela-novas-chaves .table-novas .badge {
+  display: inline-flex;
+  max-width: 100%;
+  min-height: 22px;
+  align-items: center;
+  justify-content: center;
+  padding: 4px 9px;
+  border-radius: 999px;
+  overflow-wrap: normal;
+  word-break: normal;
+  white-space: normal;
+  text-align: center;
+  line-height: 1.15;
+  font-size: 10px;
+  letter-spacing: 0;
+}
+
+#tela-novas-chaves .table-novas .historico-regra-label {
+  color: #9aa7b8;
+  font-size: 10px;
+  font-weight: 600;
+  margin-bottom: 4px;
+  white-space: nowrap;
+}
+
+#tela-novas-chaves .table-novas .historico-palavras {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 3px;
+  color: #68778c;
+  line-height: 1.5;
+}
+
+#tela-novas-chaves .table-novas .historico-palavra {
+  color: #68778c;
+  padding: 2px 5px;
+  border-radius: 5px;
+  white-space: nowrap;
+}
+
+#tela-novas-chaves .table-novas .historico-palavra:hover,
+#tela-novas-chaves .table-novas .historico-palavra.ativo {
+  background: #e8f3fe;
+  color: #0d5fa8;
+}
+
+#tela-novas-chaves .table-novas .tipo-ajuste-badge {
+  display: inline-block;
+  max-width: 100%;
+  padding: 3px 8px;
+  font-size: 9.5px;
+  line-height: 1.2;
+  white-space: normal;
+  overflow-wrap: normal;
+  word-break: normal;
+  text-align: center;
+}
+
+#tela-novas-chaves .table-novas .tipo-ajuste-dc {
+  min-width: 40px;
+  padding: 4px 0;
+  font-size: 10px;
+  line-height: 1;
+  white-space: nowrap;
+}
+
+/* Coluna "Código Domínio" — input + dica */
+#tela-novas-chaves .table-novas td:nth-child(10) {
+  background: #fcfdff;
+}
+
+#tela-novas-chaves .table-novas td:nth-child(10) input.conta-autocomplete {
+  width: 100%;
+  min-width: 0;
+  height: 34px;
+  border-color: #b7c7da;
+  color: #172033;
+  font-size: 12px;
+  font-weight: 700;
+  padding-left: 8px;
+  padding-right: 8px;
+}
+
+#tela-novas-chaves .table-novas td:nth-child(10) input.conta-autocomplete:focus {
+  border-color: var(--ui-blue);
+  box-shadow: 0 0 0 3px rgba(27, 142, 242, 0.11);
+}
+
+/* Linha de ajuste (débito/crédito em par) */
+#tela-novas-chaves .ajuste-par-inputs {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 10px minmax(0, 1fr);
+  gap: 6px;
+  align-items: center;
+}
+
+#tela-novas-chaves .ajuste-par-field {
+  display: grid;
+  grid-template-columns: 14px minmax(0, 1fr);
+  align-items: center;
+  gap: 4px;
+  min-width: 0;
+  font-size: 10px;
+  font-weight: 800;
+  color: #64748b;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+#tela-novas-chaves .ajuste-par-field input.conta-autocomplete {
+  height: 32px;
+  padding-left: 7px;
+  padding-right: 7px;
+}
+
+#tela-novas-chaves .ajuste-par-separador {
+  color: #94a3b8;
+  font-weight: 800;
+  text-align: center;
+}
+
+/* Em telas menores que a largura mínima da tabela, o wrapper rola
+   horizontalmente (overflow-x:auto acima) — a barra de ferramentas
+   acima da tabela continua responsiva normalmente. */
