@@ -5410,7 +5410,7 @@ function exportarDominioPagamentos() {
   }
   linhas[0][6] = 1;
   const wb = XLSX.utils.book_new();
-  adicionarAbasDominioExportacao(wb, linhas, true);
+  adicionarAbasDominioExportacao(wb, linhas, grupoUsaNumerariosParcelas());
   const data = new Date().toLocaleDateString('pt-BR').replace(/\//g,'-');
   XLSX.writeFile(wb, `Dominio_Pagamentos_${grupoAtivo}_${data}.xlsx`);
 }
@@ -5435,7 +5435,7 @@ function exportarDominioFinal() {
   if (linhas.length > 0) linhas[0][6] = 1;
 
   const wb = XLSX.utils.book_new();
-  adicionarAbasDominioExportacao(wb, linhas, true);
+  adicionarAbasDominioExportacao(wb, linhas, grupoUsaNumerariosParcelas());
   const data = new Date().toLocaleDateString('pt-BR').replace(/\//g,'-');
   XLSX.writeFile(wb, `Dominio_Final_${grupoAtivo}_${data}.xlsx`);
 }
