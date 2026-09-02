@@ -5125,6 +5125,48 @@ function montarLinhasDominioPagamentos() {
   ]);
 }
 
+function nomeAbaExcelSeguro(nome, usados) {
+  const baseOriginal = limparTextoExportacaoDominio(nome || 'Sem empresa')
+    .replace(/[\[\]\*\/\\\?:]/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim() || 'Sem empresa';
+  let base = baseOriginal.slice(0, 31).trim() || 'Sem empresa';
+  let nomeFinal = base;
+  let contador = 2;
+  while (usados.has(nomeFinal)) {
+    const sufixo = ` ${contador}`;
+    nomeFinal = `${base.slice(0, 31 - sufixo.length).trim()}${sufixo}`;
+    contador += 1;
+  }
+  usados.add(nomeFinal);
+  return nomeFinal;
+}
+
+function adicionarAbaDominio(wb, nome, linhas, usados) {
+  const ws = XLSX.utils.aoa_to_sheet([CABECALHO_DOMINIO, ...linhas]);
+  XLSX.utils.book_append_sheet(wb, ws, nomeAbaExcelSeguro(nome, usados));
+}
+
+function adicionarAbasDominioExportacao(wb, linhas, separarPorEmpresa = false) {
+  const usados = new Set();
+  adicionarAbaDominio(wb, separarPorEmpresa ? 'Consolidado' : 'Lançamentos Domínio', linhas, usados);
+  if (!separarPorEmpresa) return;
+
+  const porEmpresa = new Map();
+  linhas.forEach(linha => {
+    const empresa = limparTextoExportacaoDominio(linha[7] || 'Sem empresa') || 'Sem empresa';
+    if (!porEmpresa.has(empresa)) porEmpresa.set(empresa, []);
+    const copia = linha.slice();
+    copia[6] = '';
+    porEmpresa.get(empresa).push(copia);
+  });
+
+  porEmpresa.forEach((linhasEmpresa, empresa) => {
+    if (linhasEmpresa.length > 0) linhasEmpresa[0][6] = 1;
+    adicionarAbaDominio(wb, empresa, linhasEmpresa, usados);
+  });
+}
+
 function exportarDominioPagamentos() {
   const linhas = montarLinhasDominioPagamentos();
   if (linhas.length === 0) {
@@ -5132,9 +5174,8 @@ function exportarDominioPagamentos() {
     return;
   }
   linhas[0][6] = 1;
-  const ws = XLSX.utils.aoa_to_sheet([CABECALHO_DOMINIO, ...linhas]);
   const wb = XLSX.utils.book_new();
-  XLSX.utils.book_append_sheet(wb, ws, 'Lançamentos Domínio');
+  adicionarAbasDominioExportacao(wb, linhas, grupoUsaNumerariosParcelas());
   const data = new Date().toLocaleDateString('pt-BR').replace(/\//g,'-');
   XLSX.writeFile(wb, `Dominio_Pagamentos_${grupoAtivo}_${data}.xlsx`);
 }
@@ -5152,9 +5193,8 @@ function exportarDominioFinal() {
   linhas.forEach(l => { l[6] = ''; });
   if (linhas.length > 0) linhas[0][6] = 1;
 
-  const ws = XLSX.utils.aoa_to_sheet([CABECALHO_DOMINIO, ...linhas]);
   const wb = XLSX.utils.book_new();
-  XLSX.utils.book_append_sheet(wb, ws, 'Lançamentos Domínio');
+  adicionarAbasDominioExportacao(wb, linhas, grupoUsaNumerariosParcelas());
   const data = new Date().toLocaleDateString('pt-BR').replace(/\//g,'-');
   XLSX.writeFile(wb, `Dominio_Final_${grupoAtivo}_${data}.xlsx`);
 }
