@@ -1099,7 +1099,7 @@ input[type=search]:focus {
 
 #tela-novas-chaves .bulk-tool-top {
   display: grid;
-  grid-template-columns: minmax(260px, 1.35fr) minmax(160px, 220px) minmax(210px, 1fr) auto auto auto;
+  grid-template-columns: minmax(260px, 1.35fr) minmax(160px, 220px) minmax(210px, 1fr) auto auto;
   align-items: center;
   gap: 10px;
 }
@@ -1216,7 +1216,7 @@ input[type=search]:focus {
 
 #tela-novas-chaves .bulk-tool-top {
   display: grid;
-  grid-template-columns: minmax(280px, 1.2fr) minmax(170px, 210px) minmax(240px, 0.95fr) auto auto auto;
+  grid-template-columns: minmax(280px, 1.2fr) minmax(170px, 210px) minmax(240px, 0.95fr) auto auto;
   gap: 10px;
   align-items: center;
 }
@@ -1232,17 +1232,6 @@ input[type=search]:focus {
   height: 40px;
   border-radius: 7px;
   font-size: 13px;
-}
-
-#tela-novas-chaves .btn-save-fill {
-  background: #ffffff;
-  border-color: rgba(27, 142, 242, 0.48);
-  color: #0d5fa8;
-}
-
-#tela-novas-chaves .btn-save-fill:hover {
-  background: #eef6ff;
-  border-color: var(--ui-blue);
 }
 
 #tela-novas-chaves .novas-statusbar {
@@ -1489,10 +1478,6 @@ input[type=search]:focus {
   z-index: 10;
 }
 
-#tela-novas-chaves .btn-save-fill {
-  font-weight: 760;
-}
-
 #tela-novas-chaves .btn-finish-generate {
   background: #0d1b3e;
   border-color: #0d1b3e;
@@ -1519,7 +1504,7 @@ input[type=search]:focus {
 }
 
 #tela-novas-chaves .bulk-tool-top {
-  grid-template-columns: minmax(300px, 1.15fr) 190px minmax(250px, 0.9fr) auto auto auto;
+  grid-template-columns: minmax(300px, 1.15fr) 190px minmax(250px, 0.9fr) auto auto;
 }
 
 #tela-novas-chaves .novas-statusbar {
@@ -1885,7 +1870,7 @@ input[type=search]:focus {
 }
 
 #modal-pendencias-conciliacao [style*="grid-template-columns"] {
-  grid-template-columns: minmax(260px, 1fr) minmax(190px, 240px) auto auto auto !important;
+  grid-template-columns: minmax(260px, 1fr) minmax(190px, 240px) auto auto !important;
   max-width: 100%;
 }
 
@@ -1999,8 +1984,7 @@ input[type=search]:focus {
     minmax(160px, 190px)
     minmax(220px, 0.9fr)
     minmax(132px, auto)
-    minmax(112px, auto)
-    minmax(170px, auto) !important;
+    minmax(112px, auto) !important;
   gap: 8px !important;
   max-width: 100% !important;
 }
@@ -2159,6 +2143,19 @@ body {
 
 #tela-novas-chaves .bulk-tool-top .btn {
   min-height: 38px !important;
+}
+
+#tela-novas-chaves .btn-soft-blue {
+  background: #e8f3ff !important;
+  border-color: #93c5fd !important;
+  color: #075985 !important;
+  font-weight: 800 !important;
+}
+
+#tela-novas-chaves .btn-soft-blue:hover {
+  background: #d9ecff !important;
+  border-color: #60a5fa !important;
+  color: #075985 !important;
 }
 
 #tela-novas-chaves .historico-regra-label {

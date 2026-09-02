@@ -83,7 +83,7 @@
   .tipo-ajuste-badge { display: inline-block; background: #fef3c7; color: #92400e; border: 1px solid #fcd34d; border-radius: 999px; padding: 3px 9px; font-weight: 700; font-size: 11px; }
   .table-hint { color: var(--text2); font-size: 12px; margin: -6px 0 8px; }
   .bulk-tool { background: var(--bg); border: 1px solid var(--border); border-radius: var(--radius); padding: 14px; margin-bottom: 16px; box-shadow: var(--shadow); }
-  .bulk-tool-top { display: grid; grid-template-columns: minmax(260px, 1fr) minmax(160px, 220px) auto auto auto; gap: 10px; align-items: center; }
+  .bulk-tool-top { display: grid; grid-template-columns: minmax(260px, 1fr) minmax(160px, 220px) auto auto; gap: 10px; align-items: center; }
   .bulk-tool-top .btn { justify-content: center; }
   .bulk-tool-options { display: flex; align-items: center; gap: 14px; margin-top: 10px; flex-wrap: wrap; }
   .compact-check { display: inline-flex; align-items: center; gap: 6px; color: var(--text2); font-size: 12px; cursor: pointer; user-select: none; }
@@ -354,17 +354,10 @@
           <option value="ACRESCIMO">Acréscimo</option>
         </select>
         <input type="text" id="codigo-lote" class="conta-autocomplete" placeholder="Conta para aplicar nos selecionados" oninput="criarAutocompleteConta(this)">
-        <button class="btn" onclick="selecionarFiltradasEmLote()">Selecionar filtradas</button>
+        <button class="btn btn-soft-blue" onclick="selecionarFiltradasEmLote()">Selecionar filtradas</button>
         <button class="btn btn-primary" onclick="aplicarCodigoEmLote()">Aplicar conta</button>
-        <button class="btn btn-blue btn-save-fill" onclick="salvarTudoPreenchido()">Salvar preenchimentos</button>
       </div>
       <div class="novas-statusbar">
-        <div class="bulk-tool-options">
-          <label class="compact-check">
-            <input type="checkbox" id="somente-pendentes" checked onchange="renderNovasChaves()">
-            Mostrar somente pendentes
-          </label>
-        </div>
         <div class="bulk-tool-status" id="status-lote">Use a busca para localizar itens e preencher vários de uma vez.</div>
       </div>
     </div>
@@ -451,8 +444,11 @@
       <button class="btn btn-sm btn-primary" id="btn-salvar-regras" style="display:none" onclick="salvarEdicaoRegras()">Salvar alterações</button>
       <button class="btn btn-sm" id="btn-cancelar-regras" style="display:none" onclick="cancelarEdicaoRegras()">Cancelar</button>
       <button class="btn btn-sm btn-danger" id="btn-limpar-regras" onclick="limparTodasRegras()">🗑 Limpar tudo</button>
+      <button class="btn btn-sm" id="btn-exportar-arquivo-regras" onclick="exportarArquivoRegras()">Exportar regras</button>
+      <button class="btn btn-sm" id="btn-importar-arquivo-regras" onclick="document.getElementById('regras-input').click()">Importar regras</button>
       <button class="btn btn-sm btn-blue" id="btn-importar-regras" onclick="mostrarTela('tela-importar')">Importar planilha</button>
       <button class="btn btn-sm" onclick="mostrarTela('tela-home')">Grupos</button>
+      <input type="file" id="regras-input" accept=".json" style="display:none" onchange="importarArquivoRegras(event)">
     </div>
     <div style="display:flex;gap:8px;margin-bottom:12px;flex-wrap:wrap">
       <button class="btn btn-sm btn-primary" id="btn-regras-pagamentos" onclick="alterarTipoRegras('pagamentos')">Pagamentos</button>
@@ -4486,12 +4482,12 @@ function renderLinhaAjustePar(linha) {
 }
 
 function renderNovasChaves() {
-  document.getElementById('tag-qtd-novas').textContent = novasChavesTemp.length + ' nova' + (novasChavesTemp.length !== 1 ? 's' : '');
+  const qtdPendentes = novasChavesTemp.filter(item => !codigosTemp[item.chave]).length;
+  document.getElementById('tag-qtd-novas').textContent = qtdPendentes + ' pendente' + (qtdPendentes !== 1 ? 's' : '');
   // Só coleta da tela se não estiver re-renderizando após lote
   const tbody = document.getElementById('tbody-novas-chaves');
   const filtro = normalizarTexto(document.getElementById('filtro-lote')?.value || '');
-  const somentePendentes = document.getElementById('somente-pendentes')?.checked ?? true;
-  const visiveis = filtrarNovasChaves(novasChavesTemp, filtro, somentePendentes);
+  const visiveis = filtrarNovasChaves(novasChavesTemp, filtro);
   if (visiveis.length === 0) {
     tbody.innerHTML = `<tr><td colspan="10" style="text-align:center;color:var(--text2);padding:32px">Nenhuma pendência visível com os filtros atuais.</td></tr>`;
     atualizarStatusLote(visiveis);
@@ -4660,32 +4656,9 @@ function atualizarCodigoNovaChave(inp) {
   atualizarStatusLote();
 }
 
-function salvarTudoPreenchido() {
-  const campos = Array.from(document.querySelectorAll('#tbody-novas-chaves input[type=text][data-chave]'));
-  let qtd = 0;
-  campos.forEach(inp => {
-    const valor = obterCodigoContaParaDominio(inp.value);
-    inp.value = valor;
-    codigosTemp[inp.dataset.chave] = valor;
-    if (valor) qtd++;
-  });
-  salvarCodigosPreenchidosNoGrupo(false);
-  const el = document.getElementById('msg-novas-chaves');
-  const tipo = qtd > 0 ? 'ok' : 'warn';
-  const texto = qtd > 0 ? `✓ ${qtd} conta${qtd !== 1 ? 's' : ''} salva${qtd !== 1 ? 's' : ''} com sucesso.` : 'Nenhum campo preenchido para salvar.';
-  el.innerHTML = `<div class="alert alert-${tipo}" style="margin-bottom:16px">${texto} <button onclick="this.parentElement.remove()" style="background:none;border:none;cursor:pointer;float:right;font-size:16px">×</button></div>`;
-  setTimeout(() => { el.innerHTML = ''; }, 4000);
-  renderNovasChaves();
-}
-
 function ocultarPendenciaPreenchida(inp, focarProximo = false) {
-  if (!focarProximo) return; // só confirma via botão "Salvar contas preenchidas", nunca por Tab, Enter ou clicar fora
+  if (!focarProximo) return;
   salvarCodigosPreenchidosNoGrupo();
-  if (!document.getElementById('somente-pendentes')?.checked) {
-    if (focarProximo) focarProximoCampoCodigo(inp);
-    atualizarStatusLote();
-    return;
-  }
   if (!inp?.value.trim()) {
     if (focarProximo) focarProximoCampoCodigo(inp);
     atualizarStatusLote();
@@ -4743,9 +4716,9 @@ function passaFiltrosColunasNovasChaves(item) {
   });
 }
 
-function filtrarNovasChaves(lista, filtroGeral, somentePendentes) {
+function filtrarNovasChaves(lista, filtroGeral) {
   return lista.filter(item => {
-    if (somentePendentes && codigosTemp[item.chave]) return false;
+    if (codigosTemp[item.chave]) return false;
     if (filtroGeral && !textoBuscaNovaChave(item).includes(filtroGeral)) return false;
     return passaFiltrosColunasNovasChaves(item);
   });
@@ -4773,8 +4746,7 @@ function limparFiltrosNovasChaves() {
 
 function obterNovasChavesVisiveis() {
   const filtro = normalizarTexto(document.getElementById('filtro-lote')?.value || '');
-  const somentePendentes = document.getElementById('somente-pendentes')?.checked ?? true;
-  return filtrarNovasChaves(novasChavesTemp, filtro, somentePendentes);
+  return filtrarNovasChaves(novasChavesTemp, filtro);
 }
 
 function atualizarStatusLote(visiveis = obterNovasChavesVisiveis()) {
@@ -5175,7 +5147,7 @@ function exportarDominioPagamentos() {
   }
   linhas[0][6] = 1;
   const wb = XLSX.utils.book_new();
-  adicionarAbasDominioExportacao(wb, linhas, grupoUsaNumerariosParcelas());
+  adicionarAbasDominioExportacao(wb, linhas, true);
   const data = new Date().toLocaleDateString('pt-BR').replace(/\//g,'-');
   XLSX.writeFile(wb, `Dominio_Pagamentos_${grupoAtivo}_${data}.xlsx`);
 }
@@ -5194,7 +5166,7 @@ function exportarDominioFinal() {
   if (linhas.length > 0) linhas[0][6] = 1;
 
   const wb = XLSX.utils.book_new();
-  adicionarAbasDominioExportacao(wb, linhas, grupoUsaNumerariosParcelas());
+  adicionarAbasDominioExportacao(wb, linhas, true);
   const data = new Date().toLocaleDateString('pt-BR').replace(/\//g,'-');
   XLSX.writeFile(wb, `Dominio_Final_${grupoAtivo}_${data}.xlsx`);
 }
@@ -5216,6 +5188,109 @@ function obterBaseRegrasAtiva() {
 function definirBaseRegrasAtiva(regras) {
   if (tipoRegrasAtivo === 'recebimentos') deparaRecebimentos[grupoAtivo] = regras;
   else depara[grupoAtivo] = regras;
+}
+
+function rotuloTipoRegras(tipo = tipoRegrasAtivo) {
+  return tipo === 'recebimentos' ? 'recebimentos' : 'pagamentos';
+}
+
+function obterRegrasDePayloadImportado(payload) {
+  if (!payload || typeof payload !== 'object') throw new Error('Arquivo de regras inválido.');
+  if (payload.regras && typeof payload.regras === 'object' && !Array.isArray(payload.regras)) {
+    return {
+      tipo: payload.tipo === 'recebimentos' ? 'recebimentos' : 'pagamentos',
+      grupo: limparTextoECD(payload.grupo || ''),
+      regras: payload.regras
+    };
+  }
+  const base = tipoRegrasAtivo === 'recebimentos' ? payload.deparaRecebimentos : payload.depara;
+  if (base && typeof base === 'object') {
+    const regrasGrupo = grupoAtivo && base[grupoAtivo] && typeof base[grupoAtivo] === 'object'
+      ? base[grupoAtivo]
+      : {};
+    return {
+      tipo: tipoRegrasAtivo,
+      grupo: grupoAtivo || '',
+      regras: regrasGrupo
+    };
+  }
+  throw new Error('Não encontrei regras compatíveis neste arquivo.');
+}
+
+function exportarArquivoRegras() {
+  if (!grupoAtivo) {
+    alert('Selecione um grupo antes de exportar regras.');
+    return;
+  }
+  if (editandoRegras) coletarInputsEdicaoRegras();
+  const regras = editandoRegras ? editTemp : (obterBaseRegrasAtiva()[grupoAtivo] || {});
+  const tipo = rotuloTipoRegras();
+  const payload = {
+    versao: 1,
+    origem: 'zip-depara-regras',
+    exportadoEm: new Date().toISOString(),
+    grupo: grupoAtivo,
+    tipo,
+    regras
+  };
+  const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json;charset=utf-8' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  const data = new Date().toLocaleDateString('pt-BR').replace(/\//g, '-');
+  const grupoArquivo = limparTextoExportacaoDominio(grupoAtivo).replace(/[^a-z0-9]+/gi, '_').replace(/^_+|_+$/g, '') || 'grupo';
+  a.href = url;
+  a.download = `regras_${tipo}_${grupoArquivo}_${data}.json`;
+  a.click();
+  URL.revokeObjectURL(url);
+}
+
+function importarArquivoRegras(event) {
+  const file = event.target.files[0];
+  event.target.value = '';
+  if (!file) return;
+  if (!grupoAtivo) {
+    alert('Selecione um grupo antes de importar regras.');
+    return;
+  }
+  const reader = new FileReader();
+  reader.onload = () => {
+    try {
+      const payload = JSON.parse(reader.result);
+      const importado = obterRegrasDePayloadImportado(payload);
+      const qtd = Object.keys(importado.regras || {}).length;
+      if (qtd === 0) {
+        alert('O arquivo não possui regras para importar.');
+        return;
+      }
+      const tipoAtual = rotuloTipoRegras();
+      const tipoImportado = rotuloTipoRegras(importado.tipo);
+      const avisoTipo = tipoImportado !== tipoAtual
+        ? `\n\nAtenção: o arquivo é de ${tipoImportado}, mas a tela ativa está em ${tipoAtual}. Vou importar no tipo ativo (${tipoAtual}).`
+        : '';
+      const substituir = confirm(`Importar ${qtd} regra${qtd !== 1 ? 's' : ''} para ${tipoAtual} do grupo "${grupoAtivo}"?\n\nOK = mesclar com as regras atuais.\nCancelar = escolher substituição ou cancelar.${avisoTipo}`);
+      let novasRegras;
+      if (substituir) {
+        novasRegras = Object.assign({}, obterBaseRegrasAtiva()[grupoAtivo] || {}, importado.regras);
+      } else {
+        const trocarTudo = confirm(`Substituir TODAS as regras de ${tipoAtual} do grupo "${grupoAtivo}" pelas regras do arquivo?`);
+        if (!trocarTudo) return;
+        novasRegras = Object.assign({}, importado.regras);
+      }
+      if (editandoRegras) {
+        editTemp = novasRegras;
+      } else {
+        definirBaseRegrasAtiva(novasRegras);
+        salvarStorage();
+      }
+      regrasSelecionadasEdicao.clear();
+      renderRegras();
+      const msgEdicao = editandoRegras ? ' Clique em Salvar alterações para gravar.' : '';
+      document.getElementById('container-regras').insertAdjacentHTML('afterbegin', `<div class="alert alert-ok">${qtd} regra${qtd !== 1 ? 's' : ''} importada${qtd !== 1 ? 's' : ''} para ${tipoAtual}.${msgEdicao}</div>`);
+    } catch (err) {
+      alert('Erro ao importar regras: ' + err.message);
+    }
+  };
+  reader.readAsText(file);
 }
 
 function coletarInputsEdicaoRegras() {
