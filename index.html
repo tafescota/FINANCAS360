@@ -1874,6 +1874,10 @@ function grupoPodeRecebimentosRateio() {
   return modo === 'rateio' || modo === 'parcelas_numerarios';
 }
 
+function grupoPodeRecebimentosSeparados() {
+  return modoImportacaoDoGrupo() === 'parcelas_numerarios';
+}
+
 function headerInfoRecebimentos(raw, obrigatorias) {
   const headerIdx = raw.findIndex(row => {
     const cols = (row || []).map(c => normalizarTexto(c));
@@ -2172,8 +2176,8 @@ function renderRecebimentosSeparados() {
   const resumoEl = document.getElementById('resumo-recebimentos-separados');
   const tbody = document.getElementById('tbody-recebimentos');
   if (!resumoEl || !tbody) return;
-  if (!grupoPodeRecebimentosRateio()) {
-    resumoEl.innerHTML = '<div class="alert alert-warn">Recebimentos separados ficam disponíveis para grupos em Parcelas com Numerários ou Rateio de Títulos.</div>';
+  if (!grupoPodeRecebimentosSeparados()) {
+    resumoEl.innerHTML = '<div class="alert alert-warn">Recebimentos separados ficam disponíveis somente para grupos em Parcelas com Numerários.</div>';
     tbody.innerHTML = '<tr><td colspan="7" style="text-align:center;color:var(--text2);padding:24px">Selecione um grupo compatível.</td></tr>';
     return;
   }
@@ -2211,8 +2215,8 @@ async function processarRecebimentosSeparados(files) {
     alert('Selecione um grupo antes de importar recebimentos.');
     return;
   }
-  if (!grupoPodeRecebimentosRateio()) {
-    mostrarMsgRecebimentos('Recebimentos separados só ficam disponíveis para grupos em Parcelas com Numerários ou Rateio de Títulos.', 'warn');
+  if (!grupoPodeRecebimentosSeparados()) {
+    mostrarMsgRecebimentos('Recebimentos separados só ficam disponíveis para grupos em Parcelas com Numerários.', 'warn');
     return;
   }
   iniciarProgressoImportacao('Lendo recebimentos...');
@@ -2270,6 +2274,7 @@ function exportarDominioRecebimentos() {
 }
 
 function montarLinhasRecebimentosImportadosParaFinal() {
+  if (!grupoPodeRecebimentosSeparados()) return [];
   if (recebimentosRateioTemp.length === 0) return [];
   const itensAnteriores = conciliacaoItensTemp;
   const origemAnterior = origemModalPendencias;
@@ -3959,7 +3964,7 @@ function renderGrupos() {
           <button class="btn btn-sm" onclick="mostrarTela('tela-regras')">📋 Regras</button>
           <button class="btn btn-sm" onclick="mostrarTela('tela-plano-contas')">📑 Plano de Contas</button>
           <button class="btn btn-sm btn-blue" onclick="mostrarTela('tela-importar')">⬆ Importar planilha</button>
-          ${modoGrupo === 'parcelas_numerarios' || modoGrupo === 'rateio' ? `<button class="btn btn-sm" onclick="mostrarTela('tela-recebimentos')">Recebimentos</button>` : ''}
+          ${modoGrupo === 'parcelas_numerarios' ? `<button class="btn btn-sm" onclick="mostrarTela('tela-recebimentos')">Recebimentos</button>` : ''}
           ${modoGrupo === 'rateio' ? `<button class="btn btn-sm" onclick="mostrarTela('tela-provisao-rateio')">Provisão</button>` : ''}
         ` : ''}
         <button class="btn btn-sm btn-danger" onclick="excluirGrupo('${g}')">🗑</button>
