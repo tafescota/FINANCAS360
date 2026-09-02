@@ -405,6 +405,34 @@
     </div>
   </div>
 
+  <!-- TELA RECEBIMENTOS -->
+  <div class="tela" id="tela-recebimentos">
+    <div class="section-header">
+      <button class="btn btn-sm" onclick="voltarTela()">← Voltar</button>
+      <h2>Recebimentos</h2>
+      <button class="btn btn-sm btn-blue" onclick="document.getElementById('recebimentos-input').click()">Importar recebimentos</button>
+      <button class="btn btn-sm" onclick="limparRecebimentosRateio()">Limpar</button>
+      <input type="file" id="recebimentos-input" accept=".xlsx,.xls,.xlsm" multiple style="display:none" onchange="onFileChangeRecebimentosSeparados(event)">
+    </div>
+    <div class="alert alert-orange" style="margin-bottom:16px">
+      Use esta área para recebimentos de grupos com numerários. Ela gera uma exportação separada dos pagamentos, com conferência própria.
+    </div>
+    <div id="msg-recebimentos"></div>
+    <div id="resumo-recebimentos-separados"></div>
+    <div class="resultado-actions" style="display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin:16px 0">
+      <button class="btn btn-primary" onclick="abrirModalPendenciasRecebimentos()">Preencher pendências</button>
+      <button class="btn btn-blue" onclick="exportarDominioRecebimentos()">Exportar recebimentos Domínio (.xlsx)</button>
+    </div>
+    <div class="table-wrap table-scroll" style="margin-bottom:16px">
+      <table>
+        <thead>
+          <tr><th>Data</th><th>Empresa banco</th><th>Unidade</th><th>Tipo</th><th>Histórico</th><th style="text-align:right">Valor</th><th>Situação</th></tr>
+        </thead>
+        <tbody id="tbody-recebimentos"></tbody>
+      </table>
+    </div>
+  </div>
+
   <!-- TELA CONCILIACAO BANCARIA -->
   <div class="tela" id="tela-conciliacao-bancaria">
     <div class="section-header">
@@ -525,6 +553,7 @@ let trechosRecebimentoConciliacaoTemp = {};
 let conciliacaoAplicadaTemp = false;
 let mostrarLancamentosConciliados = false;
 let mostrarPendenciasPreenchidas = false;
+let origemModalPendencias = 'conciliacao';
 let filtroPendenciasConciliacaoTemp = '';
 let timerFiltroPendenciasConciliacao = null;
 let selecaoFiltroPendenciasConciliacao = { start: 0, end: 0 };
@@ -1069,6 +1098,7 @@ function mostrarTela(id, registrarHistorico = true) {
   if (id === 'tela-regras') renderRegras();
   if (id === 'tela-plano-contas') renderResumoPlanoContas();
   if (id === 'tela-conciliacao-bancaria') renderConciliacaoBancaria();
+  if (id === 'tela-recebimentos') renderRecebimentosSeparados();
   if (id === 'tela-resultado') renderResumoConferenciaResultado();
   if (id === 'tela-provisao-rateio') renderProvisaoRateio();
   if (id === 'tela-importar' && grupoAtivo) {
@@ -1840,7 +1870,8 @@ function renderConciliacaoBancaria() {
 }
 
 function grupoPodeRecebimentosRateio() {
-  return modoImportacaoDoGrupo() === 'rateio';
+  const modo = modoImportacaoDoGrupo();
+  return modo === 'rateio' || modo === 'parcelas_numerarios';
 }
 
 function headerInfoRecebimentos(raw, obrigatorias) {
@@ -1877,8 +1908,8 @@ function linhaRecebimentoRateioBase({ data, valor, conta, empresaBanco, centroCu
     tipoLancamento: limparTextoECD(tipoLancamento || ''),
     movimento: 'recebimento-rateio',
     rateio: true,
-    intercompany: grupoUsaNumerariosRateio() && normalizarTexto(empresaBancoLimpa) !== normalizarTexto(centroLimpo),
-    tipoRateio: grupoUsaNumerariosRateio() && normalizarTexto(empresaBancoLimpa) !== normalizarTexto(centroLimpo) ? 'TRANSFERENCIA DE NUMERARIOS' : 'PROPRIO'
+    intercompany: (grupoUsaNumerariosRateio() || grupoUsaNumerariosParcelas()) && normalizarTexto(empresaBancoLimpa) !== normalizarTexto(centroLimpo),
+    tipoRateio: (grupoUsaNumerariosRateio() || grupoUsaNumerariosParcelas()) && normalizarTexto(empresaBancoLimpa) !== normalizarTexto(centroLimpo) ? 'TRANSFERENCIA DE NUMERARIOS' : 'PROPRIO'
   };
 }
 
@@ -2017,7 +2048,7 @@ function chaveRecebimentoRateio(r) {
 
 async function processarRecebimentosRateio(files) {
   if (!grupoPodeRecebimentosRateio()) {
-    mostrarMsgConciliacao('Recebimentos por rateio só ficam disponíveis para grupos em Rateio de Títulos.', 'warn');
+    mostrarMsgConciliacao('Recebimentos ficam disponíveis para grupos em Parcelas com Numerários ou Rateio de Títulos.', 'warn');
     return;
   }
   iniciarProgressoImportacao('Lendo recebimentos por rateio...');
@@ -2064,7 +2095,12 @@ function limparRecebimentosRateio() {
   trechosRecebimentoConciliacaoTemp = {};
   renderResumoRecebimentosRateio();
   renderConciliacaoBancaria();
-  mostrarMsgConciliacao('Recebimentos por rateio removidos desta sessão.', 'orange');
+  if (telaAtual === 'tela-recebimentos') {
+    renderRecebimentosSeparados();
+    mostrarMsgRecebimentos('Recebimentos removidos desta sessão.', 'orange');
+  } else {
+    mostrarMsgConciliacao('Recebimentos removidos desta sessão.', 'orange');
+  }
 }
 
 function resumoRecebimentosRateio() {
@@ -2101,6 +2137,149 @@ function renderResumoRecebimentosRateio() {
     }
   }
   els.forEach(el => { el.innerHTML = html; });
+}
+
+function mostrarMsgRecebimentos(texto, tipo = 'ok') {
+  const el = document.getElementById('msg-recebimentos');
+  if (!el) return;
+  el.innerHTML = `<div class="alert alert-${tipo}" style="margin-bottom:16px">${texto} <button onclick="this.parentElement.remove()" style="background:none;border:none;cursor:pointer;float:right;font-size:16px">×</button></div>`;
+  setTimeout(() => { if (el) el.innerHTML = ''; }, 4000);
+}
+
+function carregarCodigosItensRecebimentos(itens) {
+  const regrasRecebimentos = deparaRecebimentos[grupoAtivo] || {};
+  const regrasNumerarios = depara[grupoAtivo] || {};
+  itens.forEach(item => {
+    if (!(item.id in codigosConciliacaoTemp)) codigosConciliacaoTemp[item.id] = '';
+    if (item.movimento === 'recebimento' && !codigosConciliacaoTemp[item.id]) {
+      codigosConciliacaoTemp[item.id] = obterCodigoContaParaDominio(encontrarCodigoRegraRecebimentoConciliacao(regrasRecebimentos, item.tipo, item.historico, item.escopoRegra || ''));
+    }
+    if (item.movimento === 'numerario-rateio' && !codigosConciliacaoTemp[item.id]) {
+      codigosConciliacaoTemp[item.id] = obterCodigoContaParaDominio(regrasNumerarios[item.chave] || '');
+    }
+  });
+}
+
+function prepararItensRecebimentosSeparados() {
+  const itensRecebimento = criarItensRecebimentosRateioAgrupados();
+  const itensNumerario = itensNumerarioRecebimentosRateio(itensRecebimento);
+  conciliacaoItensTemp = [...itensRecebimento, ...itensNumerario];
+  carregarCodigosItensRecebimentos(conciliacaoItensTemp);
+  return { itensRecebimento, itensNumerario };
+}
+
+function renderRecebimentosSeparados() {
+  const resumoEl = document.getElementById('resumo-recebimentos-separados');
+  const tbody = document.getElementById('tbody-recebimentos');
+  if (!resumoEl || !tbody) return;
+  if (!grupoPodeRecebimentosRateio()) {
+    resumoEl.innerHTML = '<div class="alert alert-warn">Recebimentos separados ficam disponíveis para grupos em Parcelas com Numerários ou Rateio de Títulos.</div>';
+    tbody.innerHTML = '<tr><td colspan="7" style="text-align:center;color:var(--text2);padding:24px">Selecione um grupo compatível.</td></tr>';
+    return;
+  }
+  if (recebimentosRateioTemp.length === 0) {
+    resumoEl.innerHTML = '<div class="alert alert-orange">Nenhuma planilha de recebimentos importada nesta sessão.</div>';
+    tbody.innerHTML = '<tr><td colspan="7" style="text-align:center;color:var(--text2);padding:24px">Importe uma planilha de Parcela de Título a Receber ou Rateio de Cartões a Receber.</td></tr>';
+    return;
+  }
+  const { itensRecebimento, itensNumerario } = prepararItensRecebimentosSeparados();
+  const r = resumoRecebimentosRateio();
+  const pendReceb = itensRecebimento.filter(item => !obterCodigoContaParaDominio(codigosConciliacaoTemp[item.id])).length;
+  const pendNum = itensNumerario.filter(item => !obterCodigoContaParaDominio(codigosConciliacaoTemp[item.id])).length;
+  resumoEl.innerHTML = `<div class="conciliacao-grid conciliacao-summary-grid">
+    <div class="metric metric-muted"><div class="metric-label">Recebimentos</div><div class="metric-value">${r.total}</div><div class="metric-sub">${r.proprio} próprios · ${r.intercompany} numerários</div></div>
+    <div class="metric metric-muted"><div class="metric-label">Valor positivo</div><div class="metric-value metric-text">R$ ${fmtValor(r.valorPositivo)}</div></div>
+    <div class="metric metric-muted"><div class="metric-label">Taxas/Ajustes</div><div class="metric-value metric-text">R$ ${fmtValor(r.valorNegativo)}</div></div>
+    <div class="metric ${pendReceb + pendNum ? 'metric-focus-warn' : 'metric-focus-ok'}"><div class="metric-label">Pendências</div><div class="metric-value ${pendReceb + pendNum ? 'warn' : 'ok'}">${pendReceb + pendNum}</div><div class="metric-sub">${pendReceb} recebimento · ${pendNum} numerário</div></div>
+  </div>`;
+  tbody.innerHTML = itensRecebimento.map(item => {
+    const pendente = !obterCodigoContaParaDominio(codigosConciliacaoTemp[item.id]);
+    return `<tr class="${pendente ? 'sem-codigo' : ''}">
+      <td style="white-space:nowrap">${escapeHtml(item.data)}</td>
+      <td>${escapeHtml(item.empresaBanco || '')}</td>
+      <td>${escapeHtml(item.centroCusto || '')}</td>
+      <td>${escapeHtml(item.tipoRateio === 'TRANSFERENCIA DE NUMERARIOS' ? 'TRANSFERÊNCIA DE NUMERÁRIOS' : 'PRÓPRIO')}</td>
+      <td title="${escapeAttr(item.historico || '')}">${descTruncada(item.historico || '')}</td>
+      <td style="text-align:right;white-space:nowrap">R$ ${fmtValor(item.total)}</td>
+      <td>${pendente ? '<span class="conciliacao-status warn">pendente</span>' : '<span class="conciliacao-status ok">com regra</span>'}</td>
+    </tr>`;
+  }).join('') || '<tr><td colspan="7" style="text-align:center;color:var(--text2);padding:24px">Nenhum recebimento válido para exibir.</td></tr>';
+}
+
+async function processarRecebimentosSeparados(files) {
+  if (!grupoAtivo) {
+    alert('Selecione um grupo antes de importar recebimentos.');
+    return;
+  }
+  if (!grupoPodeRecebimentosRateio()) {
+    mostrarMsgRecebimentos('Recebimentos separados só ficam disponíveis para grupos em Parcelas com Numerários ou Rateio de Títulos.', 'warn');
+    return;
+  }
+  iniciarProgressoImportacao('Lendo recebimentos...');
+  try {
+    const resultados = await Promise.all(files.map(file => lerRecebimentosRateioArquivo(file, p => atualizarProgressoImportacao(p, 'Lendo recebimentos...', file.name))));
+    const qtd = adicionarRecebimentosRateio(resultados.map(r => ({ ...r, tipo: 'recebimento' })));
+    mostrarMsgRecebimentos(`${qtd} recebimento${qtd !== 1 ? 's' : ''} importado${qtd !== 1 ? 's' : ''}.`, 'ok');
+    renderRecebimentosSeparados();
+    finalizarProgressoImportacao('Recebimentos carregados.');
+  } catch (err) {
+    mostrarMsgRecebimentos('Erro ao importar recebimentos: ' + err.message, 'warn');
+    erroProgressoImportacao('Erro ao carregar os recebimentos.');
+  }
+}
+
+function onFileChangeRecebimentosSeparados(e) {
+  const files = Array.from(e.target.files || []);
+  if (files.length > 0) processarRecebimentosSeparados(files);
+  e.target.value = '';
+}
+
+function abrirModalPendenciasRecebimentos() {
+  if (recebimentosRateioTemp.length === 0) {
+    alert('Importe uma planilha de recebimentos antes de preencher pendências.');
+    return;
+  }
+  origemModalPendencias = 'recebimentos';
+  prepararItensRecebimentosSeparados();
+  abrirModalPendenciasConciliacao();
+}
+
+function montarLinhasDominioRecebimentosSeparados({ validarPendencias = true } = {}) {
+  prepararItensRecebimentosSeparados();
+  return montarLinhasDominioConciliacao({ validarPendencias });
+}
+
+function exportarDominioRecebimentos() {
+  if (recebimentosRateioTemp.length === 0) {
+    alert('Importe os recebimentos antes de exportar.');
+    return;
+  }
+  origemModalPendencias = 'recebimentos';
+  const linhas = montarLinhasDominioRecebimentosSeparados();
+  if (linhas === null) return;
+  if (linhas.length === 0) {
+    alert('Não há recebimentos para exportar.');
+    return;
+  }
+  linhas.forEach(l => { l[6] = ''; });
+  linhas[0][6] = 1;
+  const wb = XLSX.utils.book_new();
+  adicionarAbasDominioExportacao(wb, linhas, true);
+  const data = new Date().toLocaleDateString('pt-BR').replace(/\//g,'-');
+  XLSX.writeFile(wb, `Dominio_Recebimentos_${grupoAtivo}_${data}.xlsx`);
+}
+
+function montarLinhasRecebimentosImportadosParaFinal() {
+  if (recebimentosRateioTemp.length === 0) return [];
+  const itensAnteriores = conciliacaoItensTemp;
+  const origemAnterior = origemModalPendencias;
+  origemModalPendencias = 'recebimentos';
+  try {
+    return montarLinhasDominioRecebimentosSeparados({ validarPendencias: false }) || [];
+  } finally {
+    conciliacaoItensTemp = itensAnteriores;
+    origemModalPendencias = origemAnterior;
+  }
 }
 function onFileChangeExtratoBancario(e) {
   const files = Array.from(e.target.files || []);
@@ -2218,9 +2397,10 @@ async function processarExtratosBancarios(files) {
     mostrarMsgConciliacao(partesMsg.join('. ') + '.', 'ok');
     renderConciliacaoBancaria();
     if (linhasImportadas.length > 0) {
+      origemModalPendencias = 'conciliacao';
       const resultado = gerarSugestoesConciliacao();
       if (resultado?.qtdParaResolver > 0) {
-        setTimeout(() => abrirModalPendenciasConciliacao(), 0);
+        setTimeout(() => abrirModalPendenciasConciliacaoBancaria(), 0);
       }
     }
     finalizarProgressoImportacao('Extrato carregado.');
@@ -2597,14 +2777,14 @@ function criarItensRecebimentosRateioAgrupados() {
 }
 
 function itensNumerarioRecebimentosRateio(itensRateio) {
-  if (!grupoUsaNumerariosRateio()) return [];
+  if (!grupoUsaNumerariosRateio() && !grupoUsaNumerariosParcelas()) return [];
   const vistos = new Set();
   const itens = [];
   itensRateio.filter(item => item.intercompany).forEach(item => {
     ['EMPRESA DO BANCO', 'CENTRO DE CUSTO'].forEach(lado => {
       const negativo = arredondarMoeda(item.total || item.valor || 0) < 0;
       const naturezaNumerario = naturezaNumerarioRecebimento(lado, negativo);
-      const chave = chaveNumerarioRateio(item.empresaBanco, item.centroCusto, lado, naturezaNumerario);
+      const chave = chaveNumerarioRecebimento(item.empresaBanco, item.centroCusto, lado, naturezaNumerario);
       if (vistos.has(chave)) return;
       vistos.add(chave);
       itens.push({
@@ -2660,9 +2840,7 @@ function gerarSugestoesConciliacao(opcoes = {}) {
   const contasBanco = new Set(contasExtrato(extratoBancarioTemp).map(normalizarTexto));
   const pagamentos = pagamentosImportadosConciliacao(contasBanco);
   const movimentos = extratoBancarioTemp.filter(movimentoEhSaidaConciliavelPagamento);
-  const entradas = grupoUsaNumerariosParcelas()
-    ? []
-    : extratoBancarioTemp.filter((m, idx) => m.valor > 0 && !transferenciasPareadas.has(idx));
+  const entradas = extratoBancarioTemp.filter((m, idx) => m.valor > 0 && !transferenciasPareadas.has(idx));
   const usadosMov = new Set();
   const sugestoesPorPagamento = new Map();
 
@@ -3034,7 +3212,7 @@ function renderSugestoesConciliacao(sugestoes, qtdPagamentos, qtdMovimentos, ent
     </div>
     <p class="conciliacao-note" style="margin-bottom:10px">Pagamentos são validados contra as saídas do extrato. As pendências devem ser conciliadas manualmente quando não houver sugestão automática.</p>
     <div class="conciliation-actions">
-      ${qtdParaResolver > 0 ? '<button class="btn btn-primary" onclick="abrirModalPendenciasConciliacao()">Preencher pendências</button>' : ''}
+      ${qtdParaResolver > 0 ? '<button class="btn btn-primary" onclick="abrirModalPendenciasConciliacaoBancaria()">Preencher pendências</button>' : ''}
       <button class="btn" onclick="mostrarTela('tela-resultado')">Voltar aos lançamentos</button>
       ${qtdParaResolver > 0
         ? '<span class="conciliacao-note">Saídas do extrato sem pagamento precisam de conta informada para entrar na exportação final.</span>'
@@ -3064,6 +3242,11 @@ function alternarLancamentosConciliados() {
 function alternarPendenciasPreenchidas() {
   mostrarPendenciasPreenchidas = !mostrarPendenciasPreenchidas;
   gerarSugestoesConciliacao({ redirecionarSeOk: false });
+}
+
+function abrirModalPendenciasConciliacaoBancaria() {
+  origemModalPendencias = 'conciliacao';
+  abrirModalPendenciasConciliacao();
 }
 
 function coletarCodigosConciliacao() {
@@ -3161,7 +3344,8 @@ function aplicarContaPendenciasConciliacaoSelecionadas() {
   salvarRegrasRecebimentoConciliacao();
   pendenciasConciliacaoSelecionadas.clear();
   fecharModalPendenciasConciliacao();
-  gerarSugestoesConciliacao({ redirecionarSeOk: false });
+  if (origemModalPendencias === 'recebimentos') renderRecebimentosSeparados();
+  else gerarSugestoesConciliacao({ redirecionarSeOk: false });
   abrirModalPendenciasConciliacao();
 }
 
@@ -3419,6 +3603,9 @@ function revisarSaidaExtratoSemExportar(id) {
 function atualizarModalPendenciasConciliacao() {
   coletarCodigosConciliacao();
   salvarRegrasRecebimentoConciliacao();
+  if (origemModalPendencias === 'recebimentos') {
+    renderRecebimentosSeparados();
+  }
   abrirModalPendenciasConciliacao();
 }
 
@@ -3573,7 +3760,11 @@ function salvarModalPendenciasConciliacao() {
   coletarCodigosConciliacao();
   salvarRegrasRecebimentoConciliacao();
   fecharModalPendenciasConciliacao();
-  gerarSugestoesConciliacao();
+  if (origemModalPendencias === 'recebimentos') {
+    renderRecebimentosSeparados();
+  } else {
+    gerarSugestoesConciliacao();
+  }
 }
 
 const CABECALHO_DOMINIO = ['Data','Cód. Conta Débito','Cód. Conta Crédito','Valor','Cód. Histórico','Complemento Histórico','Inicia Lote','Código Matriz/Filial','Centro de Custo Débito','Centro de Custo Crédito','Tipo de Operação'];
@@ -3600,6 +3791,18 @@ function tipoRateioDominioPagamento(lancamento) {
     : '';
 }
 
+function codigoNumerarioRecebimento(regras, empresaBanco, centroCusto, lado, natureza = '') {
+  return grupoUsaNumerariosParcelas()
+    ? codigoNumerarioParcelas(regras, empresaBanco, centroCusto, lado, natureza)
+    : codigoNumerarioRateio(regras, empresaBanco, centroCusto, lado, natureza);
+}
+
+function chaveNumerarioRecebimento(empresaBanco, centroCusto, lado, natureza = '') {
+  return grupoUsaNumerariosParcelas()
+    ? chaveNumerarioParcelas(empresaBanco, centroCusto, lado, natureza)
+    : chaveNumerarioRateio(empresaBanco, centroCusto, lado, natureza);
+}
+
 function montarLinhasRecebimentoRateioDominio(item, codigoRecebimento, regrasNumerarios) {
   const linhas = [];
   const movimentos = item.movimentos && item.movimentos.length ? item.movimentos : [item];
@@ -3618,8 +3821,8 @@ function montarLinhasRecebimentoRateioDominio(item, codigoRecebimento, regrasNum
   if (item.intercompany || primeiroMovimento.intercompany) {
     const naturezaNumerarioBanco = naturezaNumerarioRecebimento('EMPRESA DO BANCO', negativo);
     const naturezaNumerarioCentro = naturezaNumerarioRecebimento('CENTRO DE CUSTO', negativo);
-    const codNumerarioBanco = codigoNumerarioRateio(regrasNumerarios, empresaBanco, centroCusto, 'EMPRESA DO BANCO', naturezaNumerarioBanco);
-    const codNumerarioCentro = codigoNumerarioRateio(regrasNumerarios, empresaBanco, centroCusto, 'CENTRO DE CUSTO', naturezaNumerarioCentro);
+    const codNumerarioBanco = codigoNumerarioRecebimento(regrasNumerarios, empresaBanco, centroCusto, 'EMPRESA DO BANCO', naturezaNumerarioBanco);
+    const codNumerarioCentro = codigoNumerarioRecebimento(regrasNumerarios, empresaBanco, centroCusto, 'CENTRO DE CUSTO', naturezaNumerarioCentro);
     if (negativo) {
       linhas.push(linhaDominio(fmtDate(item.data || primeiroMovimento.data), codNumerarioBanco, banco, valor, complementoNumerarios, empresaBanco, 'TRANSFERENCIA DE NUMERARIOS'));
       linhas.push(linhaDominio(fmtDate(item.data || primeiroMovimento.data), codigoRecebimento, codNumerarioCentro, valor, complementoNumerarios, centroCusto, 'TRANSFERENCIA DE NUMERARIOS'));
@@ -3756,6 +3959,7 @@ function renderGrupos() {
           <button class="btn btn-sm" onclick="mostrarTela('tela-regras')">📋 Regras</button>
           <button class="btn btn-sm" onclick="mostrarTela('tela-plano-contas')">📑 Plano de Contas</button>
           <button class="btn btn-sm btn-blue" onclick="mostrarTela('tela-importar')">⬆ Importar planilha</button>
+          ${modoGrupo === 'parcelas_numerarios' || modoGrupo === 'rateio' ? `<button class="btn btn-sm" onclick="mostrarTela('tela-recebimentos')">Recebimentos</button>` : ''}
           ${modoGrupo === 'rateio' ? `<button class="btn btn-sm" onclick="mostrarTela('tela-provisao-rateio')">Provisão</button>` : ''}
         ` : ''}
         <button class="btn btn-sm btn-danger" onclick="excluirGrupo('${g}')">🗑</button>
@@ -5212,10 +5416,16 @@ function exportarDominioFinal() {
     alert('Gere os lançamentos de pagamentos antes de exportar.');
     return;
   }
-  const linhasConciliacao = montarLinhasDominioConciliacao();
+  let linhasConciliacao = [];
+  if (extratoBancarioTemp.length > 0) {
+    origemModalPendencias = 'conciliacao';
+    gerarSugestoesConciliacao({ redirecionarSeOk: false });
+    linhasConciliacao = montarLinhasDominioConciliacao();
+  }
   if (linhasConciliacao === null) return;
+  const linhasRecebimentosImportados = montarLinhasRecebimentosImportadosParaFinal();
 
-  const linhas = [...linhasPagamentos, ...linhasConciliacao];
+  const linhas = [...linhasPagamentos, ...linhasConciliacao, ...linhasRecebimentosImportados];
   linhas.forEach(l => { l[6] = ''; });
   if (linhas.length > 0) linhas[0][6] = 1;
 
