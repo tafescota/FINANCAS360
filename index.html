@@ -4756,9 +4756,21 @@ function renderLinhaAjustePar(linha) {
   </tr>`;
 }
 
+function resumoRegrasNovasChaves() {
+  const total = novasChavesTemp.length;
+  const ok = novasChavesTemp.filter(item => !!obterCodigoContaParaDominio(codigosTemp[item.chave])).length;
+  return {
+    total,
+    ok,
+    pendentes: total - ok
+  };
+}
+
 function renderNovasChaves() {
-  const qtdPendentes = novasChavesTemp.filter(item => !codigosTemp[item.chave]).length;
-  document.getElementById('tag-qtd-novas').textContent = qtdPendentes + ' pendente' + (qtdPendentes !== 1 ? 's' : '');
+  const resumoRegras = resumoRegrasNovasChaves();
+  document.getElementById('tag-qtd-novas').textContent = grupoUsaNumerariosParcelas()
+    ? `${resumoRegras.pendentes} regra${resumoRegras.pendentes !== 1 ? 's' : ''} faltando · ${resumoRegras.ok} ok`
+    : `${resumoRegras.pendentes} pendente${resumoRegras.pendentes !== 1 ? 's' : ''}`;
   // Só coleta da tela se não estiver re-renderizando após lote
   const tbody = document.getElementById('tbody-novas-chaves');
   const filtro = normalizarTexto(document.getElementById('filtro-lote')?.value || '');
@@ -5039,9 +5051,11 @@ function atualizarStatusLote(visiveis = obterNovasChavesVisiveis()) {
   const status = document.getElementById('status-lote');
   if (!status) return;
   const selecionadasVisiveis = visiveis.filter(item => selecionadasLote.has(item.chave)).length;
-  const pendentes = novasChavesTemp.filter(item => !codigosTemp[item.chave]).length;
+  const resumoRegras = resumoRegrasNovasChaves();
   const textoVisiveis = visiveis.length === 1 ? '1 visível' : `${visiveis.length} visíveis`;
-  status.textContent = `${pendentes} pendente${pendentes !== 1 ? 's' : ''}. ${textoVisiveis} na busca. ${selecionadasVisiveis} selecionada${selecionadasVisiveis !== 1 ? 's' : ''}.`;
+  status.textContent = grupoUsaNumerariosParcelas()
+    ? `${resumoRegras.pendentes} regra${resumoRegras.pendentes !== 1 ? 's' : ''} faltando · ${resumoRegras.ok} ok de ${resumoRegras.total}. ${textoVisiveis} na busca. ${selecionadasVisiveis} selecionada${selecionadasVisiveis !== 1 ? 's' : ''}.`
+    : `${resumoRegras.pendentes} pendente${resumoRegras.pendentes !== 1 ? 's' : ''}. ${textoVisiveis} na busca. ${selecionadasVisiveis} selecionada${selecionadasVisiveis !== 1 ? 's' : ''}.`;
   const checkTodas = document.getElementById('check-todas-lote');
   if (checkTodas) {
     checkTodas.checked = visiveis.length > 0 && selecionadasVisiveis === visiveis.length;
