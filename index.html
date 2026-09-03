@@ -2403,9 +2403,9 @@ function pendenciasRegrasRecebimentos() {
   const pendReceb = itensRecebimento.filter(item => !obterCodigoContaParaDominio(codigosConciliacaoTemp[item.id])).length;
   const pendNum = itensNumerario.filter(item => !obterCodigoContaParaDominio(codigosConciliacaoTemp[item.id])).length;
   return {
-    total: itensRecebimento.length + itensNumerario.length,
-    aplicadas: itensRecebimento.length + itensNumerario.length - pendReceb - pendNum,
-    pendentes: pendReceb + pendNum,
+    total: itensRecebimento.length,
+    aplicadas: itensRecebimento.length - pendReceb,
+    pendentes: pendReceb,
     pendReceb,
     pendNum
   };
@@ -2433,21 +2433,20 @@ function novaChaveDeItemRecebimento(item) {
     naturezaNumerario: item.naturezaNumerario || '',
     tipoOperacaoRecebimento: ehNumerario
       ? `NUMERÁRIO ${natureza}`
-      : (item.tipoRateio === 'TRANSFERENCIA DE NUMERARIOS' ? 'DESPESA' : 'PROPRIO'),
+      : 'RECEBIMENTO PRÓPRIO',
     valorRecebimento: item.total || 0,
     escopoRegra: item.escopoRegra || ''
   };
 }
 
 function prepararTelaNovasRegrasRecebimentos() {
-  const resumo = pendenciasRegrasRecebimentos();
+  const { itensRecebimento } = prepararItensRecebimentosSeparados();
+  const itensPendentes = itensRecebimento.filter(item => !obterCodigoContaParaDominio(codigosConciliacaoTemp[item.id]));
   origemNovasChaves = 'recebimentos';
-  novasChavesTemp = conciliacaoItensTemp
-    .filter(item => !obterCodigoContaParaDominio(codigosConciliacaoTemp[item.id]))
-    .map(novaChaveDeItemRecebimento);
+  novasChavesTemp = itensPendentes.map(novaChaveDeItemRecebimento);
   codigosTemp = {};
   novasChavesTemp.forEach(item => { codigosTemp[item.chave] = ''; });
-  resumoRegrasImportacaoTemp = { total: resumo.total, okSalvas: resumo.aplicadas };
+  resumoRegrasImportacaoTemp = { total: itensRecebimento.length, okSalvas: itensRecebimento.length - itensPendentes.length };
   selecionadasLote = new Set();
   filtrosNovasChaves = { empresa: '', centroCusto: '', fornecedor: '', plano: '', historico: '', tipoRateio: '', numero: '', tipoDoc: '', codigo: '' };
   const filtro = document.getElementById('filtro-lote');
@@ -2480,7 +2479,7 @@ function renderRecebimentosSeparados() {
     <div class="metric metric-muted"><div class="metric-label">Recebimentos</div><div class="metric-value">${r.total}</div><div class="metric-sub">${r.proprio} próprios · ${r.intercompany} numerários</div></div>
     <div class="metric metric-muted"><div class="metric-label">Valor positivo</div><div class="metric-value metric-text">R$ ${fmtValor(r.valorPositivo)}</div></div>
     <div class="metric metric-muted"><div class="metric-label">Taxas/Ajustes</div><div class="metric-value metric-text">R$ ${fmtValor(r.valorNegativo)}</div></div>
-    <div class="metric ${pendReceb + pendNum ? 'metric-focus-warn' : 'metric-focus-ok'}"><div class="metric-label">Pendências</div><div class="metric-value ${pendReceb + pendNum ? 'warn' : 'ok'}">${pendReceb + pendNum}</div><div class="metric-sub">${pendReceb} recebimento · ${pendNum} numerário</div></div>
+    <div class="metric ${pendReceb ? 'metric-focus-warn' : 'metric-focus-ok'}"><div class="metric-label">Contas de clientes pendentes</div><div class="metric-value ${pendReceb ? 'warn' : 'ok'}">${pendReceb}</div><div class="metric-sub">Numerários reutilizam as regras de Pagamentos</div></div>
   </div>`;
   tbody.innerHTML = itensRecebimento.map(item => {
     const pendente = !obterCodigoContaParaDominio(codigosConciliacaoTemp[item.id]);
@@ -2515,7 +2514,9 @@ async function processarRecebimentosSeparados(files) {
       mostrarMsgRecebimentos(`${qtd} recebimento${qtd !== 1 ? 's' : ''} importado${qtd !== 1 ? 's' : ''}. ${regras.aplicadas} regra${regras.aplicadas !== 1 ? 's' : ''} aplicada${regras.aplicadas !== 1 ? 's' : ''} automaticamente e ${regras.pendentes} nova${regras.pendentes !== 1 ? 's' : ''} para preencher.`, 'ok');
       setTimeout(() => prepararTelaNovasRegrasRecebimentos(), 0);
     } else {
-      mostrarMsgRecebimentos(`${qtd} recebimento${qtd !== 1 ? 's' : ''} importado${qtd !== 1 ? 's' : ''}. Todas as ${regras.total} regras foram reconhecidas e aplicadas automaticamente.`, 'ok');
+      mostrarMsgRecebimentos(regras.pendNum > 0
+        ? `${qtd} recebimento${qtd !== 1 ? 's' : ''} importado${qtd !== 1 ? 's' : ''}. Todas as contas de clientes foram reconhecidas. Ainda faltam ${regras.pendNum} conta${regras.pendNum !== 1 ? 's' : ''} de numerários nas regras de Pagamentos.`
+        : `${qtd} recebimento${qtd !== 1 ? 's' : ''} importado${qtd !== 1 ? 's' : ''}. Todas as ${regras.total} contas de clientes foram reconhecidas e aplicadas automaticamente.`, regras.pendNum > 0 ? 'warn' : 'ok');
     }
     finalizarProgressoImportacao('Recebimentos carregados.');
   } catch (err) {
@@ -4210,8 +4211,11 @@ function montarLinhasDominioConciliacao({ validarPendencias = true } = {}) {
     return !obterCodigoContaParaDominio(codigosConciliacaoTemp[item.id]);
   });
   if (pendentes.length > 0 && validarPendencias) {
-    if (origemModalPendencias === 'recebimentos') prepararTelaNovasRegrasRecebimentos();
-    else abrirModalPendenciasConciliacao();
+    if (origemModalPendencias === 'recebimentos') {
+      const clientesPendentes = pendentes.filter(item => item.movimento === 'recebimento');
+      if (clientesPendentes.length > 0) prepararTelaNovasRegrasRecebimentos();
+      else alert('As contas dos clientes estão preenchidas. Falta cadastrar a conta de numerário ativo/passivo nas regras de Pagamentos deste grupo.');
+    } else abrirModalPendenciasConciliacao();
     return null;
   }
   salvarRegrasRecebimentoConciliacao();
@@ -5151,17 +5155,18 @@ function configurarTelaNovasChaves() {
     ? '⚠️ Preencha o código contábil do Domínio para cada regra nova de recebimento. As regras já salvas foram aplicadas automaticamente.'
     : '⚠️ Preencha o código contábil do Domínio para cada combinação nova. Pode deixar em branco — o lançamento ficará marcado para revisão.';
   if (filtro) filtro.placeholder = recebimentos
-    ? 'Pesquisar forma de recebimento, histórico, empresa ou tipo...'
+    ? 'Pesquisar forma de recebimento, histórico, empresa ou conta...'
     : 'Pesquisar fornecedor, histórico, plano ou tipo...';
   if (filtroTipo) {
+    filtroTipo.style.display = recebimentos ? 'none' : '';
     const valorAtual = filtrosNovasChaves.tipoRateio || '';
     filtroTipo.innerHTML = recebimentos
-      ? '<option value="">Todos os tipos</option><option value="PROPRIO">Próprio</option><option value="DESPESA">Entre empresas</option><option value="NUMERARIO ATIVO">Numerário ativo</option><option value="NUMERARIO PASSIVO">Numerário passivo</option>'
+      ? '<option value="">Todos os tipos</option><option value="RECEBIMENTO PRÓPRIO">Recebimento próprio</option><option value="NUMERARIO ATIVO">Numerário ativo</option><option value="NUMERARIO PASSIVO">Numerário passivo</option>'
       : '<option value="">Todos os tipos</option><option value="PROPRIO">Próprio</option><option value="DESPESA">Despesa/Fornecedor</option><option value="NUMERARIO ATIVO">Numerário ativo</option><option value="NUMERARIO PASSIVO">Numerário passivo</option><option value="DESCONTO">Desconto</option><option value="ACRESCIMO">Acréscimo</option>';
     filtroTipo.value = valorAtual;
   }
   if (cabecalho) cabecalho.innerHTML = recebimentos
-    ? '<th><input type="checkbox" id="check-todas-lote" onchange="alternarTodasVisiveis(this.checked)"></th><th>Empresa do banco</th><th>Empresa do recebimento</th><th>Forma de recebimento</th><th>Conta esperada</th><th>Histórico</th><th>Tipo</th><th>Data / Grupo</th><th>Regra</th><th>Código Domínio</th>'
+    ? '<th><input type="checkbox" id="check-todas-lote" onchange="alternarTodasVisiveis(this.checked)"></th><th>Empresa do banco</th><th>Empresa do recebimento</th><th>Forma de recebimento</th><th>Conta do cliente</th><th>Histórico</th><th>Data / Grupo</th><th>Regra</th><th>Código Domínio</th>'
     : '<th><input type="checkbox" id="check-todas-lote" onchange="alternarTodasVisiveis(this.checked)"></th><th>Empresa do banco</th><th>Unidade da despesa</th><th>Fornecedor</th><th>Plano de Contas</th><th>Histórico</th><th>Tipo</th><th>Número</th><th>Documento</th><th>Código Domínio</th>';
   if (concluir) concluir.textContent = recebimentos ? 'Concluir regras de recebimentos' : 'Concluir e gerar lançamentos';
 }
@@ -5177,7 +5182,7 @@ function renderNovasChaves() {
   const filtro = normalizarTexto(document.getElementById('filtro-lote')?.value || '');
   const visiveis = filtrarNovasChaves(novasChavesTemp, filtro);
   if (visiveis.length === 0) {
-    tbody.innerHTML = `<tr><td colspan="10" style="text-align:center;color:var(--text2);padding:32px">Nenhuma pendência visível com os filtros atuais.</td></tr>`;
+    tbody.innerHTML = `<tr><td colspan="${origemNovasChaves === 'recebimentos' ? 9 : 10}" style="text-align:center;color:var(--text2);padding:32px">Nenhuma pendência visível com os filtros atuais.</td></tr>`;
     atualizarStatusLote(visiveis);
     return;
   }
@@ -5226,7 +5231,7 @@ function renderNovasChaves() {
         ${isAjuste ? `<div style="font-weight:700;color:#92400e;margin-bottom:4px">${escapeHtml(tipoDoc)} -</div>` : ''}
         ${historicoExibido ? `<div class="historico-regra-label">Clique nas palavras da regra:</div>${palavrasHistorico}` : ''}
       </td>
-      <td title="${escapeAttr([tipoRateioTitulo, tipoRateioSub].filter(Boolean).join(' - '))}" style="color:var(--text2)">${tipoRateioTitulo ? `<span class="badge ${tipoRateio === 'PROPRIO' ? 'badge-blue' : ''}">${escapeHtml(tipoRateioTitulo)}</span>${tipoRateioSub ? `<div class="cell-subtle">${escapeHtml(tipoRateioSub)}</div>` : ''}` : ''}</td>
+      ${origemNovasChaves === 'recebimentos' ? '' : `<td title="${escapeAttr([tipoRateioTitulo, tipoRateioSub].filter(Boolean).join(' - '))}" style="color:var(--text2)">${tipoRateioTitulo ? `<span class="badge ${tipoRateio === 'PROPRIO' ? 'badge-blue' : ''}">${escapeHtml(tipoRateioTitulo)}</span>${tipoRateioSub ? `<div class="cell-subtle">${escapeHtml(tipoRateioSub)}</div>` : ''}` : ''}</td>`}
       <td title="${escapeAttr(numeroExibido)}" style="color:var(--text2)">${escapeHtml(numeroExibido)}</td>
       <td title="${escapeAttr(tipoDoc)}" style="color:var(--text2)">${isAjuste ? `<span class="tipo-ajuste-badge">${escapeHtml(tipoDoc)}</span>` : escapeHtml(tipoDoc)}</td>
       <td>
@@ -5368,7 +5373,7 @@ function ocultarPendenciaPreenchida(inp, focarProximo = false) {
   inp.closest('tr')?.remove();
   const visiveis = obterNovasChavesVisiveis();
   if (visiveis.length === 0) {
-    document.getElementById('tbody-novas-chaves').innerHTML = `<tr><td colspan="10" style="text-align:center;color:var(--text2);padding:32px">Nenhuma pendência visível com os filtros atuais.</td></tr>`;
+    document.getElementById('tbody-novas-chaves').innerHTML = `<tr><td colspan="${origemNovasChaves === 'recebimentos' ? 9 : 10}" style="text-align:center;color:var(--text2);padding:32px">Nenhuma pendência visível com os filtros atuais.</td></tr>`;
   }
   atualizarStatusLote(visiveis);
   if (focarProximo && proximo) focarCampoCodigo(proximo);
@@ -5532,7 +5537,9 @@ function salvarNovasChavesEGerar() {
     const resumo = pendenciasRegrasRecebimentos();
     mostrarMsgRecebimentos(resumo.pendentes > 0
       ? `Regras preenchidas salvas. Ainda existem ${resumo.pendentes} regra${resumo.pendentes !== 1 ? 's' : ''} pendente${resumo.pendentes !== 1 ? 's' : ''}.`
-      : 'Todas as regras de recebimentos foram salvas. Tudo pronto para conferir e exportar.', resumo.pendentes > 0 ? 'warn' : 'ok');
+      : resumo.pendNum > 0
+        ? `Todas as contas de clientes foram salvas. Antes de exportar, cadastre ${resumo.pendNum} conta${resumo.pendNum !== 1 ? 's' : ''} de numerários nas regras de Pagamentos.`
+        : 'Todas as contas de clientes foram salvas. Tudo pronto para conferir e exportar.', resumo.pendentes > 0 || resumo.pendNum > 0 ? 'warn' : 'ok');
     return;
   }
   const regrasSalvas = Object.assign({}, depara[grupoAtivo] || {});
