@@ -2132,6 +2132,88 @@ input[type=search]:focus {
   font-weight: 900;
 }
 
+/* Refinamento visual final, preservando a estrutura atual. */
+#tela-novas-chaves .bulk-tool-top {
+  padding-top: 14px !important;
+}
+
+#tela-novas-chaves .bulk-panel-title {
+  margin-bottom: 12px !important;
+}
+
+#tela-novas-chaves .bulk-filters-grid {
+  gap: 12px !important;
+}
+
+#tela-novas-chaves .bulk-filters-grid .filtro-lote-field > input,
+#tela-novas-chaves .bulk-filters-grid .filtro-lote-field > select,
+#tela-novas-chaves .bulk-action-panel .filtro-lote-field > input {
+  height: 40px !important;
+  min-height: 40px !important;
+  line-height: 40px !important;
+}
+
+#tela-novas-chaves .bulk-selection-actions {
+  gap: 14px !important;
+  margin-top: 14px !important;
+  padding: 14px 0 12px !important;
+}
+
+#tela-novas-chaves .bulk-selection-actions .btn {
+  min-width: 0 !important;
+  width: auto !important;
+  min-height: 40px !important;
+  height: 40px !important;
+  padding: 0 15px !important;
+  white-space: nowrap !important;
+}
+
+#tela-novas-chaves .btn-clear-selection,
+#tela-novas-chaves .btn-clear-filters {
+  background: #fff !important;
+  border-color: #e7a6a6 !important;
+  color: #c24141 !important;
+  font-weight: 700 !important;
+}
+
+#tela-novas-chaves .btn-clear-selection:hover,
+#tela-novas-chaves .btn-clear-filters:hover {
+  background: #fff7f7 !important;
+  border-color: #d98282 !important;
+  color: #a83232 !important;
+}
+
+#tela-novas-chaves .btn-soft-blue {
+  background: #eef6ff !important;
+  border-color: #8ab9f2 !important;
+  color: #1453a3 !important;
+}
+
+#tela-novas-chaves .bulk-action-panel .btn-primary {
+  height: 40px !important;
+  min-height: 40px !important;
+}
+
+#tela-novas-chaves .novas-statusbar {
+  padding-bottom: 12px !important;
+}
+
+#tela-novas-chaves .bulk-tool-status {
+  font-weight: 400 !important;
+}
+
+/* O projeto não carrega biblioteca de ícones; estes símbolos usam fonte de símbolos do sistema. */
+#tela-novas-chaves .bulk-panel-title,
+#tela-novas-chaves .bulk-selection-actions .btn,
+#tela-novas-chaves .bulk-action-panel .btn-primary {
+  font-family: "Segoe UI Symbol", "Segoe UI", Arial, sans-serif !important;
+}
+
+#tela-novas-chaves .bulk-panel-title:first-letter {
+  font-size: 18px !important;
+  color: #1769d2 !important;
+}
+
 #tela-novas-chaves .historico-palavra {
   display: inline !important;
   padding: 0 1px !important;
