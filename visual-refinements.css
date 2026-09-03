@@ -2191,6 +2191,91 @@ body {
   gap: 8px !important;
 }
 
+/* Cartão de filtros e ações em lote, no mesmo padrão da tela de referência. */
+#tela-novas-chaves .bulk-tool-top {
+  display: grid !important;
+  grid-template-columns: minmax(0, 3fr) minmax(280px, 1.25fr) !important;
+  gap: 0 !important;
+  padding: 28px 32px 0 !important;
+}
+
+#tela-novas-chaves .bulk-filters-panel,
+#tela-novas-chaves .bulk-action-panel {
+  min-width: 0 !important;
+}
+
+#tela-novas-chaves .bulk-filters-panel {
+  padding-right: 28px !important;
+}
+
+#tela-novas-chaves .bulk-action-panel {
+  border-left: 1px solid #dbe4ef !important;
+  padding-left: 30px !important;
+}
+
+#tela-novas-chaves .bulk-panel-title {
+  color: #173454 !important;
+  font-size: 16px !important;
+  font-weight: 900 !important;
+  letter-spacing: .04em !important;
+  margin-bottom: 38px !important;
+}
+
+#tela-novas-chaves .bulk-panel-title:first-letter {
+  color: #1769d2 !important;
+}
+
+#tela-novas-chaves .bulk-filters-grid {
+  display: grid !important;
+  grid-template-columns: repeat(4, minmax(0, 1fr)) !important;
+  gap: 24px !important;
+}
+
+#tela-novas-chaves .bulk-filters-grid .filtro-lote-field,
+#tela-novas-chaves .bulk-action-panel .filtro-lote-field {
+  width: 100% !important;
+}
+
+#tela-novas-chaves .bulk-selection-actions {
+  grid-column: 1 / -1 !important;
+  display: flex !important;
+  gap: 28px !important;
+  border-top: 1px solid #dbe4ef !important;
+  margin-top: 28px !important;
+  padding: 38px 0 38px !important;
+}
+
+#tela-novas-chaves .bulk-selection-actions .btn {
+  min-width: 255px !important;
+  min-height: 64px !important;
+}
+
+#tela-novas-chaves .bulk-action-panel .btn-primary {
+  width: 100% !important;
+  min-height: 66px !important;
+  font-size: 16px !important;
+}
+
+@media (max-width: 1100px) {
+  #tela-novas-chaves .bulk-tool-top {
+    grid-template-columns: 1fr !important;
+    padding: 22px !important;
+  }
+  #tela-novas-chaves .bulk-filters-panel { padding-right: 0 !important; }
+  #tela-novas-chaves .bulk-action-panel {
+    border-left: 0 !important;
+    border-top: 1px solid #dbe4ef !important;
+    margin-top: 24px !important;
+    padding: 24px 0 0 !important;
+  }
+}
+
+@media (max-width: 760px) {
+  #tela-novas-chaves .bulk-filters-grid { grid-template-columns: 1fr 1fr !important; }
+  #tela-novas-chaves .bulk-selection-actions { flex-wrap: wrap !important; gap: 10px !important; }
+  #tela-novas-chaves .bulk-selection-actions .btn { min-width: 0 !important; flex: 1 1 180px !important; }
+}
+
 /* Todos os filtros e ações ocupam células de mesma largura no bloco. */
 #tela-novas-chaves .bulk-tool-top > .filtro-lote-field,
 #tela-novas-chaves .bulk-tool-top > .btn {

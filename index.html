@@ -344,17 +344,25 @@
     </div>
     <div class="bulk-tool novas-bulk-tool">
       <div class="bulk-tool-top">
-        <div class="filtro-lote-field"><span>Pesquisa geral</span><input type="search" id="filtro-lote" placeholder="Pesquisar fornecedor, histórico, plano ou tipo..." oninput="filtrarNovasChavesEmLote()"></div>
-        <div class="filtro-lote-field"><span>Fornecedor</span><select id="filtro-fornecedor-lote" onchange="atualizarFiltroFornecedorLote(this.value)"><option value="">Todos os fornecedores</option></select></div>
-        <div class="filtro-lote-field"><span>Plano de Contas</span><select id="filtro-plano-lote" onchange="atualizarFiltroPlanoLote(this.value)"><option value="">Todos os planos</option></select></div>
-        <div class="filtro-lote-field"><span>Tipo</span><select id="filtro-tipo-lote" class="bulk-type-filter" onchange="atualizarFiltroTipoLote(this.value)"><option value="">Todos os tipos</option><option value="DESPESA">Despesa/Fornecedor</option><option value="NUMERARIO ATIVO">Numerário ativo</option><option value="NUMERARIO PASSIVO">Numerário passivo</option><option value="DESCONTO">Desconto</option><option value="ACRESCIMO">Acréscimo</option></select></div>
-        <div class="filtro-lote-field campo-conta-lote"><span>Conta para lote</span><input type="text" id="codigo-lote" class="conta-autocomplete" placeholder="Conta para aplicar nos selecionados" oninput="criarAutocompleteConta(this)"></div>
-        <button class="btn btn-primary" onclick="aplicarCodigoEmLote()">Aplicar conta</button>
-        <div class="selecao-lote-acoes">
-          <button class="btn btn-soft-blue" onclick="selecionarFiltradasEmLote()">Selecionar filtradas</button>
-          <button class="btn btn-clear-selection" onclick="limparSelecaoNovasChaves()">Limpar seleção</button>
+        <div class="bulk-filters-panel">
+          <div class="bulk-panel-title">⚱ <span>FILTROS</span></div>
+          <div class="bulk-filters-grid">
+            <div class="filtro-lote-field"><span>Pesquisa geral</span><input type="search" id="filtro-lote" placeholder="Pesquisar fornecedor, histórico, plano ou tipo..." oninput="filtrarNovasChavesEmLote()"></div>
+            <div class="filtro-lote-field"><span>Fornecedor</span><select id="filtro-fornecedor-lote" onchange="atualizarFiltroFornecedorLote(this.value)"><option value="">Todos os fornecedores</option></select></div>
+            <div class="filtro-lote-field"><span>Plano de Contas</span><select id="filtro-plano-lote" onchange="atualizarFiltroPlanoLote(this.value)"><option value="">Todos os planos</option></select></div>
+            <div class="filtro-lote-field"><span>Tipo</span><select id="filtro-tipo-lote" class="bulk-type-filter" onchange="atualizarFiltroTipoLote(this.value)"><option value="">Todos os tipos</option><option value="DESPESA">Despesa/Fornecedor</option><option value="NUMERARIO ATIVO">Numerário ativo</option><option value="NUMERARIO PASSIVO">Numerário passivo</option><option value="DESCONTO">Desconto</option><option value="ACRESCIMO">Acréscimo</option></select></div>
+          </div>
         </div>
-        <button class="btn btn-clear-filters" id="btn-limpar-filtros-lote" onclick="limparFiltrosNovasChaves()">Limpar filtros</button>
+        <div class="bulk-action-panel">
+          <div class="bulk-panel-title">▱ <span>AÇÃO EM LOTE</span></div>
+          <div class="filtro-lote-field campo-conta-lote"><span>Conta para lote</span><input type="text" id="codigo-lote" class="conta-autocomplete" placeholder="Conta para aplicar nos selecionados" oninput="criarAutocompleteConta(this)"></div>
+          <button class="btn btn-primary" onclick="aplicarCodigoEmLote()">▣ &nbsp; Aplicar conta</button>
+        </div>
+        <div class="bulk-selection-actions">
+          <button class="btn btn-soft-blue" onclick="selecionarFiltradasEmLote()">☑ &nbsp; Selecionar filtradas</button>
+          <button class="btn btn-clear-selection" onclick="limparSelecaoNovasChaves()">▣ &nbsp; Limpar seleção</button>
+          <button class="btn btn-clear-filters" id="btn-limpar-filtros-lote" onclick="limparFiltrosNovasChaves()">⚱ &nbsp; Limpar filtros</button>
+        </div>
       </div>
       <div class="novas-statusbar">
         <div class="bulk-tool-status" id="status-lote">Use a busca para localizar itens e preencher vários de uma vez.</div>
