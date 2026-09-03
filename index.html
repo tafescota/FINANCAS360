@@ -2174,7 +2174,7 @@ function linhasNumerariosCartoesReceber(wb, arquivoOrigem) {
       centroCusto: empresaRecebimentoNumerarios(row[2], row[2]),
       tipo: valorNegativo(valorLiquido) ? `${formaRecebimento} - Taxa/Ajuste` : formaRecebimento,
       historico,
-      plano: 'Cartões recebidos',
+      plano: normalizarTexto(formaRecebimento).includes('boleto') ? 'Boletos recebidos' : 'Cartões recebidos',
       origem: 'Parcelas de Cartões a Receber',
       arquivoOrigem,
       linhaOrigem: headerIdx + rowIdx + 2,
