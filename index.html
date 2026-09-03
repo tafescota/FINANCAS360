@@ -5192,7 +5192,7 @@ function configurarTelaNovasChaves() {
     filtroTipo.value = valorAtual;
   }
   if (cabecalho) cabecalho.innerHTML = recebimentos
-    ? '<th><input type="checkbox" id="check-todas-lote" onchange="alternarTodasVisiveis(this.checked)"></th><th>Empresa do banco</th><th>Empresa do recebimento</th><th>Forma de recebimento</th><th>Conta do cliente</th><th>Data / Grupo</th><th>Regra</th><th>Código Domínio</th>'
+    ? '<th><input type="checkbox" id="check-todas-lote" onchange="alternarTodasVisiveis(this.checked)"></th><th>Empresa do banco</th><th>Empresa do recebimento</th><th>Forma de recebimento</th><th>Origem / plano</th><th>Data / Grupo</th><th>Regra</th><th>Conta do cliente (Domínio)</th>'
     : '<th><input type="checkbox" id="check-todas-lote" onchange="alternarTodasVisiveis(this.checked)"></th><th>Empresa do banco</th><th>Unidade da despesa</th><th>Fornecedor</th><th>Plano de Contas</th><th>Histórico</th><th>Tipo</th><th>Número</th><th>Documento</th><th>Código Domínio</th>';
   if (concluir) concluir.textContent = recebimentos ? 'Concluir regras de recebimentos' : 'Concluir e gerar lançamentos';
 }
@@ -5239,7 +5239,9 @@ function renderNovasChaves() {
       : tipoRateio === 'TRANSFERENCIA DE NUMERARIOS'
         ? 'Unidade da despesa'
         : '';
-    const placeholderCodigo = ehNumerario
+    const placeholderCodigo = origemNovasChaves === 'recebimentos' && !ehNumerario
+      ? 'Conta do cliente (código ou nome)'
+      : ehNumerario
       ? `Conta de numerários ${naturezaLabel.toLowerCase()}`
       : tipoRateio === 'TRANSFERENCIA DE NUMERARIOS'
         ? 'Conta da despesa/fornecedor'
