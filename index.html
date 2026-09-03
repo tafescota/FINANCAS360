@@ -348,6 +348,7 @@
         <select id="filtro-tipo-lote" class="bulk-type-filter" onchange="atualizarFiltroTipoLote(this.value)">
           <option value="">Todos os tipos</option>
           <option value="PROPRIO">Próprio</option>
+          <option value="DESPESA">Despesa/Fornecedor</option>
           <option value="NUMERARIO ATIVO">Numerário ativo</option>
           <option value="NUMERARIO PASSIVO">Numerário passivo</option>
           <option value="DESCONTO">Desconto</option>
@@ -4720,7 +4721,7 @@ function renderLinhaAjustePar(linha) {
   const infoDoc = separarNumeroDoHistorico(baseItem.tipoDoc, numero, historico);
   const historicoExibido = infoDoc.historico;
   const palavras = renderPalavrasHistorico(chave, historicoExibido, trechoHistorico);
-  const tipoRateio = tipoRateioOperacao(empresaOrigem || empresa, centroCusto, !!rateio || !!parcelasNumerarios);
+  const tipoRateio = tipoOperacaoNovaChave(baseItem);
   const tipoRateioTitulo = tipoRateio === 'TRANSFERENCIA DE NUMERARIOS' ? 'DESPESA' : tipoRateio === 'PROPRIO' ? 'PRÓPRIO' : tipoRateio;
   const tipoRateioSub = tipoRateio === 'TRANSFERENCIA DE NUMERARIOS' ? 'Unidade da despesa' : '';
   const chavesPar = [linha.debito?.chave, linha.credito?.chave].filter(Boolean);
@@ -4777,7 +4778,7 @@ function renderNovasChaves() {
     const historicoVisual = isAjuste ? `${tipoDoc} - ${historicoExibido}` : historicoExibido;
     const numeroExibido = tipoUsaNumero(tipoDoc) ? infoDoc.numero : '';
     const palavrasHistorico = renderPalavrasHistorico(chave, historicoExibido, trechoHistorico);
-    const tipoRateio = tipoRateioOperacao(empresaOrigem || empresa, centroCusto, !!rateio || !!parcelasNumerarios);
+    const tipoRateio = tipoOperacaoNovaChave(linha.item);
     const ehNumerario = !!pontaNumerario;
     const naturezaLabel = (naturezaNumerario || '').toString().toUpperCase();
     const tipoRateioTitulo = ehNumerario
@@ -4868,8 +4869,18 @@ function textoBuscaNovaChave(item) {
   ].join(' '));
 }
 
-function textoTipoOperacaoNovaChave(item) {
+function tipoOperacaoNovaChave(item) {
   const tipoRateio = tipoRateioItem(item);
+  const tipoDocumento = normalizarTexto(item?.tipoDoc || '');
+  const ehAjuste = tipoDocumento.includes('desconto')
+    || tipoDocumento.includes('acrescimo')
+    || tipoDocumento.includes('acréscimo');
+  if (!tipoRateio && grupoUsaNumerariosParcelas() && !item?.pontaNumerario && !ehAjuste) return 'PROPRIO';
+  return tipoRateio || '';
+}
+
+function textoTipoOperacaoNovaChave(item) {
+  const tipoRateio = tipoOperacaoNovaChave(item);
   const tipoDocumento = normalizarTexto(item?.tipoDoc || '');
   if (tipoDocumento.includes('desconto')) return 'DESCONTO DESCONTOS';
   if (tipoDocumento.includes('acrescimo') || tipoDocumento.includes('acréscimo')) return 'ACRESCIMO ACRÉSCIMO';
@@ -4879,6 +4890,7 @@ function textoTipoOperacaoNovaChave(item) {
     if (natureza === 'PASSIVO') return 'NUMERARIO PASSIVO NUMERÁRIO PASSIVO NUM. PASSIVO';
     return 'NUMERARIOS NUMERÁRIOS';
   }
+  if (tipoRateio === 'TRANSFERENCIA DE NUMERARIOS') return 'DESPESA FORNECEDOR TRANSFERENCIA DE NUMERARIOS';
   if (tipoRateio === 'PROPRIO') return 'PROPRIO PRÓPRIO';
   return tipoRateio || '';
 }
