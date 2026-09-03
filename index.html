@@ -530,6 +530,7 @@ let linhasImportadasModo = 'parcelas';
 let mapaEmpresasImportadas = {};
 let novasChavesTemp = [];
 let codigosTemp = {};
+let resumoRegrasImportacaoTemp = { total: 0, okSalvas: 0 };
 let selecionadasLote = new Set();
 let filtrosNovasChaves = { empresa: '', centroCusto: '', fornecedor: '', plano: '', historico: '', tipoRateio: '', numero: '', tipoDoc: '', codigo: '' };
 let lancamentosGerados = [];
@@ -711,7 +712,6 @@ function centroCustoLinha(r) {
 }
 
 function empresaLancamentoLinha(r) {
-  if (linhaEhParcelasNumerarios(r)) return limparTextoECD(r?.__centroCusto || r?.[COLS.CC] || r?.[COLS.EMPRESA]);
   return r?.__rateio
     ? limparTextoECD(r?.__centroCusto || r?.[COLS.CC] || r?.[COLS.EMPRESA])
     : limparTextoECD(r?.[COLS.EMPRESA]);
@@ -722,8 +722,7 @@ function escopoRegraLinha(r) {
 }
 
 function escopoRegraItem(item) {
-  const usaParcelasNumerarios = !!item?.parcelasNumerarios
-    && normalizarTexto(item?.empresaOrigem || item?.empresa) !== normalizarTexto(item?.centroCusto);
+  const usaParcelasNumerarios = itemParcelasNumerariosIntercompany(item);
   return escopoRegraPagamento(item?.empresaOrigem || item?.empresa, item?.centroCusto, !!item?.rateio, usaParcelasNumerarios);
 }
 
@@ -801,12 +800,31 @@ function tipoRateioOperacao(empresaOrigem, centroCusto, rateio = false) {
   return normalizarTexto(origem) === normalizarTexto(centro) ? 'PROPRIO' : 'TRANSFERENCIA DE NUMERARIOS';
 }
 
+function empresasComCodigosDiferentes(empresaOrigem, centroCusto) {
+  const codEmpresa = extrairPrimeiroCodigoEmpresa(empresaOrigem);
+  const codCentro = extrairPrimeiroCodigoEmpresa(centroCusto);
+  return !!codEmpresa && !!codCentro && codEmpresa !== codCentro;
+}
+
+function itemParcelasNumerariosIntercompany(item) {
+  return !!item?.parcelasNumerarios
+    && empresasComCodigosDiferentes(item?.empresaOrigem || item?.empresa, item?.centroCusto);
+}
+
 function tipoRateioItem(item) {
-  return tipoRateioOperacao(item?.empresaOrigem || item?.empresa, item?.centroCusto, !!item?.rateio || !!item?.parcelasNumerarios);
+  if (item?.rateio) return tipoRateioOperacao(item?.empresaOrigem || item?.empresa, item?.centroCusto, true);
+  if (item?.parcelasNumerarios) {
+    return item?.pontaNumerario || itemParcelasNumerariosIntercompany(item)
+      ? 'TRANSFERENCIA DE NUMERARIOS'
+      : '';
+  }
+  return '';
 }
 
 function tipoRateioLinha(r) {
-  return tipoRateioOperacao(empresaOrigemLinha(r), centroCustoLinha(r), !!r?.__rateio || linhaEhParcelasNumerarios(r));
+  if (r?.__rateio) return tipoRateioOperacao(empresaOrigemLinha(r), centroCustoLinha(r), true);
+  if (linhaEhParcelasNumerarios(r)) return parcelasNumerariosLinha(r) ? 'TRANSFERENCIA DE NUMERARIOS' : '';
+  return '';
 }
 function chaveNumerarioRateio(empresaBanco, centroCusto, lado, natureza = '') {
   return [
@@ -876,9 +894,7 @@ function codigoNumerarioParcelas(regras, empresaPagadora, centroCusto, lado, nat
 
 function parcelasNumerariosLinha(r) {
   if (!linhaEhParcelasNumerarios(r)) return false;
-  const codEmpresa = extrairPrimeiroCodigoEmpresa(empresaOrigemLinha(r));
-  const codCentro = extrairPrimeiroCodigoEmpresa(centroCustoLinha(r));
-  return !!codEmpresa && !!codCentro && codEmpresa !== codCentro;
+  return empresasComCodigosDiferentes(empresaOrigemLinha(r), centroCustoLinha(r));
 }
 
 function prepararLinhaParcelasNumerarios(row) {
@@ -1598,6 +1614,15 @@ function prepararPagamentosImportados(dados, abrirTelaPendencias = true) {
   const regrasSalvas = depara[grupoAtivo] || {};
   const novas = [];
   const vistas = new Set();
+  const regrasResumoVistas = new Set();
+  const resumoRegras = { total: 0, okSalvas: 0 };
+  const registrarResumoRegra = (chave, temCodigo) => {
+    if (!normalizarTexto(String(chave || '').replace(/\|/g, ''))) return;
+    if (regrasResumoVistas.has(chave)) return;
+    regrasResumoVistas.add(chave);
+    resumoRegras.total += 1;
+    if (obterCodigoContaParaDominio(temCodigo || '')) resumoRegras.okSalvas += 1;
+  };
   dados.forEach(r => {
     const forn = limparTextoECD(r[COLS.FORNECEDOR]);
     const plano = limparTextoECD(r[COLS.PLANO]);
@@ -1616,7 +1641,9 @@ function prepararPagamentosImportados(dados, abrirTelaPendencias = true) {
       ['DÉBITO', 'CRÉDITO'].forEach(ponta => {
         const tipoPonta = tipoAjustePonta(tipoAjusteRateio, ponta);
         const chaveAjuste = montarChave(forn, plano, tipoPonta, historico, escopoRegra);
-        if (!encontrarCodigoRegraAjuste(regrasSalvas, forn, plano, tipoAjusteRateio, ponta, historico, escopoRegra) && !vistas.has(chaveAjuste)) {
+        const codigoAjuste = encontrarCodigoRegraAjuste(regrasSalvas, forn, plano, tipoAjusteRateio, ponta, historico, escopoRegra);
+        registrarResumoRegra(chaveAjuste, codigoAjuste);
+        if (!codigoAjuste && !vistas.has(chaveAjuste)) {
           vistas.add(chaveAjuste);
           novas.push({ chave: chaveAjuste, fornecedor: forn, plano, tipoDoc: tipoPonta, historico, trechoHistorico: '', trechoHistoricoIndices: [], numero, empresa: empresaOrigem, empresaOrigem, centroCusto, empresaLancamento: empresaLancamentoLinha(r), rateio: !!r.__rateio, parcelasNumerarios: linhaDoFormatoNumerarios, escopoRegra });
         }
@@ -1624,7 +1651,9 @@ function prepararPagamentosImportados(dados, abrirTelaPendencias = true) {
       return;
     }
     const chave = montarChave(forn, plano, tipoDoc, historico, escopoRegra);
-    if (!encontrarCodigoRegra(regrasSalvas, forn, plano, tipoDoc, historico, escopoRegra) && !vistas.has(chave)) {
+    const codigoRegraPrincipal = encontrarCodigoRegra(regrasSalvas, forn, plano, tipoDoc, historico, escopoRegra);
+    registrarResumoRegra(chave, codigoRegraPrincipal);
+    if (!codigoRegraPrincipal && !vistas.has(chave)) {
       vistas.add(chave);
       novas.push({ chave, fornecedor: forn, plano, tipoDoc, historico, trechoHistorico: '', trechoHistoricoIndices: [], numero, empresa: empresaOrigem, empresaOrigem, centroCusto, empresaLancamento: empresaLancamentoLinha(r), rateio: !!r.__rateio, parcelasNumerarios: linhaDoFormatoNumerarios, escopoRegra });
     }
@@ -1633,7 +1662,9 @@ function prepararPagamentosImportados(dados, abrirTelaPendencias = true) {
       ['EMPRESA DO BANCO', 'CENTRO DE CUSTO'].forEach(lado => {
         const naturezaNumerario = naturezaNumerarioPagamento(lado, linhaRateioNegativa);
         const chaveNumerario = chaveNumerarioRateio(empresaOrigem, centroCusto, lado, naturezaNumerario);
-        if (!codigoNumerarioRateio(regrasSalvas, empresaOrigem, centroCusto, lado, naturezaNumerario) && !vistas.has(chaveNumerario)) {
+        const codigoNumerario = codigoNumerarioRateio(regrasSalvas, empresaOrigem, centroCusto, lado, naturezaNumerario);
+        registrarResumoRegra(chaveNumerario, codigoNumerario);
+        if (!codigoNumerario && !vistas.has(chaveNumerario)) {
           vistas.add(chaveNumerario);
           novas.push({
             chave: chaveNumerario,
@@ -1662,7 +1693,9 @@ function prepararPagamentosImportados(dados, abrirTelaPendencias = true) {
       ['EMPRESA DO BANCO', 'CENTRO DE CUSTO'].forEach(lado => {
         const naturezaNumerario = naturezaNumerarioPagamento(lado, linhaParcelasNegativa);
         const chaveNumerario = chaveNumerarioParcelas(empresaOrigem, centroCusto, lado, naturezaNumerario);
-        if (!codigoNumerarioParcelas(regrasSalvas, empresaOrigem, centroCusto, lado, naturezaNumerario) && !vistas.has(chaveNumerario)) {
+        const codigoNumerario = codigoNumerarioParcelas(regrasSalvas, empresaOrigem, centroCusto, lado, naturezaNumerario);
+        registrarResumoRegra(chaveNumerario, codigoNumerario);
+        if (!codigoNumerario && !vistas.has(chaveNumerario)) {
           vistas.add(chaveNumerario);
           novas.push({
             chave: chaveNumerario,
@@ -1692,7 +1725,9 @@ function prepararPagamentosImportados(dados, abrirTelaPendencias = true) {
       ['DÉBITO', 'CRÉDITO'].forEach(ponta => {
         const tipoPonta = tipoAjustePonta(tipoAjuste, ponta);
         const chaveAjuste = montarChave(forn, plano, tipoPonta, historico, escopoRegra);
-        if (!encontrarCodigoRegraAjuste(regrasSalvas, forn, plano, tipoAjuste, ponta, historico, escopoRegra) && !vistas.has(chaveAjuste)) {
+        const codigoAjuste = encontrarCodigoRegraAjuste(regrasSalvas, forn, plano, tipoAjuste, ponta, historico, escopoRegra);
+        registrarResumoRegra(chaveAjuste, codigoAjuste);
+        if (!codigoAjuste && !vistas.has(chaveAjuste)) {
           vistas.add(chaveAjuste);
           novas.push({ chave: chaveAjuste, fornecedor: forn, plano, tipoDoc: tipoPonta, historico, trechoHistorico: '', trechoHistoricoIndices: [], numero, empresa: empresaOrigem, empresaOrigem, centroCusto, empresaLancamento: empresaLancamentoLinha(r), rateio: !!r.__rateio, parcelasNumerarios: linhaDoFormatoNumerarios, escopoRegra });
         }
@@ -1700,6 +1735,7 @@ function prepararPagamentosImportados(dados, abrirTelaPendencias = true) {
     }
   });
 
+  resumoRegrasImportacaoTemp = resumoRegras;
   novasChavesTemp = novas;
   codigosTemp = {};
   selecionadasLote = new Set();
@@ -4027,6 +4063,7 @@ function limparSessaoImportacao() {
   linhasImportadasModo = 'parcelas';
   novasChavesTemp = [];
   codigosTemp = {};
+  resumoRegrasImportacaoTemp = { total: 0, okSalvas: 0 };
   selecionadasLote.clear();
   lancamentosGerados = [];
   editandoRegras = false;
@@ -4757,8 +4794,13 @@ function renderLinhaAjustePar(linha) {
 }
 
 function resumoRegrasNovasChaves() {
-  const total = novasChavesTemp.length;
-  const ok = novasChavesTemp.filter(item => !!obterCodigoContaParaDominio(codigosTemp[item.chave])).length;
+  const total = grupoUsaNumerariosParcelas()
+    ? Math.max(resumoRegrasImportacaoTemp.total || 0, novasChavesTemp.length)
+    : novasChavesTemp.length;
+  const okNovas = novasChavesTemp.filter(item => !!obterCodigoContaParaDominio(codigosTemp[item.chave])).length;
+  const ok = grupoUsaNumerariosParcelas()
+    ? Math.min(total, (resumoRegrasImportacaoTemp.okSalvas || 0) + okNovas)
+    : okNovas;
   return {
     total,
     ok,
@@ -5211,6 +5253,9 @@ function gerarLancamentos(dados, regras) {
     const empresa = empresaLancamentoLinha(r);
     const empresaBancoRateio = empresaOrigemLinha(r);
     const centroCustoRateio = centroCustoLinha(r);
+    const empresaCentroParcelasNumerarios = linhaEhParcelasNumerarios(r)
+      ? centroCustoRateio
+      : empresa;
     const linhaRateioNegativa = !!r.__rateio && valorLiq < 0;
     const intercompanyRateio = rateioIntercompanyLinha(r);
     const intercompanyParcelasNumerarios = parcelasNumerariosLinha(r);
@@ -5295,10 +5340,10 @@ function gerarLancamentos(dados, regras) {
       const semCodigoCentro = !codDeparaPrincipal || !codNumerarioCentro;
       if (linhaParcelasNegativa) {
         lancamentosGerados.push({ idx, data: dataLiq, codDebito: codCredito, codCredito: codNumerarioBanco, valorLiq: valorParcelas, valorFmt: fmtValor(valorParcelas), complemento: complementoIntercompany, empresa: empresaBancoRateio, plano, acrescimoDesconto, semCodigo: semCodigoBanco, rateioNegativo: true, tipoRateio: tipoRateioAtual, lancamentoNumerario: true });
-        lancamentosGerados.push({ idx, data: dataLiq, codDebito: codNumerarioCentro, codCredito: codDeparaPrincipal, valorLiq: valorParcelas, valorFmt: fmtValor(valorParcelas), complemento: complementoIntercompany, empresa, plano, acrescimoDesconto, semCodigo: semCodigoCentro, rateioNegativo: true, tipoRateio: tipoRateioAtual, lancamentoNumerario: true });
+        lancamentosGerados.push({ idx, data: dataLiq, codDebito: codNumerarioCentro, codCredito: codDeparaPrincipal, valorLiq: valorParcelas, valorFmt: fmtValor(valorParcelas), complemento: complementoIntercompany, empresa: empresaCentroParcelasNumerarios, plano, acrescimoDesconto, semCodigo: semCodigoCentro, rateioNegativo: true, tipoRateio: tipoRateioAtual, lancamentoNumerario: true });
       } else {
         lancamentosGerados.push({ idx, data: dataLiq, codDebito: codNumerarioBanco, codCredito, valorLiq: valorParcelas, valorFmt: fmtValor(valorParcelas), complemento: complementoIntercompany, empresa: empresaBancoRateio, plano, acrescimoDesconto, semCodigo: semCodigoBanco, tipoRateio: tipoRateioAtual, lancamentoNumerario: true });
-        lancamentosGerados.push({ idx, data: dataLiq, codDebito: codDeparaPrincipal, codCredito: codNumerarioCentro, valorLiq: valorParcelas, valorFmt: fmtValor(valorParcelas), complemento: complementoIntercompany, empresa, plano, acrescimoDesconto, semCodigo: semCodigoCentro, tipoRateio: tipoRateioAtual, lancamentoNumerario: true });
+        lancamentosGerados.push({ idx, data: dataLiq, codDebito: codDeparaPrincipal, codCredito: codNumerarioCentro, valorLiq: valorParcelas, valorFmt: fmtValor(valorParcelas), complemento: complementoIntercompany, empresa: empresaCentroParcelasNumerarios, plano, acrescimoDesconto, semCodigo: semCodigoCentro, tipoRateio: tipoRateioAtual, lancamentoNumerario: true });
       }
       gerarLancamentoAjuste({ idx, dataLiq, forn, plano, tipoDoc, historico, escopoRegra, complemento, empresa, acrescimoDesconto, valorLiq, tipoRateioAtual });
       return;
