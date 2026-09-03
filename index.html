@@ -2433,10 +2433,19 @@ function novaChaveDeItemRecebimento(item) {
     naturezaNumerario: item.naturezaNumerario || '',
     tipoOperacaoRecebimento: ehNumerario
       ? `NUMERÁRIO ${natureza}`
-      : 'RECEBIMENTO PRÓPRIO',
+      : categoriaFormaRecebimento(item.tipo, item.origem),
     valorRecebimento: item.total || 0,
     escopoRegra: item.escopoRegra || ''
   };
+}
+
+function categoriaFormaRecebimento(forma, origem = '') {
+  const texto = normalizarTexto(forma);
+  const origemNormalizada = normalizarTexto(origem);
+  if (texto.includes('dinheiro')) return 'DINHEIRO';
+  if (texto.includes('boleto')) return 'BOLETO';
+  if (texto.includes('cartao') || texto.includes('cartoes') || origemNormalizada.includes('cart')) return 'CARTÕES';
+  return limparTextoECD(forma || 'OUTROS').toUpperCase();
 }
 
 function prepararTelaNovasRegrasRecebimentos() {
@@ -3072,14 +3081,16 @@ function criarItensRecebimentosRateioAgrupados() {
   recebimentosRateioTemp.forEach((r, idx) => {
     if (arredondarMoeda(r.valor) <= 0) return;
     const escopoRegra = escopoRecebimentoRateio(r);
-    const chave = [r.dataKey, r.conta, r.empresaBanco, r.centroCusto, r.tipo, r.historico, r.valor < 0 ? 'NEG' : 'POS'].map(v => normalizarTexto(v)).join('|');
+    const historicoAgrupamento = grupoUsaNumerariosParcelas() ? '' : r.historico;
+    const chave = [r.dataKey, r.conta, r.empresaBanco, r.centroCusto, r.tipo, historicoAgrupamento, r.valor < 0 ? 'NEG' : 'POS'].map(v => normalizarTexto(v)).join('|');
     const atual = gruposRateio.get(chave) || {
       id: `rec-rateio-${gruposRateio.size}`,
       movimento: 'recebimento',
       rateioRecebimento: true,
       tipo: r.tipo,
-      historico: r.historico,
+      historico: grupoUsaNumerariosParcelas() ? '' : r.historico,
       plano: r.plano,
+      origem: r.origem,
       qtd: 0,
       total: 0,
       data: fmtDate(r.data),
@@ -4009,7 +4020,13 @@ function montarChaveRecebimentoConciliacao(tipo, trecho, historicoInteiro = fals
     : `${prefixoEscopo}RECEBIMENTO | ${tipoLimpo} | HISTORICO_CONTEM | ${trechoLimpo}`;
 }
 
+function montarChaveRecebimentoPorForma(tipo, escopo = '') {
+  const prefixoEscopo = escopo ? limparTextoECD(escopo) + ' | ' : '';
+  return `${prefixoEscopo}RECEBIMENTO | ${limparTextoECD(tipo || 'Recebimento')} | FORMA_DE_RECEBIMENTO`;
+}
+
 function obterChaveRegraRecebimentoConciliacao(item) {
+  if (grupoUsaNumerariosParcelas()) return montarChaveRecebimentoPorForma(item.tipo, item.escopoRegra || '');
   const trecho = obterTrechoRegraRecebimento(item);
   const historico = limparTextoECD(item.historico || '');
   return montarChaveRecebimentoConciliacao(item.tipo, trecho, normalizarTexto(trecho) === normalizarTexto(historico), item.escopoRegra || '');
@@ -4018,6 +4035,10 @@ function obterChaveRegraRecebimentoConciliacao(item) {
 function encontrarCodigoRegraRecebimentoConciliacao(regras, tipo, historico, escopo = '') {
   const historicoLimpo = limparTextoECD(historico);
   const tipoLimpo = limparTextoECD(tipo || 'Recebimento');
+  if (grupoUsaNumerariosParcelas()) {
+    const porForma = regras[montarChaveRecebimentoPorForma(tipoLimpo, escopo)];
+    if (porForma) return porForma;
+  }
   const chaveExata = montarChaveRecebimentoConciliacao(tipoLimpo, historicoLimpo, true, escopo);
   if (regras[chaveExata]) return regras[chaveExata];
 
@@ -4036,6 +4057,7 @@ function recebimentoAtendeRegra(item, itemRegra) {
   if (!item || !itemRegra || item.movimento !== 'recebimento') return false;
   if (normalizarTexto(item.tipo || '') !== normalizarTexto(itemRegra.tipo || '')) return false;
   if (normalizarTexto(item.escopoRegra || '') !== normalizarTexto(itemRegra.escopoRegra || '')) return false;
+  if (grupoUsaNumerariosParcelas()) return true;
   const termos = normalizarTexto(obterTrechoRegraRecebimento(itemRegra)).split(/\s+/).filter(Boolean);
   const historico = normalizarTexto(item.historico || '');
   return termos.length > 0 && termos.every(termo => historico.includes(termo));
@@ -5155,18 +5177,22 @@ function configurarTelaNovasChaves() {
     ? '⚠️ Preencha o código contábil do Domínio para cada regra nova de recebimento. As regras já salvas foram aplicadas automaticamente.'
     : '⚠️ Preencha o código contábil do Domínio para cada combinação nova. Pode deixar em branco — o lançamento ficará marcado para revisão.';
   if (filtro) filtro.placeholder = recebimentos
-    ? 'Pesquisar forma de recebimento, histórico, empresa ou conta...'
+    ? 'Pesquisar forma de recebimento, empresa ou conta...'
     : 'Pesquisar fornecedor, histórico, plano ou tipo...';
   if (filtroTipo) {
-    filtroTipo.style.display = recebimentos ? 'none' : '';
+    filtroTipo.style.display = '';
     const valorAtual = filtrosNovasChaves.tipoRateio || '';
-    filtroTipo.innerHTML = recebimentos
-      ? '<option value="">Todos os tipos</option><option value="RECEBIMENTO PRÓPRIO">Recebimento próprio</option><option value="NUMERARIO ATIVO">Numerário ativo</option><option value="NUMERARIO PASSIVO">Numerário passivo</option>'
-      : '<option value="">Todos os tipos</option><option value="PROPRIO">Próprio</option><option value="DESPESA">Despesa/Fornecedor</option><option value="NUMERARIO ATIVO">Numerário ativo</option><option value="NUMERARIO PASSIVO">Numerário passivo</option><option value="DESCONTO">Desconto</option><option value="ACRESCIMO">Acréscimo</option>';
+    if (recebimentos) {
+      const categorias = [...new Set(novasChavesTemp.map(item => tipoOperacaoNovaChave(item)).filter(Boolean))].sort();
+      filtroTipo.innerHTML = '<option value="">Todas as formas de recebimento</option>'
+        + categorias.map(categoria => `<option value="${escapeAttr(categoria)}">${escapeHtml(categoria)}</option>`).join('');
+    } else {
+      filtroTipo.innerHTML = '<option value="">Todos os tipos</option><option value="DESPESA">Despesa/Fornecedor</option><option value="NUMERARIO ATIVO">Numerário ativo</option><option value="NUMERARIO PASSIVO">Numerário passivo</option><option value="DESCONTO">Desconto</option><option value="ACRESCIMO">Acréscimo</option>';
+    }
     filtroTipo.value = valorAtual;
   }
   if (cabecalho) cabecalho.innerHTML = recebimentos
-    ? '<th><input type="checkbox" id="check-todas-lote" onchange="alternarTodasVisiveis(this.checked)"></th><th>Empresa do banco</th><th>Empresa do recebimento</th><th>Forma de recebimento</th><th>Conta do cliente</th><th>Histórico</th><th>Data / Grupo</th><th>Regra</th><th>Código Domínio</th>'
+    ? '<th><input type="checkbox" id="check-todas-lote" onchange="alternarTodasVisiveis(this.checked)"></th><th>Empresa do banco</th><th>Empresa do recebimento</th><th>Forma de recebimento</th><th>Conta do cliente</th><th>Data / Grupo</th><th>Regra</th><th>Código Domínio</th>'
     : '<th><input type="checkbox" id="check-todas-lote" onchange="alternarTodasVisiveis(this.checked)"></th><th>Empresa do banco</th><th>Unidade da despesa</th><th>Fornecedor</th><th>Plano de Contas</th><th>Histórico</th><th>Tipo</th><th>Número</th><th>Documento</th><th>Código Domínio</th>';
   if (concluir) concluir.textContent = recebimentos ? 'Concluir regras de recebimentos' : 'Concluir e gerar lançamentos';
 }
@@ -5182,7 +5208,7 @@ function renderNovasChaves() {
   const filtro = normalizarTexto(document.getElementById('filtro-lote')?.value || '');
   const visiveis = filtrarNovasChaves(novasChavesTemp, filtro);
   if (visiveis.length === 0) {
-    tbody.innerHTML = `<tr><td colspan="${origemNovasChaves === 'recebimentos' ? 9 : 10}" style="text-align:center;color:var(--text2);padding:32px">Nenhuma pendência visível com os filtros atuais.</td></tr>`;
+    tbody.innerHTML = `<tr><td colspan="${origemNovasChaves === 'recebimentos' ? 8 : 10}" style="text-align:center;color:var(--text2);padding:32px">Nenhuma pendência visível com os filtros atuais.</td></tr>`;
     atualizarStatusLote(visiveis);
     return;
   }
@@ -5202,7 +5228,9 @@ function renderNovasChaves() {
     const tipoRateioTitulo = ehNumerario
       ? (naturezaLabel === 'PASSIVO' ? 'NUMERÁRIO PASSIVO' : naturezaLabel === 'ATIVO' ? 'NUMERÁRIO ATIVO' : 'NUMERÁRIOS')
       : tipoRateio === 'TRANSFERENCIA DE NUMERARIOS'
-        ? 'DESPESA'
+        ? 'DESPESA/FORNECEDOR'
+        : tipoRateio === 'DESPESA'
+          ? 'DESPESA/FORNECEDOR'
         : tipoRateio === 'PROPRIO'
           ? 'PRÓPRIO'
           : tipoRateio;
@@ -5227,10 +5255,10 @@ function renderNovasChaves() {
       <td title="${escapeAttr(centroCusto || '')}" style="color:var(--text2)">${escapeHtml(centroCusto || '')}</td>
       <td title="${escapeAttr(fornecedor)}"><div class="cell-main">${escapeHtml(fornecedor)}</div></td>
       <td title="${escapeAttr(plano)}"><div class="cell-main">${escapeHtml(plano)}</div></td>
-      <td title="${escapeAttr(historicoVisual)}" style="color:var(--text2)">
+      ${origemNovasChaves === 'recebimentos' ? '' : `<td title="${escapeAttr(historicoVisual)}" style="color:var(--text2)">
         ${isAjuste ? `<div style="font-weight:700;color:#92400e;margin-bottom:4px">${escapeHtml(tipoDoc)} -</div>` : ''}
         ${historicoExibido ? `<div class="historico-regra-label">Clique nas palavras da regra:</div>${palavrasHistorico}` : ''}
-      </td>
+      </td>`}
       ${origemNovasChaves === 'recebimentos' ? '' : `<td title="${escapeAttr([tipoRateioTitulo, tipoRateioSub].filter(Boolean).join(' - '))}" style="color:var(--text2)">${tipoRateioTitulo ? `<span class="badge ${tipoRateio === 'PROPRIO' ? 'badge-blue' : ''}">${escapeHtml(tipoRateioTitulo)}</span>${tipoRateioSub ? `<div class="cell-subtle">${escapeHtml(tipoRateioSub)}</div>` : ''}` : ''}</td>`}
       <td title="${escapeAttr(numeroExibido)}" style="color:var(--text2)">${escapeHtml(numeroExibido)}</td>
       <td title="${escapeAttr(tipoDoc)}" style="color:var(--text2)">${isAjuste ? `<span class="tipo-ajuste-badge">${escapeHtml(tipoDoc)}</span>` : escapeHtml(tipoDoc)}</td>
@@ -5294,7 +5322,7 @@ function tipoOperacaoNovaChave(item) {
   const ehAjuste = tipoDocumento.includes('desconto')
     || tipoDocumento.includes('acrescimo')
     || tipoDocumento.includes('acréscimo');
-  if (!tipoRateio && grupoUsaNumerariosParcelas() && !item?.pontaNumerario && !ehAjuste) return 'PROPRIO';
+  if (grupoUsaNumerariosParcelas() && !item?.pontaNumerario && !ehAjuste && (!tipoRateio || tipoRateio === 'PROPRIO')) return 'DESPESA';
   return tipoRateio || '';
 }
 
@@ -5373,7 +5401,7 @@ function ocultarPendenciaPreenchida(inp, focarProximo = false) {
   inp.closest('tr')?.remove();
   const visiveis = obterNovasChavesVisiveis();
   if (visiveis.length === 0) {
-    document.getElementById('tbody-novas-chaves').innerHTML = `<tr><td colspan="${origemNovasChaves === 'recebimentos' ? 9 : 10}" style="text-align:center;color:var(--text2);padding:32px">Nenhuma pendência visível com os filtros atuais.</td></tr>`;
+    document.getElementById('tbody-novas-chaves').innerHTML = `<tr><td colspan="${origemNovasChaves === 'recebimentos' ? 8 : 10}" style="text-align:center;color:var(--text2);padding:32px">Nenhuma pendência visível com os filtros atuais.</td></tr>`;
   }
   atualizarStatusLote(visiveis);
   if (focarProximo && proximo) focarCampoCodigo(proximo);
