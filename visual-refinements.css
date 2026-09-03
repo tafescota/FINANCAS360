@@ -2120,6 +2120,18 @@ input[type=search]:focus {
   line-height: 1.35 !important;
 }
 
+#tela-novas-chaves .bulk-tool-status::before {
+  content: "ⓘ";
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 auto;
+  margin-right: 10px;
+  color: #2563b9;
+  font-size: 18px;
+  font-weight: 900;
+}
+
 #tela-novas-chaves .historico-palavra {
   display: inline !important;
   padding: 0 1px !important;
@@ -2373,6 +2385,102 @@ body {
   max-height: 68px !important;
   overflow-y: auto !important;
   line-height: 1.45 !important;
+}
+
+/* Refinamento compacto final do cartão de filtros. */
+#tela-novas-chaves .bulk-tool-top {
+  padding: 18px 28px 0 !important;
+}
+
+#tela-novas-chaves .bulk-panel-title {
+  margin-bottom: 16px !important;
+}
+
+#tela-novas-chaves .bulk-filters-grid {
+  gap: 12px !important;
+}
+
+#tela-novas-chaves .filtro-lote-field {
+  gap: 6px !important;
+}
+
+#tela-novas-chaves .bulk-filters-grid .filtro-lote-field > input,
+#tela-novas-chaves .bulk-filters-grid .filtro-lote-field > select,
+#tela-novas-chaves .bulk-action-panel .filtro-lote-field > input {
+  height: 42px !important;
+  min-height: 42px !important;
+  box-sizing: border-box !important;
+  border: 1px solid #cbd5e1 !important;
+  border-radius: 8px !important;
+  background: #fff !important;
+  color: #162033 !important;
+  font-size: 13px !important;
+  font-weight: 500 !important;
+  line-height: 42px !important;
+  padding: 0 12px !important;
+  vertical-align: middle !important;
+}
+
+#tela-novas-chaves .bulk-filters-grid .filtro-lote-field > input:focus,
+#tela-novas-chaves .bulk-filters-grid .filtro-lote-field > select:focus,
+#tela-novas-chaves .bulk-action-panel .filtro-lote-field > input:focus {
+  border-color: #93b4dc !important;
+  box-shadow: 0 0 0 3px rgba(37, 99, 235, .10) !important;
+  outline: none !important;
+}
+
+#tela-novas-chaves .campo-conta-lote input#codigo-lote,
+#tela-novas-chaves .campo-conta-lote input#codigo-lote::placeholder {
+  background: #fff !important;
+  border-color: #cbd5e1 !important;
+  color: #64748b !important;
+}
+
+#tela-novas-chaves .bulk-action-panel .campo-conta-lote {
+  margin-bottom: 10px !important;
+}
+
+#tela-novas-chaves .bulk-action-panel .btn-primary {
+  min-height: 42px !important;
+  height: 42px !important;
+}
+
+#tela-novas-chaves .bulk-selection-actions {
+  gap: 18px !important;
+  margin-top: 18px !important;
+  padding: 18px 0 16px !important;
+}
+
+#tela-novas-chaves .bulk-selection-actions .btn {
+  min-width: 178px !important;
+  width: auto !important;
+  min-height: 44px !important;
+  height: 44px !important;
+  padding: 0 18px !important;
+}
+
+#tela-novas-chaves .novas-statusbar {
+  margin-top: 0 !important;
+  padding: 0 28px 18px !important;
+  border-top: 0 !important;
+}
+
+#tela-novas-chaves .bulk-tool-status {
+  min-height: 42px !important;
+  display: flex !important;
+  align-items: center !important;
+  padding: 10px 14px !important;
+  border: 0 !important;
+  border-radius: 10px !important;
+  background: #edf5ff !important;
+  color: #172d50 !important;
+  font-size: 13px !important;
+  line-height: 1.35 !important;
+}
+
+@media (max-width: 760px) {
+  #tela-novas-chaves .bulk-tool-top { padding: 16px !important; }
+  #tela-novas-chaves .novas-statusbar { padding: 0 16px 16px !important; }
 }
 
 #tela-novas-chaves .historico-palavra {
