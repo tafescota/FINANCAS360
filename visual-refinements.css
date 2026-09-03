@@ -2134,6 +2134,17 @@ input[type=search]:focus {
   grid-template-columns: minmax(260px, 1fr) 180px minmax(220px, 0.9fr) repeat(3, auto) !important;
 }
 
+#tela-novas-chaves #filtro-fornecedor-lote {
+  height: 40px;
+  min-width: 0;
+  max-width: 100%;
+  border-radius: 7px;
+  border: 1px solid #ccd7e5;
+  background: #ffffff;
+  color: #162033;
+  font-size: 13px;
+}
+
 @media (max-width: 1500px) {
 
   #tela-novas-chaves .bulk-tool-top {

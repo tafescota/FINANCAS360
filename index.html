@@ -345,6 +345,9 @@
     <div class="bulk-tool novas-bulk-tool">
       <div class="bulk-tool-top">
         <input type="search" id="filtro-lote" placeholder="Pesquisar fornecedor, histórico, plano ou tipo..." oninput="filtrarNovasChavesEmLote()">
+        <select id="filtro-fornecedor-lote" onchange="atualizarFiltroFornecedorLote(this.value)">
+          <option value="">Todos os fornecedores</option>
+        </select>
         <select id="filtro-tipo-lote" class="bulk-type-filter" onchange="atualizarFiltroTipoLote(this.value)">
           <option value="">Todos os tipos</option>
           <option value="PROPRIO">Próprio</option>
@@ -5169,6 +5172,7 @@ function configurarTelaNovasChaves() {
   const titulo = document.getElementById('titulo-novas-chaves');
   const alerta = document.getElementById('alerta-novas-chaves');
   const filtro = document.getElementById('filtro-lote');
+  const filtroFornecedor = document.getElementById('filtro-fornecedor-lote');
   const filtroTipo = document.getElementById('filtro-tipo-lote');
   const cabecalho = document.getElementById('cabecalho-novas-chaves');
   const concluir = document.getElementById('btn-concluir-novas-chaves');
@@ -5179,6 +5183,16 @@ function configurarTelaNovasChaves() {
   if (filtro) filtro.placeholder = recebimentos
     ? 'Pesquisar forma de recebimento, empresa ou conta...'
     : 'Pesquisar fornecedor, histórico, plano ou tipo...';
+  if (filtroFornecedor) {
+    filtroFornecedor.style.display = recebimentos ? 'none' : '';
+    if (!recebimentos) {
+      const fornecedores = [...new Set(novasChavesTemp.map(item => limparTextoECD(item.fornecedor || '')).filter(Boolean))]
+        .sort((a, b) => normalizarTexto(a).localeCompare(normalizarTexto(b), 'pt-BR'));
+      filtroFornecedor.innerHTML = '<option value="">Todos os fornecedores</option>'
+        + fornecedores.map(fornecedor => `<option value="${escapeAttr(fornecedor)}">${escapeHtml(fornecedor)}</option>`).join('');
+      filtroFornecedor.value = filtrosNovasChaves.fornecedor || '';
+    }
+  }
   if (filtroTipo) {
     filtroTipo.style.display = '';
     const valorAtual = filtrosNovasChaves.tipoRateio || '';
@@ -5482,6 +5496,11 @@ function limparFiltrosNovasChaves() {
 function obterNovasChavesVisiveis() {
   const filtro = normalizarTexto(document.getElementById('filtro-lote')?.value || '');
   return filtrarNovasChaves(novasChavesTemp, filtro);
+}
+
+function atualizarFiltroFornecedorLote(valor) {
+  filtrosNovasChaves.fornecedor = valor || '';
+  renderNovasChaves();
 }
 
 function atualizarStatusLote(visiveis = obterNovasChavesVisiveis()) {
