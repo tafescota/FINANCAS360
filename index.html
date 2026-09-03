@@ -244,8 +244,8 @@
       <input type="text" id="input-nome-grupo" placeholder="Ex: CP Simone, VD 108, Grupo Pinheiro..." onkeydown="if(event.key==='Enter') criarGrupo()" style="margin-bottom:16px">
       <label style="font-size:13px;color:var(--text2);display:block;margin-bottom:6px">Formato de pagamentos</label>
       <select id="select-modo-grupo" style="margin-bottom:16px">
-        <option value="parcelas">Parcelas de Títulos</option>
-        <option value="parcelas_numerarios" selected>Parcelas com Numerários</option>
+        <option value="parcelas" selected>Parcelas de Títulos</option>
+        <option value="parcelas_numerarios">Parcelas com Numerários</option>
         <option value="rateio">Rateio de Títulos</option>
       </select>
       <div style="display:flex;gap:10px">
@@ -524,7 +524,7 @@ let configGrupos = JSON.parse(localStorage.getItem(STORAGE_CONFIG_GRUPOS) || '{}
 let deparaSaidasExtrato = JSON.parse(localStorage.getItem(STORAGE_DEPARA_SAIDAS_EXTRATO) || '{}');
 let grupoAtivo = null;
 let linhasImportadas = [];
-let modoImportacaoPagamentos = 'parcelas_numerarios';
+let modoImportacaoPagamentos = 'parcelas';
 let linhasImportadasModo = 'parcelas';
 let mapaEmpresasImportadas = {};
 let novasChavesTemp = [];
@@ -731,7 +731,7 @@ function modoImportacaoDoGrupo(nome = grupoAtivo) {
   if (cfg.modoImportacaoPagamentos === 'rateio') return 'rateio';
   if (cfg.modoImportacaoPagamentos === 'parcelas_numerarios') return 'parcelas_numerarios';
   if (cfg.modoImportacaoPagamentos === 'parcelas') return 'parcelas';
-  return 'parcelas_numerarios';
+  return 'parcelas';
 }
 
 function nomeModoImportacao(modo) {
@@ -1816,7 +1816,9 @@ function htmlDetalheDiferencaConferencia(pagamentos, saidas) {
 }
 function htmlResumoConferenciaBancaria() {
   const qtdPagamentos = linhasImportadas.length;
-  const entradas = extratoBancarioTemp.filter(m => m.valor > 0);
+  const entradas = conciliacaoUsaRecebimentosDoExtrato()
+    ? extratoBancarioTemp.filter(m => m.valor > 0)
+    : [];
   const saidas = extratoBancarioTemp.filter(m => m.valor < 0);
   const transferenciasPareadas = indicesTransferenciasPareadas(extratoBancarioTemp);
   const contasBanco = new Set(contasExtrato(extratoBancarioTemp).map(normalizarTexto));
@@ -1876,6 +1878,10 @@ function grupoPodeRecebimentosRateio() {
 
 function grupoPodeRecebimentosSeparados() {
   return modoImportacaoDoGrupo() === 'parcelas_numerarios';
+}
+
+function conciliacaoUsaRecebimentosDoExtrato() {
+  return !grupoUsaNumerariosParcelas();
 }
 
 function headerInfoRecebimentos(raw, obrigatorias) {
@@ -2845,7 +2851,9 @@ function gerarSugestoesConciliacao(opcoes = {}) {
   const contasBanco = new Set(contasExtrato(extratoBancarioTemp).map(normalizarTexto));
   const pagamentos = pagamentosImportadosConciliacao(contasBanco);
   const movimentos = extratoBancarioTemp.filter(movimentoEhSaidaConciliavelPagamento);
-  const entradas = extratoBancarioTemp.filter((m, idx) => m.valor > 0 && !transferenciasPareadas.has(idx));
+  const entradas = conciliacaoUsaRecebimentosDoExtrato()
+    ? extratoBancarioTemp.filter((m, idx) => m.valor > 0 && !transferenciasPareadas.has(idx))
+    : [];
   const usadosMov = new Set();
   const sugestoesPorPagamento = new Map();
 
@@ -3049,7 +3057,9 @@ function renderSugestoesConciliacao(sugestoes, qtdPagamentos, qtdMovimentos, ent
   const linhasPagamentosPendentes = pendentesPagamento.map(renderLinhaPagamento).join('');
   const regrasRecebimentos = deparaRecebimentos[grupoAtivo] || {};
   const itensRecebimentoExtrato = Array.from(entradasAgrupadas.values()).slice(0, 60).map((r, idx) => ({ ...r, id: `rec-${idx}`, movimento: 'recebimento', escopoRegra: '' }));
-  const itensRecebimentoRateio = criarItensRecebimentosRateioAgrupados();
+  const itensRecebimentoRateio = conciliacaoUsaRecebimentosDoExtrato()
+    ? criarItensRecebimentosRateioAgrupados()
+    : [];
   const itensRecebimento = [...itensRecebimentoExtrato, ...itensRecebimentoRateio];
   const itensNumerarioRateio = itensNumerarioRecebimentosRateio(itensRecebimentoRateio);
   const itensSaidaExtra = saidasExtras.slice(0, 80).map(({ mov, idxMov }) => ({
@@ -4057,7 +4067,7 @@ function criarGrupo() {
   salvarStorage();
   document.getElementById('input-nome-grupo').value = '';
   const selectModo = document.getElementById('select-modo-grupo');
-  if (selectModo) selectModo.value = 'parcelas_numerarios';
+  if (selectModo) selectModo.value = 'parcelas';
   mostrarTela('tela-home', false);
   showMsg(`Grupo "${nome}" criado com sucesso usando ${nomeModoImportacao(modo)}.`, 'ok');
 }
