@@ -2131,7 +2131,23 @@ input[type=search]:focus {
 }
 
 #tela-novas-chaves .bulk-tool-top {
-  grid-template-columns: minmax(260px, 1fr) 180px minmax(220px, 0.9fr) repeat(3, auto) !important;
+  grid-template-columns: minmax(220px, 1.1fr) minmax(170px, 0.8fr) minmax(170px, 0.8fr) minmax(160px, 0.7fr) minmax(220px, 0.9fr) repeat(3, auto) !important;
+}
+
+#tela-novas-chaves .filtro-lote-field {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 4px;
+}
+
+#tela-novas-chaves .filtro-lote-field > span {
+  color: #64748b;
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: .04em;
+  line-height: 1;
+  text-transform: uppercase;
 }
 
 #tela-novas-chaves #filtro-fornecedor-lote {
@@ -2171,7 +2187,7 @@ body {
 }
 
 #tela-novas-chaves .bulk-tool-top {
-  grid-template-columns: minmax(260px, 1fr) 180px minmax(220px, 1fr) !important;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)) !important;
   gap: 8px !important;
 }
 

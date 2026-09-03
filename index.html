@@ -344,22 +344,14 @@
     </div>
     <div class="bulk-tool novas-bulk-tool">
       <div class="bulk-tool-top">
-        <input type="search" id="filtro-lote" placeholder="Pesquisar fornecedor, histórico, plano ou tipo..." oninput="filtrarNovasChavesEmLote()">
-        <select id="filtro-fornecedor-lote" onchange="atualizarFiltroFornecedorLote(this.value)">
-          <option value="">Todos os fornecedores</option>
-        </select>
-        <select id="filtro-tipo-lote" class="bulk-type-filter" onchange="atualizarFiltroTipoLote(this.value)">
-          <option value="">Todos os tipos</option>
-          <option value="PROPRIO">Próprio</option>
-          <option value="DESPESA">Despesa/Fornecedor</option>
-          <option value="NUMERARIO ATIVO">Numerário ativo</option>
-          <option value="NUMERARIO PASSIVO">Numerário passivo</option>
-          <option value="DESCONTO">Desconto</option>
-          <option value="ACRESCIMO">Acréscimo</option>
-        </select>
-        <input type="text" id="codigo-lote" class="conta-autocomplete" placeholder="Conta para aplicar nos selecionados" oninput="criarAutocompleteConta(this)">
+        <div class="filtro-lote-field"><span>Pesquisa geral</span><input type="search" id="filtro-lote" placeholder="Pesquisar fornecedor, histórico, plano ou tipo..." oninput="filtrarNovasChavesEmLote()"></div>
+        <div class="filtro-lote-field"><span>Fornecedor</span><select id="filtro-fornecedor-lote" onchange="atualizarFiltroFornecedorLote(this.value)"><option value="">Todos os fornecedores</option></select></div>
+        <div class="filtro-lote-field"><span>Plano de Contas</span><select id="filtro-plano-lote" onchange="atualizarFiltroPlanoLote(this.value)"><option value="">Todos os planos</option></select></div>
+        <div class="filtro-lote-field"><span>Tipo</span><select id="filtro-tipo-lote" class="bulk-type-filter" onchange="atualizarFiltroTipoLote(this.value)"><option value="">Todos os tipos</option><option value="DESPESA">Despesa/Fornecedor</option><option value="NUMERARIO ATIVO">Numerário ativo</option><option value="NUMERARIO PASSIVO">Numerário passivo</option><option value="DESCONTO">Desconto</option><option value="ACRESCIMO">Acréscimo</option></select></div>
+        <div class="filtro-lote-field"><span>Conta para lote</span><input type="text" id="codigo-lote" class="conta-autocomplete" placeholder="Conta para aplicar nos selecionados" oninput="criarAutocompleteConta(this)"></div>
         <button class="btn btn-soft-blue" onclick="selecionarFiltradasEmLote()">Selecionar filtradas</button>
         <button class="btn btn-primary" onclick="aplicarCodigoEmLote()">Aplicar conta</button>
+        <button class="btn" id="btn-limpar-filtros-lote" onclick="limparFiltrosNovasChaves()">Limpar filtros</button>
       </div>
       <div class="novas-statusbar">
         <div class="bulk-tool-status" id="status-lote">Use a busca para localizar itens e preencher vários de uma vez.</div>
@@ -5173,7 +5165,9 @@ function configurarTelaNovasChaves() {
   const alerta = document.getElementById('alerta-novas-chaves');
   const filtro = document.getElementById('filtro-lote');
   const filtroFornecedor = document.getElementById('filtro-fornecedor-lote');
+  const filtroPlano = document.getElementById('filtro-plano-lote');
   const filtroTipo = document.getElementById('filtro-tipo-lote');
+  const btnLimparFiltros = document.getElementById('btn-limpar-filtros-lote');
   const cabecalho = document.getElementById('cabecalho-novas-chaves');
   const concluir = document.getElementById('btn-concluir-novas-chaves');
   if (titulo) titulo.textContent = recebimentos ? 'Novas combinações de recebimentos' : 'Novas combinações encontradas';
@@ -5184,26 +5178,58 @@ function configurarTelaNovasChaves() {
     ? 'Pesquisar forma de recebimento, empresa ou conta...'
     : 'Pesquisar fornecedor, histórico, plano ou tipo...';
   if (filtroFornecedor) {
-    filtroFornecedor.style.display = recebimentos ? 'none' : '';
+    const campoFornecedor = filtroFornecedor.closest('.filtro-lote-field');
+    if (campoFornecedor) campoFornecedor.style.display = recebimentos ? 'none' : '';
+    filtroFornecedor.style.display = '';
     if (!recebimentos) {
-      const fornecedores = [...new Set(novasChavesTemp.map(item => limparTextoECD(item.fornecedor || '')).filter(Boolean))]
+      const pendentesNovas = novasChavesTemp.filter(item => !obterCodigoContaParaDominio(codigosTemp[item.chave] || ''));
+      const fornecedores = [...new Set(pendentesNovas.map(item => limparTextoECD(item.fornecedor || '')).filter(Boolean))]
         .sort((a, b) => normalizarTexto(a).localeCompare(normalizarTexto(b), 'pt-BR'));
       filtroFornecedor.innerHTML = '<option value="">Todos os fornecedores</option>'
         + fornecedores.map(fornecedor => `<option value="${escapeAttr(fornecedor)}">${escapeHtml(fornecedor)}</option>`).join('');
+      if (filtrosNovasChaves.fornecedor && !fornecedores.includes(filtrosNovasChaves.fornecedor)) filtrosNovasChaves.fornecedor = '';
       filtroFornecedor.value = filtrosNovasChaves.fornecedor || '';
     }
   }
+  if (filtroPlano) {
+    const campoPlano = filtroPlano.closest('.filtro-lote-field');
+    if (campoPlano) campoPlano.style.display = recebimentos ? 'none' : '';
+    filtroPlano.style.display = '';
+    if (!recebimentos) {
+      const pendentesNovas = novasChavesTemp.filter(item => !obterCodigoContaParaDominio(codigosTemp[item.chave] || ''));
+      const planos = [...new Set(pendentesNovas.map(item => limparTextoECD(item.plano || '')).filter(Boolean))]
+        .sort((a, b) => normalizarTexto(a).localeCompare(normalizarTexto(b), 'pt-BR'));
+      filtroPlano.innerHTML = '<option value="">Todos os planos</option>'
+        + planos.map(plano => `<option value="${escapeAttr(plano)}">${escapeHtml(plano)}</option>`).join('');
+      if (filtrosNovasChaves.plano && !planos.includes(filtrosNovasChaves.plano)) filtrosNovasChaves.plano = '';
+      filtroPlano.value = filtrosNovasChaves.plano || '';
+    }
+  }
+  if (btnLimparFiltros) btnLimparFiltros.style.display = recebimentos ? 'none' : '';
   if (filtroTipo) {
     filtroTipo.style.display = '';
     const valorAtual = filtrosNovasChaves.tipoRateio || '';
     if (recebimentos) {
-      const categorias = [...new Set(novasChavesTemp.map(item => tipoOperacaoNovaChave(item)).filter(Boolean))].sort();
+      const pendentesNovas = novasChavesTemp.filter(item => !obterCodigoContaParaDominio(codigosTemp[item.chave] || ''));
+      const categorias = [...new Set(pendentesNovas.map(item => tipoOperacaoNovaChave(item)).filter(Boolean))].sort();
       filtroTipo.innerHTML = '<option value="">Todas as formas de recebimento</option>'
         + categorias.map(categoria => `<option value="${escapeAttr(categoria)}">${escapeHtml(categoria)}</option>`).join('');
     } else {
-      filtroTipo.innerHTML = '<option value="">Todos os tipos</option><option value="DESPESA">Despesa/Fornecedor</option><option value="NUMERARIO ATIVO">Numerário ativo</option><option value="NUMERARIO PASSIVO">Numerário passivo</option><option value="DESCONTO">Desconto</option><option value="ACRESCIMO">Acréscimo</option>';
+      const pendentesNovas = novasChavesTemp.filter(item => !obterCodigoContaParaDominio(codigosTemp[item.chave] || ''));
+      const tiposPresentes = new Set(pendentesNovas.map(item => tipoOperacaoNovaChave(item)).filter(Boolean));
+      const tiposPossiveis = [
+        ['DESPESA', 'Despesa/Fornecedor'],
+        ['NUMERARIO ATIVO', 'Numerário ativo'],
+        ['NUMERARIO PASSIVO', 'Numerário passivo'],
+        ['DESCONTO', 'Desconto'],
+        ['ACRESCIMO', 'Acréscimo']
+      ];
+      filtroTipo.innerHTML = '<option value="">Todos os tipos</option>'
+        + tiposPossiveis.filter(([valor]) => tiposPresentes.has(valor)).map(([valor, rotulo]) => `<option value="${valor}">${rotulo}</option>`).join('');
     }
-    filtroTipo.value = valorAtual;
+    const opcoesTipo = [...filtroTipo.options].map(option => option.value);
+    if (valorAtual && !opcoesTipo.includes(valorAtual)) filtrosNovasChaves.tipoRateio = '';
+    filtroTipo.value = filtrosNovasChaves.tipoRateio || '';
   }
   if (cabecalho) cabecalho.innerHTML = recebimentos
     ? '<th><input type="checkbox" id="check-todas-lote" onchange="alternarTodasVisiveis(this.checked)"></th><th>Empresa do banco</th><th>Empresa do recebimento</th><th>Forma de recebimento</th><th>Origem / plano</th><th>Data / Grupo</th><th>Regra</th><th>Conta do cliente (Domínio)</th>'
@@ -5484,12 +5510,20 @@ function atualizarFiltroTipoLote(valor) {
 }
 
 function restaurarInputsFiltrosNovasChaves() {
+  const geral = document.getElementById('filtro-lote');
+  if (geral && !geral.value) geral.value = '';
+  const fornecedor = document.getElementById('filtro-fornecedor-lote');
+  if (fornecedor) fornecedor.value = filtrosNovasChaves.fornecedor || '';
+  const plano = document.getElementById('filtro-plano-lote');
+  if (plano) plano.value = filtrosNovasChaves.plano || '';
   const topo = document.getElementById('filtro-tipo-lote');
   if (topo) topo.value = filtrosNovasChaves.tipoRateio || '';
 }
 
 function limparFiltrosNovasChaves() {
   filtrosNovasChaves = { empresa: '', centroCusto: '', fornecedor: '', plano: '', historico: '', tipoRateio: '', numero: '', tipoDoc: '', codigo: '' };
+  const geral = document.getElementById('filtro-lote');
+  if (geral) geral.value = '';
   renderNovasChaves();
 }
 
@@ -5500,6 +5534,11 @@ function obterNovasChavesVisiveis() {
 
 function atualizarFiltroFornecedorLote(valor) {
   filtrosNovasChaves.fornecedor = valor || '';
+  renderNovasChaves();
+}
+
+function atualizarFiltroPlanoLote(valor) {
+  filtrosNovasChaves.plano = valor || '';
   renderNovasChaves();
 }
 
