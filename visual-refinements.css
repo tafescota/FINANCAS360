@@ -2191,8 +2191,78 @@ body {
   gap: 8px !important;
 }
 
+/* Todos os filtros e ações ocupam células de mesma largura no bloco. */
+#tela-novas-chaves .bulk-tool-top > .filtro-lote-field,
+#tela-novas-chaves .bulk-tool-top > .btn {
+  width: 100% !important;
+  min-width: 0 !important;
+  box-sizing: border-box !important;
+}
+
+#tela-novas-chaves .bulk-tool-top > .filtro-lote-field > input,
+#tela-novas-chaves .bulk-tool-top > .filtro-lote-field > select {
+  width: 100% !important;
+  box-sizing: border-box !important;
+}
+
+#tela-novas-chaves .selecao-lote-acoes {
+  display: flex !important;
+  flex-direction: column !important;
+  gap: 6px !important;
+  width: 100% !important;
+  min-width: 0 !important;
+}
+
+#tela-novas-chaves .selecao-lote-acoes .btn {
+  width: 100% !important;
+  min-width: 0 !important;
+}
+
+#tela-novas-chaves .btn-clear-filters {
+  background: #fee2e2 !important;
+  border-color: #fca5a5 !important;
+  color: #b91c1c !important;
+  font-weight: 800 !important;
+}
+
+#tela-novas-chaves .btn-clear-filters:hover {
+  background: #fecaca !important;
+  border-color: #f87171 !important;
+  color: #991b1b !important;
+}
+
+#tela-novas-chaves .btn-clear-selection {
+  background: #fee2e2 !important;
+  border-color: #fca5a5 !important;
+  color: #b91c1c !important;
+  font-weight: 800 !important;
+}
+
+#tela-novas-chaves .btn-clear-selection:hover {
+  background: #fecaca !important;
+  border-color: #f87171 !important;
+  color: #991b1b !important;
+}
+
 #tela-novas-chaves .bulk-tool-top .btn {
   min-height: 38px !important;
+}
+
+/* Campo de conta acompanha visualmente a ação Aplicar conta. */
+#tela-novas-chaves .campo-conta-lote input#codigo-lote {
+  background: var(--navy) !important;
+  border-color: var(--navy) !important;
+  color: #fff !important;
+  font-weight: 800 !important;
+}
+
+#tela-novas-chaves .campo-conta-lote input#codigo-lote::placeholder {
+  color: rgba(255, 255, 255, .78) !important;
+}
+
+#tela-novas-chaves .campo-conta-lote input#codigo-lote:focus {
+  border-color: #162450 !important;
+  box-shadow: 0 0 0 3px rgba(27, 142, 242, .2) !important;
 }
 
 #tela-novas-chaves .btn-soft-blue {
