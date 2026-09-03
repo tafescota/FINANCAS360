@@ -2858,6 +2858,10 @@ function codigoBancoConciliacao(conta) {
 
 function empresaBancoConciliacao(item = {}, movimento = {}) {
   const conta = movimento.conta || item.conta || infoExtratoBancarioTemp?.conta || '';
+  if (modoImportacaoDoGrupo() === 'parcelas') {
+    const empresaPorConta = empresaDonaBancoPorConta(conta, '');
+    if (empresaPorConta) return empresaPorConta;
+  }
   const porConta = empresaBancoRateioPorConta(conta, '');
   if (porConta) return porConta;
   const candidatos = [
