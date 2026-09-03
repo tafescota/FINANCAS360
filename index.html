@@ -4486,6 +4486,28 @@ function textoBuscaConta(conta) {
   return normalizarTexto([conta.codigo, conta.classificacao, conta.nome].filter(Boolean).join(' '));
 }
 
+function ordenarContasAutocomplete(contas, termo) {
+  return contas
+    .filter(c => textoBuscaConta(c).includes(termo))
+    .map((c, ordem) => {
+      const codigo = normalizarTexto(c.codigo || '');
+      const classificacao = normalizarTexto(c.classificacao || '');
+      const nome = normalizarTexto(c.nome || '');
+      const texto = textoBuscaConta(c);
+      const score = codigo === termo ? 0
+        : classificacao === termo ? 1
+        : nome === termo ? 2
+        : codigo.startsWith(termo) ? 3
+        : classificacao.startsWith(termo) ? 4
+        : nome.startsWith(termo) ? 5
+        : texto.includes(termo) ? 6
+        : 7;
+      return { conta: c, score, ordem };
+    })
+    .sort((a, b) => a.score - b.score || normalizarTexto(a.conta.nome || '').localeCompare(normalizarTexto(b.conta.nome || '')) || a.ordem - b.ordem)
+    .map(item => item.conta);
+}
+
 function encontrarContaPorValor(valor) {
   const termo = normalizarTexto(valor || '');
   if (!termo || !grupoAtivo) return null;
@@ -4533,14 +4555,16 @@ function criarAutocompleteConta(input) {
   const termo = normalizarTexto(input.value || '');
   if (!termo) return;
   const contas = planoContas[grupoAtivo];
-  const resultados = contas.filter(c => textoBuscaConta(c).includes(termo)).slice(0, 8);
+  const resultadosTodos = ordenarContasAutocomplete(contas, termo);
+  const limiteResultados = 40;
+  const resultados = resultadosTodos.slice(0, limiteResultados);
   if (resultados.length === 0) return;
 
   const rect = input.getBoundingClientRect();
   const margemTela = 12;
   const larguraLista = Math.max(rect.width, 280);
   const alturaItem = 54;
-  const alturaDesejada = Math.min(260, resultados.length * alturaItem);
+  const alturaDesejada = Math.min(420, resultados.length * alturaItem + (resultadosTodos.length > resultados.length ? 34 : 0));
   const espacoAbaixo = window.innerHeight - rect.bottom - margemTela;
   const espacoAcima = rect.top - margemTela;
   const abrirAcima = espacoAbaixo < Math.min(alturaDesejada, 140) && espacoAcima > espacoAbaixo;
@@ -4557,7 +4581,9 @@ function criarAutocompleteConta(input) {
     <div class="autocomplete-item" data-codigo="${escapeAttr(c.codigo)}" style="padding:8px 12px;cursor:pointer;font-size:12.5px;border-bottom:1px solid var(--border)">
       <div style="font-weight:600">${escapeHtml(c.nome)}</div>
       <div class="mono" style="color:var(--text2);font-size:11px">Código: ${escapeHtml(c.codigo)}${c.classificacao ? ' · ' + escapeHtml(c.classificacao) : ''}</div>
-    </div>`).join('');
+    </div>`).join('') + (resultadosTodos.length > resultados.length
+      ? `<div style="padding:8px 12px;color:var(--text2);font-size:11.5px;background:var(--bg2)">Mostrando ${resultados.length} de ${resultadosTodos.length} contas. Digite mais detalhes para refinar.</div>`
+      : '');
   document.body.appendChild(lista);
   lista.querySelectorAll('.autocomplete-item').forEach(item => {
     item.addEventListener('mousedown', ev => {
