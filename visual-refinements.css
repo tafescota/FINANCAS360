@@ -361,6 +361,29 @@ h3 {
   border-color: #fca5a5;
 }
 
+/* Ações exclusivas dos grupos no formato Parcelas com Numerários. */
+.btn-pagamentos-numerarios {
+  background: #dc2626;
+  border-color: #dc2626;
+  color: #ffffff;
+}
+
+.btn-pagamentos-numerarios:hover {
+  background: #b91c1c;
+  border-color: #b91c1c;
+}
+
+.btn-recebimentos-numerarios {
+  background: #16a34a;
+  border-color: #16a34a;
+  color: #ffffff;
+}
+
+.btn-recebimentos-numerarios:hover {
+  background: #15803d;
+  border-color: #15803d;
+}
+
 .btn-sm {
   font-size: 12px;
   min-height: 32px;
