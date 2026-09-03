@@ -335,11 +335,11 @@
   <div class="tela" id="tela-novas-chaves">
     <div class="section-header">
       <button class="btn btn-sm" onclick="voltarTela()">← Voltar</button>
-      <h2>Novas combinações encontradas</h2>
+      <h2 id="titulo-novas-chaves">Novas combinações encontradas</h2>
       <span class="tag-novas" id="tag-qtd-novas"></span>
     </div>
     <div id="msg-novas-chaves"></div>
-    <div class="alert alert-warn" style="margin-bottom:16px">
+    <div class="alert alert-warn" id="alerta-novas-chaves" style="margin-bottom:16px">
       ⚠️ Preencha o código contábil do Domínio para cada combinação nova. Pode deixar em branco — o lançamento ficará marcado para revisão.
     </div>
     <div class="bulk-tool novas-bulk-tool">
@@ -365,14 +365,14 @@
     <div class="table-wrap table-scroll table-novas-wrap" style="margin-bottom:16px">
       <table class="table-novas">
         <thead>
-          <tr><th><input type="checkbox" id="check-todas-lote" onchange="alternarTodasVisiveis(this.checked)"></th><th>Empresa do banco</th><th>Unidade da despesa</th><th>Fornecedor</th><th>Plano de Contas</th><th>Histórico</th><th>Tipo</th><th>Número</th><th>Documento</th><th>Código Domínio</th></tr>
+          <tr id="cabecalho-novas-chaves"><th><input type="checkbox" id="check-todas-lote" onchange="alternarTodasVisiveis(this.checked)"></th><th>Empresa do banco</th><th>Unidade da despesa</th><th>Fornecedor</th><th>Plano de Contas</th><th>Histórico</th><th>Tipo</th><th>Número</th><th>Documento</th><th>Código Domínio</th></tr>
         </thead>
         <tbody id="tbody-novas-chaves"></tbody>
       </table>
     </div>
     <div class="novas-footer-actions">
-      <button class="btn btn-primary btn-finish-generate" onclick="salvarNovasChavesEGerar()">Concluir e gerar lançamentos</button>
-      <button class="btn" onclick="mostrarTela('tela-home')">Cancelar</button>
+      <button class="btn btn-primary btn-finish-generate" id="btn-concluir-novas-chaves" onclick="salvarNovasChavesEGerar()">Concluir e gerar lançamentos</button>
+      <button class="btn" onclick="cancelarNovasChaves()">Cancelar</button>
     </div>
   </div>
 
@@ -545,6 +545,7 @@ let mapaEmpresasImportadas = {};
 let novasChavesTemp = [];
 let codigosTemp = {};
 let resumoRegrasImportacaoTemp = { total: 0, okSalvas: 0 };
+let origemNovasChaves = 'pagamentos';
 let selecionadasLote = new Set();
 let filtrosNovasChaves = { empresa: '', centroCusto: '', fornecedor: '', plano: '', historico: '', tipoRateio: '', numero: '', tipoDoc: '', codigo: '' };
 let lancamentosGerados = [];
@@ -1111,6 +1112,28 @@ function importarBaseDePara(event) {
 function salvarCodigosPreenchidosNoGrupo(coletarDaTela = true) {
   if (!grupoAtivo) return;
   if (coletarDaTela) coletarCodigosNovasChaves();
+  if (origemNovasChaves === 'recebimentos') {
+    novasChavesTemp.forEach(item => {
+      const codigo = obterCodigoContaParaDominio(codigosTemp[item.chave] || '');
+      if (!codigo) return;
+      const original = conciliacaoItensTemp.find(regra => regra.id === item.idRecebimento);
+      if (!original) return;
+      codigosConciliacaoTemp[original.id] = codigo;
+      if (original.movimento === 'recebimento') {
+        trechosRecebimentoConciliacaoTemp[original.id] = {
+          indices: [...(item.trechoHistoricoIndices || [])],
+          trecho: item.trechoHistorico || ''
+        };
+        aplicarRegraRecebimentoConciliacao(original.id, codigo);
+      }
+    });
+    novasChavesTemp.forEach(item => {
+      const codigoAplicado = obterCodigoContaParaDominio(codigosConciliacaoTemp[item.idRecebimento] || '');
+      if (codigoAplicado) codigosTemp[item.chave] = codigoAplicado;
+    });
+    salvarRegrasRecebimentoConciliacao();
+    return;
+  }
   const regrasSalvas = Object.assign({}, depara[grupoAtivo] || {});
   novasChavesTemp.forEach(item => {
     const codigo = obterCodigoContaParaDominio(codigosTemp[item.chave] || '');
@@ -1622,6 +1645,7 @@ function exportarProvisaoRateio() {
 }
 
 function prepararPagamentosImportados(dados, abrirTelaPendencias = true) {
+  origemNovasChaves = 'pagamentos';
   registrarMapaEmpresasImportadas(dados);
   linhasImportadas = dados;
 
@@ -2387,6 +2411,53 @@ function pendenciasRegrasRecebimentos() {
   };
 }
 
+function novaChaveDeItemRecebimento(item) {
+  const ehNumerario = item.movimento === 'numerario-rateio';
+  const natureza = String(item.naturezaNumerario || '').toUpperCase();
+  return {
+    chave: `RECEBIMENTOS::${item.id}`,
+    idRecebimento: item.id,
+    movimentoRecebimento: item.movimento,
+    fornecedor: ehNumerario ? 'Transferência de numerários' : (item.tipo || 'Recebimento'),
+    plano: ehNumerario ? `Conta de numerário ${natureza.toLowerCase()}` : (item.plano || 'Conta do recebimento'),
+    tipoDoc: ehNumerario ? `NUMERÁRIO ${natureza}` : 'RECEBIMENTO',
+    historico: item.historico || '',
+    trechoHistorico: trechosRecebimentoConciliacaoTemp[item.id]?.trecho || '',
+    trechoHistoricoIndices: [...(trechosRecebimentoConciliacaoTemp[item.id]?.indices || [])],
+    numero: item.data || '',
+    empresa: item.empresaBanco || item.empresa || '',
+    empresaOrigem: item.empresaBanco || item.empresa || '',
+    centroCusto: item.centroCusto || item.empresaLancamento || '',
+    empresaLancamento: item.centroCusto || item.empresaLancamento || '',
+    pontaNumerario: ehNumerario ? (item.pontaNumerario || true) : '',
+    naturezaNumerario: item.naturezaNumerario || '',
+    tipoOperacaoRecebimento: ehNumerario
+      ? `NUMERÁRIO ${natureza}`
+      : (item.tipoRateio === 'TRANSFERENCIA DE NUMERARIOS' ? 'DESPESA' : 'PROPRIO'),
+    valorRecebimento: item.total || 0,
+    escopoRegra: item.escopoRegra || ''
+  };
+}
+
+function prepararTelaNovasRegrasRecebimentos() {
+  const resumo = pendenciasRegrasRecebimentos();
+  origemNovasChaves = 'recebimentos';
+  novasChavesTemp = conciliacaoItensTemp
+    .filter(item => !obterCodigoContaParaDominio(codigosConciliacaoTemp[item.id]))
+    .map(novaChaveDeItemRecebimento);
+  codigosTemp = {};
+  novasChavesTemp.forEach(item => { codigosTemp[item.chave] = ''; });
+  resumoRegrasImportacaoTemp = { total: resumo.total, okSalvas: resumo.aplicadas };
+  selecionadasLote = new Set();
+  filtrosNovasChaves = { empresa: '', centroCusto: '', fornecedor: '', plano: '', historico: '', tipoRateio: '', numero: '', tipoDoc: '', codigo: '' };
+  const filtro = document.getElementById('filtro-lote');
+  const codigo = document.getElementById('codigo-lote');
+  if (filtro) filtro.value = '';
+  if (codigo) codigo.value = '';
+  renderNovasChaves();
+  mostrarTela('tela-novas-chaves');
+}
+
 function renderRecebimentosSeparados() {
   const resumoEl = document.getElementById('resumo-recebimentos-separados');
   const tbody = document.getElementById('tbody-recebimentos');
@@ -2442,10 +2513,7 @@ async function processarRecebimentosSeparados(files) {
     const regras = pendenciasRegrasRecebimentos();
     if (regras.pendentes > 0) {
       mostrarMsgRecebimentos(`${qtd} recebimento${qtd !== 1 ? 's' : ''} importado${qtd !== 1 ? 's' : ''}. ${regras.aplicadas} regra${regras.aplicadas !== 1 ? 's' : ''} aplicada${regras.aplicadas !== 1 ? 's' : ''} automaticamente e ${regras.pendentes} nova${regras.pendentes !== 1 ? 's' : ''} para preencher.`, 'ok');
-      origemModalPendencias = 'recebimentos';
-      filtroPendenciasConciliacaoTemp = '';
-      pendenciasConciliacaoSelecionadas.clear();
-      setTimeout(() => abrirModalPendenciasConciliacao(), 0);
+      setTimeout(() => prepararTelaNovasRegrasRecebimentos(), 0);
     } else {
       mostrarMsgRecebimentos(`${qtd} recebimento${qtd !== 1 ? 's' : ''} importado${qtd !== 1 ? 's' : ''}. Todas as ${regras.total} regras foram reconhecidas e aplicadas automaticamente.`, 'ok');
     }
@@ -2482,11 +2550,7 @@ function abrirModalPendenciasRecebimentos() {
     alert('Importe uma planilha de recebimentos antes de preencher pendências.');
     return;
   }
-  origemModalPendencias = 'recebimentos';
-  filtroPendenciasConciliacaoTemp = '';
-  pendenciasConciliacaoSelecionadas.clear();
-  prepararItensRecebimentosSeparados();
-  abrirModalPendenciasConciliacao();
+  prepararTelaNovasRegrasRecebimentos();
 }
 
 function montarLinhasDominioRecebimentosSeparados({ validarPendencias = true } = {}) {
@@ -4146,7 +4210,8 @@ function montarLinhasDominioConciliacao({ validarPendencias = true } = {}) {
     return !obterCodigoContaParaDominio(codigosConciliacaoTemp[item.id]);
   });
   if (pendentes.length > 0 && validarPendencias) {
-    abrirModalPendenciasConciliacao();
+    if (origemModalPendencias === 'recebimentos') prepararTelaNovasRegrasRecebimentos();
+    else abrirModalPendenciasConciliacao();
     return null;
   }
   salvarRegrasRecebimentoConciliacao();
@@ -5073,7 +5138,36 @@ function resumoRegrasNovasChaves() {
   };
 }
 
+function configurarTelaNovasChaves() {
+  const recebimentos = origemNovasChaves === 'recebimentos';
+  const titulo = document.getElementById('titulo-novas-chaves');
+  const alerta = document.getElementById('alerta-novas-chaves');
+  const filtro = document.getElementById('filtro-lote');
+  const filtroTipo = document.getElementById('filtro-tipo-lote');
+  const cabecalho = document.getElementById('cabecalho-novas-chaves');
+  const concluir = document.getElementById('btn-concluir-novas-chaves');
+  if (titulo) titulo.textContent = recebimentos ? 'Novas combinações de recebimentos' : 'Novas combinações encontradas';
+  if (alerta) alerta.textContent = recebimentos
+    ? '⚠️ Preencha o código contábil do Domínio para cada regra nova de recebimento. As regras já salvas foram aplicadas automaticamente.'
+    : '⚠️ Preencha o código contábil do Domínio para cada combinação nova. Pode deixar em branco — o lançamento ficará marcado para revisão.';
+  if (filtro) filtro.placeholder = recebimentos
+    ? 'Pesquisar forma de recebimento, histórico, empresa ou tipo...'
+    : 'Pesquisar fornecedor, histórico, plano ou tipo...';
+  if (filtroTipo) {
+    const valorAtual = filtrosNovasChaves.tipoRateio || '';
+    filtroTipo.innerHTML = recebimentos
+      ? '<option value="">Todos os tipos</option><option value="PROPRIO">Próprio</option><option value="DESPESA">Entre empresas</option><option value="NUMERARIO ATIVO">Numerário ativo</option><option value="NUMERARIO PASSIVO">Numerário passivo</option>'
+      : '<option value="">Todos os tipos</option><option value="PROPRIO">Próprio</option><option value="DESPESA">Despesa/Fornecedor</option><option value="NUMERARIO ATIVO">Numerário ativo</option><option value="NUMERARIO PASSIVO">Numerário passivo</option><option value="DESCONTO">Desconto</option><option value="ACRESCIMO">Acréscimo</option>';
+    filtroTipo.value = valorAtual;
+  }
+  if (cabecalho) cabecalho.innerHTML = recebimentos
+    ? '<th><input type="checkbox" id="check-todas-lote" onchange="alternarTodasVisiveis(this.checked)"></th><th>Empresa do banco</th><th>Empresa do recebimento</th><th>Forma de recebimento</th><th>Conta esperada</th><th>Histórico</th><th>Tipo</th><th>Data / Grupo</th><th>Regra</th><th>Código Domínio</th>'
+    : '<th><input type="checkbox" id="check-todas-lote" onchange="alternarTodasVisiveis(this.checked)"></th><th>Empresa do banco</th><th>Unidade da despesa</th><th>Fornecedor</th><th>Plano de Contas</th><th>Histórico</th><th>Tipo</th><th>Número</th><th>Documento</th><th>Código Domínio</th>';
+  if (concluir) concluir.textContent = recebimentos ? 'Concluir regras de recebimentos' : 'Concluir e gerar lançamentos';
+}
+
 function renderNovasChaves() {
+  configurarTelaNovasChaves();
   const resumoRegras = resumoRegrasNovasChaves();
   document.getElementById('tag-qtd-novas').textContent = grupoUsaNumerariosParcelas()
     ? `${resumoRegras.pendentes} regra${resumoRegras.pendentes !== 1 ? 's' : ''} faltando · ${resumoRegras.ok} ok`
@@ -5095,7 +5189,7 @@ function renderNovasChaves() {
     const historicoExibido = infoDoc.historico;
     const isAjuste = tipoDoc === 'DESCONTO' || tipoDoc === 'ACRÉSCIMO' || tipoDoc.startsWith('DESCONTO -') || tipoDoc.startsWith('ACRÉSCIMO -');
     const historicoVisual = isAjuste ? `${tipoDoc} - ${historicoExibido}` : historicoExibido;
-    const numeroExibido = tipoUsaNumero(tipoDoc) ? infoDoc.numero : '';
+    const numeroExibido = origemNovasChaves === 'recebimentos' ? (numero || '') : (tipoUsaNumero(tipoDoc) ? infoDoc.numero : '');
     const palavrasHistorico = renderPalavrasHistorico(chave, historicoExibido, trechoHistorico);
     const tipoRateio = tipoOperacaoNovaChave(linha.item);
     const ehNumerario = !!pontaNumerario;
@@ -5189,6 +5283,7 @@ function textoBuscaNovaChave(item) {
 }
 
 function tipoOperacaoNovaChave(item) {
+  if (origemNovasChaves === 'recebimentos' && item?.tipoOperacaoRecebimento) return item.tipoOperacaoRecebimento;
   const tipoRateio = tipoRateioItem(item);
   const tipoDocumento = normalizarTexto(item?.tipoDoc || '');
   const ehAjuste = tipoDocumento.includes('desconto')
@@ -5406,6 +5501,12 @@ function aplicarCodigoEmLote() {
   inputLote.value = codigo;
   // Aplica no codigosTemp para todas selecionadas
   selecionadasLote.forEach(chave => { codigosTemp[chave] = codigo; });
+  if (origemNovasChaves === 'recebimentos') {
+    salvarCodigosPreenchidosNoGrupo(false);
+    selecionadasLote.clear();
+    renderNovasChaves();
+    return;
+  }
   // Salva imediatamente no depara do grupo ativo
   const regrasSalvas = Object.assign({}, depara[grupoAtivo] || {});
   selecionadasLote.forEach(chave => {
@@ -5425,8 +5526,22 @@ function salvarNovasChavesEGerar() {
     inp.value = codigosTemp[inp.dataset.chave];
   });
   salvarCodigosPreenchidosNoGrupo();
+  if (origemNovasChaves === 'recebimentos') {
+    renderRecebimentosSeparados();
+    mostrarTela('tela-recebimentos', false);
+    const resumo = pendenciasRegrasRecebimentos();
+    mostrarMsgRecebimentos(resumo.pendentes > 0
+      ? `Regras preenchidas salvas. Ainda existem ${resumo.pendentes} regra${resumo.pendentes !== 1 ? 's' : ''} pendente${resumo.pendentes !== 1 ? 's' : ''}.`
+      : 'Todas as regras de recebimentos foram salvas. Tudo pronto para conferir e exportar.', resumo.pendentes > 0 ? 'warn' : 'ok');
+    return;
+  }
   const regrasSalvas = Object.assign({}, depara[grupoAtivo] || {});
   gerarLancamentos(linhasImportadas, regrasSalvas);
+}
+
+function cancelarNovasChaves() {
+  if (origemNovasChaves === 'recebimentos') mostrarTela('tela-recebimentos', false);
+  else mostrarTela('tela-home');
 }
 
 function fmtDate(v) {
