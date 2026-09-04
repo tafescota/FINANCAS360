@@ -713,6 +713,22 @@ function empresaDonaBancoPorConta(conta, empresaFallback = '') {
   const codigoConta = extrairPrimeiroCodigoEmpresa(conta);
   const porCodigoConta = codigoConta ? mapaEmpresasImportadas[codigoConta] : '';
   if (porCodigoConta) return porCodigoConta;
+  const contaNorm = normalizarTexto(conta);
+  const porNome = [...new Set(Object.values(mapaEmpresasImportadas).map(limparTextoECD).filter(Boolean))]
+    .map(empresa => {
+      const nomeSemCodigo = limparTextoECD(empresa)
+        .replace(/^\s*\d{3,}\s*[-â€“â€”]?\s*/, '')
+        .split(/\s*[-â€“â€”]\s*/)[0]
+        .trim();
+      return { empresa, nomeNorm: normalizarTexto(nomeSemCodigo) };
+    })
+    .filter(item => {
+      if (item.nomeNorm.length < 2 || !contaNorm.startsWith(item.nomeNorm)) return false;
+      const proximoCaractere = contaNorm.charAt(item.nomeNorm.length);
+      return !proximoCaractere || !/[a-z0-9]/.test(proximoCaractere);
+    })
+    .sort((a, b) => b.nomeNorm.length - a.nomeNorm.length)[0];
+  if (porNome) return porNome.empresa;
   return limparTextoECD(empresaFallback);
 }
 
@@ -2894,7 +2910,7 @@ function chaveTransferenciaExtrato(m) {
   return [dataKey(m?.data), Math.abs(arredondarMoeda(m?.valor)).toFixed(2)].join('|');
 }
 
-function indicesTransferenciasPareadas(movimentos = extratoBancarioTemp) {
+function paresTransferenciasExtrato(movimentos = extratoBancarioTemp) {
   const entradas = new Map();
   const saidas = new Map();
   movimentos.forEach((m, idx) => {
@@ -2905,12 +2921,16 @@ function indicesTransferenciasPareadas(movimentos = extratoBancarioTemp) {
     mapa.get(chave).push(idx);
   });
   const pareados = new Set();
+  const pares = [];
   entradas.forEach((listaEntradas, chave) => {
     const listaSaidas = saidas.get(chave) || [];
     const qtd = Math.min(listaEntradas.length, listaSaidas.length);
     for (let i = 0; i < qtd; i++) {
-      pareados.add(listaEntradas[i]);
-      pareados.add(listaSaidas[i]);
+      const idxEntrada = listaEntradas[i];
+      const idxSaida = listaSaidas[i];
+      pareados.add(idxEntrada);
+      pareados.add(idxSaida);
+      pares.push({ idxEntrada, idxSaida, entrada: movimentos[idxEntrada], saida: movimentos[idxSaida] });
     }
   });
   // Alguns extratos classificam a saída de uma transferência própria como
@@ -2930,7 +2950,17 @@ function indicesTransferenciasPareadas(movimentos = extratoBancarioTemp) {
     if (candidata >= 0) {
       pareados.add(idxSaida);
       pareados.add(candidata);
+      pares.push({ idxEntrada: candidata, idxSaida, entrada: movimentos[candidata], saida });
     }
+  });
+  return pares;
+}
+
+function indicesTransferenciasPareadas(movimentos = extratoBancarioTemp) {
+  const pareados = new Set();
+  paresTransferenciasExtrato(movimentos).forEach(par => {
+    pareados.add(par.idxEntrada);
+    pareados.add(par.idxSaida);
   });
   return pareados;
 }
@@ -3165,6 +3195,65 @@ function itensNumerarioRecebimentosRateio(itensRateio) {
         data: '',
         conta: item.conta,
         historico: `Conta de numerários ${naturezaNumerario.toLowerCase()} para recebimentos ${item.empresaBanco} x ${item.centroCusto}`
+      });
+    });
+  });
+  return itens;
+}
+
+function idNumerarioTransferencia(par, lado) {
+  return `num-transf-${par.idxSaida}-${par.idxEntrada}-${lado === 'EMPRESA DO BANCO' ? 'origem' : 'destino'}`;
+}
+
+function dadosEmpresasTransferencia(par) {
+  const codigoOrigem = extrairPrimeiroCodigoEmpresa(par?.saida?.conta);
+  const codigoDestino = extrairPrimeiroCodigoEmpresa(par?.entrada?.conta);
+  const empresaOrigem = empresaDonaBancoPorConta(par?.saida?.conta, '')
+    || codigoOrigem
+    || limparTextoECD(par?.saida?.empresa || grupoAtivo);
+  const empresaDestino = empresaDonaBancoPorConta(par?.entrada?.conta, '')
+    || codigoDestino
+    || limparTextoECD(par?.entrada?.empresa || grupoAtivo);
+  return { empresaOrigem, empresaDestino, codigoOrigem, codigoDestino };
+}
+
+function transferenciaExigeNumerarios(par) {
+  const { empresaOrigem, empresaDestino, codigoOrigem, codigoDestino } = dadosEmpresasTransferencia(par);
+  if (codigoOrigem && codigoDestino) return codigoOrigem !== codigoDestino;
+  return !!empresaOrigem
+    && !!empresaDestino
+    && normalizarTexto(empresaOrigem) !== normalizarTexto(empresaDestino);
+}
+
+function itensNumerarioTransferenciasPareadas(movimentos = extratoBancarioTemp) {
+  if (!grupoUsaNumerariosRateio() && !grupoUsaNumerariosParcelas()) return [];
+  const itens = [];
+  paresTransferenciasExtrato(movimentos).filter(transferenciaExigeNumerarios).forEach(par => {
+    const { empresaOrigem, empresaDestino } = dadosEmpresasTransferencia(par);
+    const valor = Math.abs(arredondarMoeda(par.saida?.valor || par.entrada?.valor || 0));
+    const data = fmtDate(par.saida?.data || par.entrada?.data);
+    const contaOrigem = limparTextoECD(par.saida?.conta || 'Conta de origem');
+    const contaDestino = limparTextoECD(par.entrada?.conta || 'Conta de destino');
+    const historico = `Transferência entre contas: ${contaOrigem} → ${contaDestino}`;
+    [
+      { lado: 'EMPRESA DO BANCO', natureza: 'ATIVO', ponta: 'origem' },
+      { lado: 'CENTRO DE CUSTO', natureza: 'PASSIVO', ponta: 'destino' }
+    ].forEach(({ lado, natureza, ponta }) => {
+      itens.push({
+        ...itemNumerarioRateio(empresaOrigem, empresaDestino, lado, natureza),
+        id: idNumerarioTransferencia(par, lado),
+        movimento: 'numerario-rateio',
+        transferenciaContas: true,
+        pontaTransferencia: ponta,
+        idxSaidaTransferencia: par.idxSaida,
+        idxEntradaTransferencia: par.idxEntrada,
+        contaOrigem,
+        contaDestino,
+        conta: ponta === 'origem' ? contaOrigem : contaDestino,
+        data,
+        total: valor,
+        tipo: `Numerário ${natureza.toLowerCase()}`,
+        historico
       });
     });
   });
@@ -3427,6 +3516,8 @@ function renderSugestoesConciliacao(sugestoes, qtdPagamentos, qtdMovimentos, ent
     : [];
   const itensRecebimento = [...itensRecebimentoExtrato, ...itensRecebimentoRateio];
   const itensNumerarioRateio = itensNumerarioRecebimentosRateio(itensRecebimentoRateio);
+  const itensNumerarioTransferencias = itensNumerarioTransferenciasPareadas(extratoBancarioTemp);
+  const itensNumerario = [...itensNumerarioRateio, ...itensNumerarioTransferencias];
   const itensSaidaExtra = saidasExtras.map(({ mov, idxMov }) => ({
     id: `saida-${idxMov}`,
     movimento: 'saida-pendente',
@@ -3462,7 +3553,7 @@ function renderSugestoesConciliacao(sugestoes, qtdPagamentos, qtdMovimentos, ent
     escopoRegra: s.pag.escopoRegra || '',
     chave: s.pag.chave || ''
   }));
-  conciliacaoItensTemp = [...itensPagamentoPendente, ...itensSaidaExtra, ...itensRecebimento, ...itensNumerarioRateio];
+  conciliacaoItensTemp = [...itensPagamentoPendente, ...itensSaidaExtra, ...itensRecebimento, ...itensNumerario];
   conciliacaoAplicadaTemp = false;
   conciliacaoItensTemp.forEach(item => {
     if (!(item.id in codigosConciliacaoTemp)) codigosConciliacaoTemp[item.id] = '';
@@ -3485,7 +3576,7 @@ function renderSugestoesConciliacao(sugestoes, qtdPagamentos, qtdMovimentos, ent
   const saidasExtrasRevisadas = itensSaidaExtra.filter(r => !obterCodigoContaParaDominio(codigosConciliacaoTemp[r.id]) && !!saidasExtratoRevisadasConciliacaoTemp[r.id]);
   const entradasPreenchidas = itensRecebimento.filter(r => !!codigosConciliacaoTemp[r.id]);
   const entradasPendentes = itensRecebimento.filter(r => !codigosConciliacaoTemp[r.id]);
-  const numerariosPendentes = itensNumerarioRateio.filter(r => !obterCodigoContaParaDominio(codigosConciliacaoTemp[r.id]));
+  const numerariosPendentes = itensNumerario.filter(r => !obterCodigoContaParaDominio(codigosConciliacaoTemp[r.id]));
   const renderLinhaRecebimento = (r, compacta) => {
     const preenchido = !!codigosConciliacaoTemp[r.id];
     const status = preenchido ? 'preenchido' : 'de-para';
@@ -3517,9 +3608,9 @@ function renderSugestoesConciliacao(sugestoes, qtdPagamentos, qtdMovimentos, ent
     : '';
   const linhasNumerariosPendentes = numerariosPendentes.map(r => `<tr class="conciliacao-row-warn">
     <td><span class="badge">Numerários</span></td>
-    <td class="col-secondary">Rateio</td>
+    <td class="col-secondary">${r.transferenciaContas ? 'Transferência entre contas' : 'Rateio'}</td>
     <td><strong>${escapeHtml(r.tipo)}</strong><br>${descTruncada(r.historico, 'muted-line')}</td>
-    <td class="col-value">-</td>
+    <td class="col-value">${r.transferenciaContas ? `R$ ${fmtValor(r.total)}` : '-'}</td>
     <td><span style="color:#991b1b;font-weight:600">Preencher conta de numerários na janela de pendências</span></td>
     <td><span class="conciliacao-status warn">de-para</span></td>
     <td class="col-secondary">${escapeHtml(r.empresaBanco || r.empresa)} x ${escapeHtml(r.centroCusto || '')}</td>
@@ -3875,11 +3966,16 @@ function abrirModalPendenciasConciliacao() {
         ? tipoRateioOperacao(item.empresaBanco || item.empresa, item.centroCusto, true)
         : '';
     const classeTipoOperacao = tipoOperacaoPendencia === 'PROPRIO' ? 'badge-blue' : '';
-    const fornecedorCol = ehNumerarioPendencia
+    let fornecedorCol = ehNumerarioPendencia
       ? (item.pontaNumerario === 'EMPRESA DO BANCO' ? 'Numerários da empresa do banco' : 'Numerários da unidade da despesa')
       : fluxoRecebimentos && ehRecebimentoPendencia
         ? (item.tipo || '')
         : (item.fornecedor || item.descricao || item.historico || '');
+    if (item.transferenciaContas) {
+      fornecedorCol = item.pontaTransferencia === 'origem'
+        ? 'Numerários da conta de origem'
+        : 'Numerários da conta de destino';
+    }
     const planoCol = ehNumerarioPendencia
       ? contaAlvo
       : fluxoRecebimentos && ehRecebimentoPendencia
@@ -3887,7 +3983,7 @@ function abrirModalPendenciasConciliacao() {
         : ehSaidaPendente
           ? 'Pagamento não encontrado'
           : (item.plano || item.tipo || '');
-    const orientacaoItem = ehNumerarioPendencia
+    let orientacaoItem = ehNumerarioPendencia
       ? `Preencha ${contaAlvo}. Não é banco nem cliente.`
       : ehRecebimentoPendencia
         ? 'Preencha a conta do cliente/recebimento. O banco vem do extrato.'
@@ -3896,6 +3992,9 @@ function abrirModalPendenciasConciliacao() {
         : ehPagamentoPendente
           ? 'Preencha a conta do pagamento se precisar corrigir o de-para. Se não houver saída no extrato, pode prosseguir sem movimento.'
         : '';
+    if (item.transferenciaContas) {
+      orientacaoItem = `Preencha ${contaAlvo} desta ponta. A outra ponta da transferência também deve ser preenchida.`;
+    }
     const historicoItem = ehRecebimentoPendencia
       ? `<div class="pendencia-orientacao">${escapeHtml(orientacaoItem)}</div><div class="historico-regra-label">Clique nas palavras da regra:</div>${renderPalavrasRecebimentoConciliacao(item)}`
       : ehNumerarioPendencia
@@ -3921,7 +4020,9 @@ function abrirModalPendenciasConciliacao() {
     </tr>`;  }).join('');
   const qtdSaidasNoModal = itensModal.filter(item => item.movimento === 'saida-pendente').length;
   const qtdPagamentosNoModal = itensModal.filter(item => item.movimento === 'pagamento-pendente').length;
+  const qtdPontasTransferenciaNoModal = itensModal.filter(item => item.transferenciaContas).length;
   const partesAjudaModal = [];
+  if (qtdPontasTransferenciaNoModal) partesAjudaModal.push(`${qtdPontasTransferenciaNoModal} ponta${qtdPontasTransferenciaNoModal !== 1 ? 's' : ''} de transferência entre contas precisa${qtdPontasTransferenciaNoModal !== 1 ? 'm' : ''} da conta de numerários.`);
   if (qtdPagamentosNoModal) partesAjudaModal.push(`${qtdPagamentosNoModal} pagamento${qtdPagamentosNoModal !== 1 ? 's' : ''} não encontrou${qtdPagamentosNoModal !== 1 ? 'ram' : ''} saída no extrato; selecione a saída ou prossiga sem movimento.`);
   if (qtdSaidasNoModal) partesAjudaModal.push(`${qtdSaidasNoModal} saída${qtdSaidasNoModal !== 1 ? 's' : ''} do extrato sobrou${qtdSaidasNoModal !== 1 ? 'ram' : ''}; preencha a conta de débito para exportar pelo extrato.`);
   const textoAjudaModal = partesAjudaModal.join(' ');
@@ -4255,6 +4356,37 @@ function montarLinhasRecebimentoRateioDominio(item, codigoRecebimento, regrasNum
   return linhas;
 }
 
+function montarLinhasTransferenciasPareadasDominio() {
+  if (!grupoUsaNumerariosRateio() && !grupoUsaNumerariosParcelas()) return [];
+  const itensPorId = new Map(
+    conciliacaoItensTemp
+      .filter(item => item.movimento === 'numerario-rateio' && item.transferenciaContas)
+      .map(item => [item.id, item])
+  );
+  const linhas = [];
+  paresTransferenciasExtrato(extratoBancarioTemp).forEach(par => {
+    const { empresaOrigem, empresaDestino } = dadosEmpresasTransferencia(par);
+    const valor = Math.abs(arredondarMoeda(par.saida?.valor || par.entrada?.valor || 0));
+    if (!valor) return;
+    const bancoOrigem = codigoBancoConciliacao(par.saida?.conta || '');
+    const bancoDestino = codigoBancoConciliacao(par.entrada?.conta || '');
+    const complemento = `Transferência entre contas - ${par.saida?.conta || 'origem'} para ${par.entrada?.conta || 'destino'}`;
+    const data = fmtDate(par.saida?.data || par.entrada?.data);
+    if (!transferenciaExigeNumerarios(par)) {
+      linhas.push(linhaDominio(data, bancoDestino, bancoOrigem, valor, complemento, empresaOrigem, 'PROPRIO'));
+      return;
+    }
+    const itemOrigem = itensPorId.get(idNumerarioTransferencia(par, 'EMPRESA DO BANCO'));
+    const itemDestino = itensPorId.get(idNumerarioTransferencia(par, 'CENTRO DE CUSTO'));
+    const codigoOrigem = obterCodigoContaParaDominio(codigosConciliacaoTemp[itemOrigem?.id] || '');
+    const codigoDestino = obterCodigoContaParaDominio(codigosConciliacaoTemp[itemDestino?.id] || '');
+    if (!itemOrigem || !itemDestino || !codigoOrigem || !codigoDestino) return;
+    linhas.push(linhaDominio(data, codigoOrigem, bancoOrigem, valor, complemento, empresaOrigem, 'TRANSFERENCIA DE NUMERARIOS'));
+    linhas.push(linhaDominio(data, bancoDestino, codigoDestino, valor, complemento, empresaDestino, 'TRANSFERENCIA DE NUMERARIOS'));
+  });
+  return linhas;
+}
+
 function montarLinhasDominioConciliacao({ validarPendencias = true } = {}) {
   coletarCodigosConciliacao();
   if (conciliacaoItensTemp.length === 0) {
@@ -4262,7 +4394,9 @@ function montarLinhasDominioConciliacao({ validarPendencias = true } = {}) {
   }
   const itensRecebimentosNovos = conciliacaoItensTemp.filter(item => item.movimento === 'recebimento');
   const itensSaidasExtras = conciliacaoItensTemp.filter(item => item.movimento === 'saida-pendente');
-  if (itensRecebimentosNovos.length === 0 && itensSaidasExtras.length === 0) {
+  const itensNumerarioTransferencias = conciliacaoItensTemp.filter(item => item.movimento === 'numerario-rateio' && item.transferenciaContas);
+  const paresTransferencias = paresTransferenciasExtrato(extratoBancarioTemp);
+  if (itensRecebimentosNovos.length === 0 && itensSaidasExtras.length === 0 && itensNumerarioTransferencias.length === 0 && paresTransferencias.length === 0) {
     return [];
   }
   const pendentes = conciliacaoItensTemp.filter(item => {
@@ -4280,6 +4414,7 @@ function montarLinhasDominioConciliacao({ validarPendencias = true } = {}) {
   }
   salvarRegrasRecebimentoConciliacao();
   const linhas = [];
+  linhas.push(...montarLinhasTransferenciasPareadasDominio());
   const transferenciasPareadas = indicesTransferenciasPareadas(extratoBancarioTemp);
   const regrasNumerarios = depara[grupoAtivo] || {};
   itensRecebimentosNovos.forEach(item => {
