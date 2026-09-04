@@ -5858,7 +5858,7 @@ function gerarLancamentos(dados, regras) {
 
   // Métricas
   document.getElementById('met-total').textContent = lancamentosGerados.length;
-  document.getElementById('met-linhas-originais').textContent = `${dados.length} linha${dados.length !== 1 ? 's' : ''} original${dados.length !== 1 ? 'is' : ''}`;
+  document.getElementById('met-linhas-originais').textContent = `${dados.length} linha${dados.length !== 1 ? 's' : ''} origina${dados.length !== 1 ? 'is' : 'l'}`;
   document.getElementById('met-linhas-extras').textContent = `${ajustes.length} linha${ajustes.length !== 1 ? 's' : ''} extra${ajustes.length !== 1 ? 's' : ''} de acréscimo/desconto`;
   const semCod = lancamentosGerados.filter(l => l.semCodigo).length;
   const metSem = document.getElementById('met-sem');
