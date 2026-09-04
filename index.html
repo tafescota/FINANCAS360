@@ -4357,7 +4357,6 @@ function montarLinhasRecebimentoRateioDominio(item, codigoRecebimento, regrasNum
 }
 
 function montarLinhasTransferenciasPareadasDominio() {
-  if (!grupoUsaNumerariosRateio() && !grupoUsaNumerariosParcelas()) return [];
   const itensPorId = new Map(
     conciliacaoItensTemp
       .filter(item => item.movimento === 'numerario-rateio' && item.transferenciaContas)
@@ -4389,13 +4388,13 @@ function montarLinhasTransferenciasPareadasDominio() {
 
 function montarLinhasDominioConciliacao({ validarPendencias = true } = {}) {
   coletarCodigosConciliacao();
-  if (conciliacaoItensTemp.length === 0) {
+  const paresTransferencias = paresTransferenciasExtrato(extratoBancarioTemp);
+  if (conciliacaoItensTemp.length === 0 && paresTransferencias.length === 0) {
     return [];
   }
   const itensRecebimentosNovos = conciliacaoItensTemp.filter(item => item.movimento === 'recebimento');
   const itensSaidasExtras = conciliacaoItensTemp.filter(item => item.movimento === 'saida-pendente');
   const itensNumerarioTransferencias = conciliacaoItensTemp.filter(item => item.movimento === 'numerario-rateio' && item.transferenciaContas);
-  const paresTransferencias = paresTransferenciasExtrato(extratoBancarioTemp);
   if (itensRecebimentosNovos.length === 0 && itensSaidasExtras.length === 0 && itensNumerarioTransferencias.length === 0 && paresTransferencias.length === 0) {
     return [];
   }
