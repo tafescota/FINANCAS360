@@ -2837,4 +2837,6 @@ body {
 .recebimentos-otimizacao-valores b { font-size:22px; color:var(--blue); }
 .recebimentos-otimizacao-sub { margin-top:10px; color:var(--text2); font-size:12px; }
 .recebimentos-pendencias-status { border-radius:var(--radius-sm); padding:10px 14px; margin:-4px 0 16px; background:var(--bg2); font-size:12px; font-weight:700; }
-@media (max-width: 760px) { .recebimentos-conferencia-numerarios, .recebimentos-otimizacao { grid-column: span 1; } }
+.recebimentos-movimentacoes { grid-column: span 2; }
+.recebimentos-movimentacoes small { color:var(--text2); font-size:11px; }
+@media (max-width: 760px) { .recebimentos-conferencia-numerarios, .recebimentos-otimizacao, .recebimentos-movimentacoes { grid-column: span 1; } }

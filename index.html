@@ -398,7 +398,7 @@
     <div id="resumo-numerarios-pagamentos"></div>
     <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:12px;margin-bottom:16px">
       <div class="metric"><div class="metric-label">Total de lançamentos</div><div class="metric-value" id="met-total">0</div><div class="metric-sub"><div id="met-linhas-originais">0 linhas originais</div><div id="met-linhas-extras">0 linhas extras</div></div></div>
-      <div class="metric"><div class="metric-label">Sem código</div><div class="metric-value" id="met-sem" class="">0</div></div>
+      <div class="metric"><div class="metric-label">Pendentes de código</div><div class="metric-value" id="met-sem" class="">0</div><div class="metric-sub">lançamentos sem código<br>Necessário tratar antes da exportação.</div></div>
       <div class="metric"><div class="metric-label">Totais para validação</div><div class="metric-value" style="font-size:16px" id="met-valor">R$ 0,00</div><div class="metric-sub"><div id="met-total-bruto">Bruto: R$ 0,00</div><div id="met-total-liquido">Líquido: R$ 0,00</div><div id="met-total-desconto">Descontos: R$ 0,00</div><div id="met-total-acrescimo">Acréscimos: R$ 0,00</div></div></div>
     </div>
     <div id="alert-pendentes"></div>
@@ -1916,11 +1916,10 @@ function htmlResumoConferenciaBancaria() {
   return `
     <div class="conciliacao-grid conciliacao-summary-grid">
       <div class="metric metric-muted"><div class="metric-label">Grupo ativo</div><div class="metric-value metric-text">${escapeHtml(grupoAtivo || 'Nenhum')}</div></div>
-      <div class="metric metric-muted"><div class="metric-label">Pagamentos carregados</div><div class="metric-value">${qtdPagamentos}</div></div>
+      <div class="metric metric-muted"><div class="metric-label">Pagamentos carregados</div><div class="metric-value">${qtdPagamentos}</div><div class="metric-sub">linhas importadas</div></div>
       <div class="metric ${valoresBatem ? 'metric-focus-ok' : 'metric-focus-warn'}"><div class="metric-label">Conferência</div><div class="metric-value ${valoresBatem ? 'ok' : 'warn'}">${valoresBatem ? 'Bate' : 'Diferença'}</div><div class="metric-sub">${valoresBatem ? 'Sem diferença' : `${situacaoDiferenca}: R$ ${fmtValor(Math.abs(diferencaConferencia))}`}</div></div>
       <div class="metric metric-muted"><div class="metric-label">Extrato bancário</div><div class="metric-value metric-text">${extratoBancarioTemp.length}</div><div class="metric-sub">${infoExtratoBancarioTemp ? escapeHtml(resumoContasExtrato(extratoBancarioTemp)) : 'Não importado'}</div></div>
-      <div class="metric metric-muted"><div class="metric-label">Entradas</div><div class="metric-value metric-text">R$ ${fmtValor(entradas.reduce((s, m) => s + m.valor, 0))}</div><div class="metric-sub">${entradas.length} movimentos</div></div>
-      <div class="metric metric-muted"><div class="metric-label">Saídas</div><div class="metric-value metric-text">R$ ${fmtValor(Math.abs(saidas.reduce((s, m) => s + m.valor, 0)))}</div><div class="metric-sub">${saidas.length} movimentos</div></div>
+      <div class="metric metric-muted recebimentos-movimentacoes"><div class="metric-label">Movimentações (extrato)</div><div class="recebimentos-numerarios-valores"><div><span>Entradas</span><strong>R$ ${fmtValor(entradas.reduce((s, m) => s + m.valor, 0))}</strong><small>${entradas.length} movimentos</small></div><div><span>Saídas</span><strong>R$ ${fmtValor(Math.abs(saidas.reduce((s, m) => s + m.valor, 0)))}</strong><small>${saidas.length} movimentos</small></div></div></div>
     </div>
     <div class="alert ${valoresBatem ? 'alert-ok' : 'alert-warn'} conciliacao-check-alert">
       <div class="conciliacao-check-head">
@@ -1933,6 +1932,7 @@ function htmlResumoConferenciaBancaria() {
       <div class="conciliacao-check-totals">
         <span>Relatório: <strong>R$ ${fmtValor(totalPagamentos)}</strong></span>
         <span>Extrato: <strong>R$ ${fmtValor(totalSaidasPagamentos)}</strong></span>
+        <span>Diferença: <strong>R$ ${fmtValor(Math.abs(diferencaConferencia))}</strong></span>
       </div>
       ${detalheDiferenca}
     </div>`;
@@ -5883,7 +5883,7 @@ function gerarLancamentos(dados, regras) {
     const percentualReducaoNumerarios = qtdLinhasOriginalNumerarios ? (reduzidosNumerarios / qtdLinhasOriginalNumerarios) * 100 : 0;
     resumoNumerariosPagamentos.innerHTML = `<div class="conciliacao-grid conciliacao-summary-grid recebimentos-summary-grid">
       <div class="metric metric-muted recebimentos-conferencia-numerarios"><div class="metric-label">Conferência de numerários</div><div class="recebimentos-numerarios-valores"><div><span>Ativo</span><strong>R$ ${fmtValor(valorNumerarioCada)}</strong></div><div><span>Passivo</span><strong>R$ ${fmtValor(valorNumerarioCada)}</strong></div></div><div class="recebimentos-numerarios-status ok">✓ Conferido <span>| Diferença: R$ ${fmtValor(0)}</span></div></div>
-      <div class="metric metric-muted recebimentos-otimizacao"><div class="metric-label">Otimização dos lançamentos de numerários</div><div class="recebimentos-otimizacao-valores"><div><strong>${qtdLinhasOriginalNumerarios}</strong><span>linhas originais</span></div><b>→</b><div><strong>${linhasNumerarios.length}</strong><span>lançamentos para o Domínio</span></div></div><div class="recebimentos-otimizacao-sub">${reduzidosNumerarios} lançamentos reduzidos · ${percentualReducaoNumerarios.toFixed(1).replace('.', ',')}% de redução</div></div>
+      <div class="metric metric-muted recebimentos-otimizacao"><div class="metric-label">Geração dos lançamentos de numerários</div><div class="recebimentos-otimizacao-valores"><div><strong>${qtdLinhasOriginalNumerarios}</strong><span>linhas de numerários</span></div><b>→</b><div><strong>${linhasNumerarios.length}</strong><span>lançamentos para o Domínio</span></div></div><div class="recebimentos-otimizacao-sub">Cada numerário gera os lançamentos correspondentes de Ativo e Passivo (1 linha = 2 lançamentos)</div></div>
     </div>`;
   } else if (resumoNumerariosPagamentos) {
     resumoNumerariosPagamentos.innerHTML = '';
