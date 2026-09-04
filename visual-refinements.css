@@ -2820,3 +2820,21 @@ body {
 /* Em telas menores que a largura mínima da tabela, o wrapper rola
    horizontalmente (overflow-x:auto acima) — a barra de ferramentas
    acima da tabela continua responsiva normalmente. */
+/* Resumo de recebimentos: conferência e redução de lançamentos */
+.recebimentos-summary-grid { align-items: stretch; }
+.recebimentos-conferencia-numerarios { grid-column: span 2; }
+.recebimentos-numerarios-valores { display:grid; grid-template-columns:1fr 1fr; gap:18px; margin-top:10px; }
+.recebimentos-numerarios-valores div { display:flex; flex-direction:column; gap:3px; }
+.recebimentos-numerarios-valores span, .recebimentos-otimizacao-valores span { color:var(--text2); font-size:11px; }
+.recebimentos-numerarios-valores strong { font-size:18px; color:var(--navy); }
+.recebimentos-numerarios-status { margin-top:10px; font-size:12px; font-weight:700; }
+.recebimentos-numerarios-status.ok, .recebimentos-pendencias-status.ok { color:#16803c; }
+.recebimentos-numerarios-status.warn, .recebimentos-pendencias-status.warn { color:#b45309; }
+.recebimentos-otimizacao { grid-column: span 2; }
+.recebimentos-otimizacao-valores { display:grid; grid-template-columns:1fr auto 1fr; align-items:center; gap:12px; margin-top:8px; }
+.recebimentos-otimizacao-valores div { display:flex; flex-direction:column; gap:3px; }
+.recebimentos-otimizacao-valores strong { font-size:22px; color:var(--navy); }
+.recebimentos-otimizacao-valores b { font-size:22px; color:var(--blue); }
+.recebimentos-otimizacao-sub { margin-top:10px; color:var(--text2); font-size:12px; }
+.recebimentos-pendencias-status { border-radius:var(--radius-sm); padding:10px 14px; margin:-4px 0 16px; background:var(--bg2); font-size:12px; font-weight:700; }
+@media (max-width: 760px) { .recebimentos-conferencia-numerarios, .recebimentos-otimizacao { grid-column: span 1; } }

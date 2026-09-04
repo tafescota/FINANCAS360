@@ -2495,16 +2495,15 @@ function renderRecebimentosSeparados() {
     .reduce((s, item) => s + Math.abs(item.total || 0), 0));
   const qtdLinhasExportacao = itensRecebimento
     .reduce((s, item) => s + (item.intercompany ? 2 : 1), 0);
-  resumoEl.innerHTML = `<div class="conciliacao-grid conciliacao-summary-grid">
+  const reducaoLancamentos = Math.max(0, r.total - qtdLinhasExportacao);
+  const percentualReducao = r.total ? (reducaoLancamentos / r.total) * 100 : 0;
+  resumoEl.innerHTML = `<div class="conciliacao-grid conciliacao-summary-grid recebimentos-summary-grid">
     <div class="metric metric-muted"><div class="metric-label">Recebimentos</div><div class="metric-value">${r.total}</div><div class="metric-sub">${r.proprio} próprios · ${r.intercompany} numerários</div></div>
     <div class="metric metric-muted"><div class="metric-label">Valor positivo</div><div class="metric-value metric-text">R$ ${fmtValor(r.valorPositivo)}</div></div>
     <div class="metric metric-muted"><div class="metric-label">Taxas/Ajustes</div><div class="metric-value metric-text">R$ ${fmtValor(r.valorNegativo)}</div></div>
-    <div class="metric metric-muted"><div class="metric-label">Numerário ativo</div><div class="metric-value metric-text">R$ ${fmtValor(valorNumerarios)}</div><div class="metric-sub">Total esperado</div></div>
-    <div class="metric metric-muted"><div class="metric-label">Numerário passivo</div><div class="metric-value metric-text">R$ ${fmtValor(valorNumerarios)}</div><div class="metric-sub">Total esperado</div></div>
-    <div class="metric metric-muted"><div class="metric-label">Conferência numerários</div><div class="metric-value metric-text">R$ ${fmtValor(0)}</div><div class="metric-sub">Diferença ativo x passivo</div></div>
-    <div class="metric metric-muted"><div class="metric-label">Lançamentos</div><div class="metric-value">${r.total} importados</div><div class="metric-sub">${qtdLinhasExportacao} para exportar</div></div>
-    <div class="metric ${pendReceb ? 'metric-focus-warn' : 'metric-focus-ok'}"><div class="metric-label">Contas de clientes pendentes</div><div class="metric-value ${pendReceb ? 'warn' : 'ok'}">${pendReceb}</div><div class="metric-sub">Numerários reutilizam as regras de Pagamentos</div></div>
-  </div>`;
+    <div class="metric metric-muted recebimentos-conferencia-numerarios"><div class="metric-label">Conferência de numerários</div><div class="recebimentos-numerarios-valores"><div><span>Ativo</span><strong>R$ ${fmtValor(valorNumerarios)}</strong></div><div><span>Passivo</span><strong>R$ ${fmtValor(valorNumerarios)}</strong></div></div><div class="recebimentos-numerarios-status ok">✓ Conferido <span>| Diferença: R$ ${fmtValor(0)}</span></div></div>
+    <div class="metric metric-muted recebimentos-otimizacao"><div class="metric-label">Otimização dos lançamentos</div><div class="recebimentos-otimizacao-valores"><div><strong>${r.total}</strong><span>recebimentos importados</span></div><b>→</b><div><strong>${qtdLinhasExportacao}</strong><span>lançamentos para o Domínio</span></div></div><div class="recebimentos-otimizacao-sub">${reducaoLancamentos} lançamentos reduzidos · ${percentualReducao.toFixed(1).replace('.', ',')}% de redução</div></div>
+  </div><div class="recebimentos-pendencias-status ${pendReceb ? 'warn' : 'ok'}">${pendReceb ? '⚠ Atenção!' : '✓ Tudo certo!'} <span>| ${pendReceb} conta${pendReceb !== 1 ? 's' : ''} de clientes pendente${pendReceb !== 1 ? 's' : ''}.</span> <span>| Numerários reutilizam as regras de Pagamentos.</span></div>`;
   tbody.innerHTML = itensRecebimento.map(item => {
     const pendente = !obterCodigoContaParaDominio(codigosConciliacaoTemp[item.id]);
     return `<tr class="${pendente ? 'sem-codigo' : ''}">
@@ -5201,10 +5200,12 @@ function configurarTelaNovasChaves() {
     const campoFornecedor = filtroFornecedor.closest('.filtro-lote-field');
     if (campoFornecedor) campoFornecedor.style.display = '';
     filtroFornecedor.style.display = '';
+    const rotuloFornecedor = campoFornecedor?.querySelector('span');
+    if (rotuloFornecedor) rotuloFornecedor.textContent = recebimentos ? 'Cliente' : 'Fornecedor';
     const pendentesNovas = novasChavesTemp.filter(item => !obterCodigoContaParaDominio(codigosTemp[item.chave] || ''));
     const fornecedores = [...new Set(pendentesNovas.map(item => limparTextoECD(item.fornecedor || '')).filter(Boolean))]
       .sort((a, b) => normalizarTexto(a).localeCompare(normalizarTexto(b), 'pt-BR'));
-    filtroFornecedor.innerHTML = '<option value="">Todos os fornecedores</option>'
+    filtroFornecedor.innerHTML = `<option value="">Todos os ${recebimentos ? 'clientes' : 'fornecedores'}</option>`
       + fornecedores.map(fornecedor => `<option value="${escapeAttr(fornecedor)}">${escapeHtml(fornecedor)}</option>`).join('');
     if (filtrosNovasChaves.fornecedor && !fornecedores.includes(filtrosNovasChaves.fornecedor)) filtrosNovasChaves.fornecedor = '';
     filtroFornecedor.value = filtrosNovasChaves.fornecedor || '';
