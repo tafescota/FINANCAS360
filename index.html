@@ -2913,6 +2913,25 @@ function indicesTransferenciasPareadas(movimentos = extratoBancarioTemp) {
       pareados.add(listaSaidas[i]);
     }
   });
+  // Alguns extratos classificam a saída de uma transferência própria como
+  // "Conciliação Mista", enquanto a entrada vem como "Transferência entre
+  // Contas". Quando data, valor e contas opostas coincidem, os dois lados
+  // também devem ser tratados como transferência pareada.
+  movimentos.forEach((saida, idxSaida) => {
+    if (pareados.has(idxSaida) || saida?.valor >= 0 || !normalizarTexto(saida?.tipoConciliacao).includes('conciliacao mista')) return;
+    const chave = chaveTransferenciaExtrato(saida);
+    const candidata = movimentos.findIndex((entrada, idxEntrada) =>
+      !pareados.has(idxEntrada)
+      && entrada?.valor > 0
+      && normalizarTexto(entrada?.tipoConciliacao).includes('transferencia entre contas')
+      && chaveTransferenciaExtrato(entrada) === chave
+      && normalizarTexto(entrada?.conta || '') !== normalizarTexto(saida?.conta || '')
+    );
+    if (candidata >= 0) {
+      pareados.add(idxSaida);
+      pareados.add(candidata);
+    }
+  });
   return pareados;
 }
 
