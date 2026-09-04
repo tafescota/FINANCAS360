@@ -3217,16 +3217,49 @@ function dadosEmpresasTransferencia(par) {
   return { empresaOrigem, empresaDestino, codigoOrigem, codigoDestino };
 }
 
+function identidadeEmpresaTransferencia(movimento = {}) {
+  const conta = limparTextoECD(movimento?.conta || '');
+  const empresaMapeada = empresaDonaBancoPorConta(conta, '');
+  const empresaInformada = limparTextoECD(movimento?.empresaBanco || movimento?.empresa || '');
+  const codigo = extrairPrimeiroCodigoEmpresa(conta)
+    || extrairPrimeiroCodigoEmpresa(empresaMapeada)
+    || extrairPrimeiroCodigoEmpresa(empresaInformada);
+  return {
+    codigo,
+    nome: limparTextoECD(empresaMapeada || empresaInformada),
+    conta
+  };
+}
+
+function classificarTransferenciaEntreContas(par) {
+  const origem = identidadeEmpresaTransferencia(par?.saida);
+  const destino = identidadeEmpresaTransferencia(par?.entrada);
+  if (origem.codigo && destino.codigo) {
+    return {
+      tipo: origem.codigo === destino.codigo ? 'PROPRIO' : 'NUMERARIOS',
+      origem,
+      destino,
+      criterio: 'codigo-empresa'
+    };
+  }
+  if (origem.nome && destino.nome) {
+    return {
+      tipo: normalizarTexto(origem.nome) === normalizarTexto(destino.nome) ? 'PROPRIO' : 'NUMERARIOS',
+      origem,
+      destino,
+      criterio: 'empresa-mapeada'
+    };
+  }
+  // Na dúvida, exige Numerários. Assim uma transferência sem identificação
+  // completa nunca passa silenciosamente como operação própria.
+  return { tipo: 'NUMERARIOS', origem, destino, criterio: 'identificacao-incompleta' };
+}
+
 function transferenciaExigeNumerarios(par) {
-  const { empresaOrigem, empresaDestino, codigoOrigem, codigoDestino } = dadosEmpresasTransferencia(par);
-  if (codigoOrigem && codigoDestino) return codigoOrigem !== codigoDestino;
-  return !!empresaOrigem
-    && !!empresaDestino
-    && normalizarTexto(empresaOrigem) !== normalizarTexto(empresaDestino);
+  return classificarTransferenciaEntreContas(par).tipo === 'NUMERARIOS';
 }
 
 function itensNumerarioTransferenciasPareadas(movimentos = extratoBancarioTemp) {
-  if (!grupoUsaNumerariosRateio() && !grupoUsaNumerariosParcelas()) return [];
   const itens = [];
   paresTransferenciasExtrato(movimentos).filter(transferenciaExigeNumerarios).forEach(par => {
     const { empresaOrigem, empresaDestino } = dadosEmpresasTransferencia(par);
