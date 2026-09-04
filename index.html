@@ -2918,7 +2918,7 @@ function indicesTransferenciasPareadas(movimentos = extratoBancarioTemp) {
   // Contas". Quando data, valor e contas opostas coincidem, os dois lados
   // também devem ser tratados como transferência pareada.
   movimentos.forEach((saida, idxSaida) => {
-    if (pareados.has(idxSaida) || saida?.valor >= 0 || !normalizarTexto(saida?.tipoConciliacao).includes('conciliacao mista')) return;
+    if (pareados.has(idxSaida) || saida?.valor >= 0 || !movimentoTextoConciliacao(saida).includes('conciliacao mista')) return;
     const chave = chaveTransferenciaExtrato(saida);
     const candidata = movimentos.findIndex((entrada, idxEntrada) =>
       !pareados.has(idxEntrada)
