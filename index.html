@@ -3212,7 +3212,9 @@ function gerarSugestoesConciliacao(opcoes = {}) {
   const transferenciasPareadas = indicesTransferenciasPareadas(extratoBancarioTemp);
   const contasBanco = new Set(contasExtrato(extratoBancarioTemp).map(normalizarTexto));
   const pagamentos = pagamentosImportadosConciliacao(contasBanco);
-  const movimentos = extratoBancarioTemp.filter(movimentoEhSaidaConciliavelPagamento);
+  const movimentos = extratoBancarioTemp.filter((mov, idx) =>
+    movimentoEhSaidaConciliavelPagamento(mov) && !transferenciasPareadas.has(idx)
+  );
   const entradas = conciliacaoUsaRecebimentosDoExtrato()
     ? extratoBancarioTemp.filter((m, idx) => m.valor > 0 && !transferenciasPareadas.has(idx))
     : [];
