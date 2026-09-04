@@ -3363,7 +3363,9 @@ function gerarSugestoesConciliacao(opcoes = {}) {
   });
   const saidasExtras = movimentos
     .map((mov, idxMov) => ({ mov, idxMov }))
-    .filter(item => !usadosMov.has(item.idxMov) && movimentoEhSaidaPendenteExportavel(item.mov));
+    .filter(item => !usadosMov.has(item.idxMov)
+      && !transferenciasPareadas.has(item.idxMov)
+      && movimentoEhSaidaPendenteExportavel(item.mov));
 
   const resultado = renderSugestoesConciliacao(sugestoes, pagamentos.length, movimentos.length, entradas, saidasExtras);
   if (redirecionarSeOk && resultado?.qtdParaResolver === 0) {
