@@ -2490,10 +2490,19 @@ function renderRecebimentosSeparados() {
   const r = resumoRecebimentosRateio();
   const pendReceb = itensRecebimento.filter(item => !obterCodigoContaParaDominio(codigosConciliacaoTemp[item.id])).length;
   const pendNum = itensNumerario.filter(item => !obterCodigoContaParaDominio(codigosConciliacaoTemp[item.id])).length;
+  const valorNumerarios = arredondarMoeda(itensRecebimento
+    .filter(item => item.intercompany)
+    .reduce((s, item) => s + Math.abs(item.total || 0), 0));
+  const qtdLinhasExportacao = itensRecebimento
+    .reduce((s, item) => s + (item.intercompany ? 2 : 1), 0);
   resumoEl.innerHTML = `<div class="conciliacao-grid conciliacao-summary-grid">
     <div class="metric metric-muted"><div class="metric-label">Recebimentos</div><div class="metric-value">${r.total}</div><div class="metric-sub">${r.proprio} próprios · ${r.intercompany} numerários</div></div>
     <div class="metric metric-muted"><div class="metric-label">Valor positivo</div><div class="metric-value metric-text">R$ ${fmtValor(r.valorPositivo)}</div></div>
     <div class="metric metric-muted"><div class="metric-label">Taxas/Ajustes</div><div class="metric-value metric-text">R$ ${fmtValor(r.valorNegativo)}</div></div>
+    <div class="metric metric-muted"><div class="metric-label">Numerário ativo</div><div class="metric-value metric-text">R$ ${fmtValor(valorNumerarios)}</div><div class="metric-sub">Total esperado</div></div>
+    <div class="metric metric-muted"><div class="metric-label">Numerário passivo</div><div class="metric-value metric-text">R$ ${fmtValor(valorNumerarios)}</div><div class="metric-sub">Total esperado</div></div>
+    <div class="metric metric-muted"><div class="metric-label">Conferência numerários</div><div class="metric-value metric-text">R$ ${fmtValor(0)}</div><div class="metric-sub">Diferença ativo x passivo</div></div>
+    <div class="metric metric-muted"><div class="metric-label">Lançamentos</div><div class="metric-value">${r.total} importados</div><div class="metric-sub">${qtdLinhasExportacao} para exportar</div></div>
     <div class="metric ${pendReceb ? 'metric-focus-warn' : 'metric-focus-ok'}"><div class="metric-label">Contas de clientes pendentes</div><div class="metric-value ${pendReceb ? 'warn' : 'ok'}">${pendReceb}</div><div class="metric-sub">Numerários reutilizam as regras de Pagamentos</div></div>
   </div>`;
   tbody.innerHTML = itensRecebimento.map(item => {
