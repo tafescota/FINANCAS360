@@ -2604,6 +2604,7 @@ function exportarDominioRecebimentos() {
     alert('Importe os recebimentos antes de exportar.');
     return;
   }
+  if (bloquearExportacaoPorContasBancarias()) return;
   origemModalPendencias = 'recebimentos';
   const linhas = montarLinhasDominioRecebimentosSeparados();
   if (linhas === null) return;
@@ -4461,7 +4462,7 @@ function montarLinhasDominioConciliacao({ validarPendencias = true } = {}) {
       if (idxMov >= 0 && transferenciasPareadas.has(idxMov)) return;
       linhas.push(linhaDominio(
         fmtDate(mov.data || item.data),
-        mov.conta || item.conta || infoExtratoBancarioTemp?.conta || '',
+        codigoBancoConciliacao(mov.conta || item.conta || infoExtratoBancarioTemp?.conta || ''),
         codigo,
         Math.abs(mov.valor || item.total),
         descricaoMovimentoExtrato(mov) || item.historico,
@@ -4489,6 +4490,7 @@ function montarLinhasDominioConciliacao({ validarPendencias = true } = {}) {
   return linhas;
 }
 function exportarConciliacaoBancaria() {
+  if (bloquearExportacaoPorContasBancarias()) return;
   const linhas = montarLinhasDominioConciliacao();
   if (linhas === null) return;
   if (linhas.length === 0) {
@@ -5071,6 +5073,93 @@ function codigoContaSemConciliacao(conta) {
     || contasSemConciliacao[chaveNormalizada]
     || '';
   return obterCodigoContaParaDominio(valor);
+}
+
+function codigoContaExportacaoDominio(valor) {
+  const texto = limparTextoECD(valor);
+  if (!texto) return '';
+  return limparTextoExportacaoDominio(codigoContaSemConciliacao(texto) || obterCodigoContaParaDominio(texto));
+}
+
+function contasBancariasUsadasSessao() {
+  const contas = [
+    ...linhasImportadas.map(r => limparTextoECD(r?.[COLS.CONTA])),
+    ...extratoBancarioTemp.map(m => limparTextoECD(m?.conta)),
+    ...recebimentosRateioTemp.map(r => limparTextoECD(r?.conta))
+  ].filter(Boolean);
+  const unicas = new Map();
+  contas.forEach(conta => {
+    const chave = normalizarTexto(conta);
+    if (chave && !unicas.has(chave)) unicas.set(chave, conta);
+  });
+  return [...unicas.values()];
+}
+
+function contasBancariasPendentesExportacao() {
+  return contasBancariasUsadasSessao().filter(conta => !/^\d+$/.test(codigoContaSemConciliacao(conta)));
+}
+
+function fecharModalContasBancarias() {
+  document.getElementById('modal-contas-bancarias')?.remove();
+}
+
+function salvarModalContasBancarias() {
+  const inputs = [...document.querySelectorAll('[data-banco-pendente]')];
+  const invalidos = inputs.filter(input => !/^\d+$/.test(obterCodigoContaParaDominio(input.value)));
+  if (invalidos.length > 0) {
+    alert(`Preencha um código contábil numérico para ${invalidos.length} conta${invalidos.length !== 1 ? 's' : ''} bancária${invalidos.length !== 1 ? 's' : ''}.`);
+    invalidos[0]?.focus();
+    return;
+  }
+  contasSemConciliacao[grupoAtivo] = contasSemConciliacao[grupoAtivo] || {};
+  inputs.forEach(input => {
+    const conta = limparTextoECD(input.dataset.bancoPendente || '');
+    const codigo = obterCodigoContaParaDominio(input.value);
+    contasSemConciliacao[grupoAtivo][conta] = codigo;
+    contasSemConciliacao[grupoAtivo][normalizarTexto(conta)] = codigo;
+  });
+  salvarStorage();
+  fecharModalContasBancarias();
+  if (linhasImportadas.length > 0) gerarLancamentos(linhasImportadas, depara[grupoAtivo] || {});
+  alert('Contas bancárias salvas. Clique novamente em exportar para gerar o arquivo com os códigos.');
+}
+
+function abrirModalContasBancarias(contas) {
+  fecharModalContasBancarias();
+  const modal = document.createElement('div');
+  modal.id = 'modal-contas-bancarias';
+  modal.style.cssText = 'position:fixed;inset:0;background:rgba(15,23,42,.58);display:flex;align-items:center;justify-content:center;z-index:10020;padding:14px';
+  const linhas = contas.map(conta => {
+    const empresa = empresaDonaBancoPorConta(conta, '') || extrairPrimeiroCodigoEmpresa(conta) || grupoAtivo || '';
+    return `<tr>
+      <td><div class="cell-main">${escapeHtml(conta)}</div></td>
+      <td>${escapeHtml(empresa)}</td>
+      <td><input type="text" class="conta-autocomplete" data-banco-pendente="${escapeAttr(conta)}" placeholder="Código contábil do banco" oninput="criarAutocompleteConta(this)" style="width:100%"></td>
+    </tr>`;
+  }).join('');
+  modal.innerHTML = `<div style="background:var(--bg);border-radius:var(--radius);box-shadow:0 16px 48px rgba(0,0,0,.28);width:min(980px,calc(100vw - 28px));max-height:90vh;display:flex;flex-direction:column">
+    <div style="padding:18px 22px;border-bottom:1px solid var(--border)">
+      <h3 style="margin-bottom:4px">Cadastrar contas bancárias</h3>
+      <div class="conciliacao-note">Informe uma vez o código contábil do Domínio para cada banco. O de-para ficará salvo para as próximas importações.</div>
+    </div>
+    <div style="padding:16px 22px;overflow:auto"><div class="table-wrap table-scroll"><table>
+      <thead><tr><th>Conta no Financeiro/Extrato</th><th>Empresa</th><th>Código no Domínio</th></tr></thead>
+      <tbody>${linhas}</tbody>
+    </table></div></div>
+    <div style="padding:14px 22px;border-top:1px solid var(--border);display:flex;justify-content:flex-end;gap:10px">
+      <button class="btn" onclick="fecharModalContasBancarias()">Cancelar</button>
+      <button class="btn btn-primary" onclick="salvarModalContasBancarias()">Salvar contas bancárias</button>
+    </div>
+  </div>`;
+  document.body.appendChild(modal);
+  setTimeout(() => modal.querySelector('[data-banco-pendente]')?.focus(), 0);
+}
+
+function bloquearExportacaoPorContasBancarias() {
+  const pendentes = contasBancariasPendentesExportacao();
+  if (pendentes.length === 0) return false;
+  abrirModalContasBancarias(pendentes);
+  return true;
 }
 
 function salvarContaSemConciliacaoInput(input) {
@@ -6144,7 +6233,7 @@ function gerarLancamentos(dados, regras) {
 function montarLinhasDominioPagamentos() {
   const lancamentosPagamentos = lancamentosGerados.filter(l => !l.origemConciliacao);
   return lancamentosPagamentos.map(l => [
-    l.data, l.codDebito, limparTextoExportacaoDominio(l.codCredito), l.valorLiq, '', limparComplementoHistoricoExportacao(l.complemento),
+    l.data, codigoContaExportacaoDominio(l.codDebito), codigoContaExportacaoDominio(l.codCredito), l.valorLiq, '', limparComplementoHistoricoExportacao(l.complemento),
     '', limparTextoExportacaoDominio(l.empresa), '', '', tipoRateioDominioPagamento(l)
   ]);
 }
@@ -6192,6 +6281,7 @@ function adicionarAbasDominioExportacao(wb, linhas, separarPorEmpresa = false) {
 }
 
 function exportarDominioPagamentos() {
+  if (bloquearExportacaoPorContasBancarias()) return;
   const linhas = montarLinhasDominioPagamentos();
   if (linhas.length === 0) {
     alert('Gere os lançamentos antes de exportar.');
@@ -6205,6 +6295,7 @@ function exportarDominioPagamentos() {
 }
 
 function exportarDominioFinal() {
+  if (bloquearExportacaoPorContasBancarias()) return;
   const linhasPagamentos = montarLinhasDominioPagamentos();
   if (linhasPagamentos.length === 0) {
     alert('Gere os lançamentos de pagamentos antes de exportar.');
