@@ -494,7 +494,8 @@
       <button class="btn btn-sm btn-primary" id="btn-salvar-regras" style="display:none" onclick="salvarEdicaoRegras()">Salvar alterações</button>
       <button class="btn btn-sm" id="btn-cancelar-regras" style="display:none" onclick="cancelarEdicaoRegras()">Cancelar</button>
       <button class="btn btn-sm btn-danger" id="btn-limpar-regras" onclick="limparTodasRegras()">🗑 Limpar tudo</button>
-      <button class="btn btn-sm" id="btn-exportar-arquivo-regras" onclick="exportarArquivoRegras()">Exportar regras</button>
+      <button class="btn btn-sm" id="btn-exportar-arquivo-regras" onclick="exportarArquivoRegras()">Backup JSON</button>
+      <button class="btn btn-sm btn-blue" id="btn-exportar-excel-regras" onclick="exportarRegrasExcel()">Exportar Excel</button>
       <button class="btn btn-sm" id="btn-importar-arquivo-regras" onclick="document.getElementById('regras-input').click()">Importar regras</button>
       <button class="btn btn-sm btn-blue" id="btn-importar-regras" onclick="mostrarTela('tela-importar')">Importar planilha</button>
       <button class="btn btn-sm" onclick="mostrarTela('tela-home')">Grupos</button>
@@ -6391,6 +6392,79 @@ function exportarArquivoRegras() {
   a.download = `regras_${tipo}_${grupoArquivo}_${data}.json`;
   a.click();
   URL.revokeObjectURL(url);
+}
+
+function encontrarContaPlanoPorCodigo(codigo) {
+  const codigoLimpo = obterCodigoContaParaDominio(codigo);
+  if (!codigoLimpo || !grupoAtivo) return null;
+  return (planoContas[grupoAtivo] || []).find(conta => String(conta?.codigo || '').trim() === codigoLimpo) || null;
+}
+
+function naturezaContabilPorClassificacao(classificacao) {
+  const primeiroNivel = String(classificacao || '').replace(/\s+/g, '').match(/^\d+/)?.[0]?.charAt(0) || '';
+  return ({
+    '1': 'Ativo',
+    '2': 'Passivo',
+    '3': 'Receita',
+    '4': 'Despesa',
+    '5': 'Despesa'
+  })[primeiroNivel] || 'Não identificada';
+}
+
+function exportarRegrasExcel() {
+  if (!grupoAtivo) {
+    alert('Selecione um grupo antes de exportar regras.');
+    return;
+  }
+  if (editandoRegras) coletarInputsEdicaoRegras();
+
+  const regras = editandoRegras ? editTemp : (obterBaseRegrasAtiva()[grupoAtivo] || {});
+  const chaves = Object.keys(regras);
+  if (chaves.length === 0) {
+    alert(`Não há regras de ${rotuloTipoRegras()} para exportar neste grupo.`);
+    return;
+  }
+
+  const cabecalho = [
+    'Grupo', 'Tipo de regra', 'Chave da regra', 'Origem / Fornecedor', 'Plano / Módulo',
+    'Tipo de documento', 'Histórico / Palavra-chave', 'Correspondência', 'Código da conta contábil',
+    'Nome da conta contábil', 'Natureza contábil', 'Classificação contábil', 'Situação no plano de contas'
+  ];
+  const tipo = rotuloTipoRegras();
+  const linhas = chaves.map(chave => {
+    const regra = parseRegraParaTela(chave);
+    const codigo = obterCodigoContaParaDominio(regras[chave]);
+    const conta = encontrarContaPlanoPorCodigo(codigo);
+    const classificacao = String(conta?.classificacao || '').trim();
+    return [
+      grupoAtivo,
+      tipo === 'recebimentos' ? 'Recebimento' : 'Pagamento',
+      chave,
+      regra.fornecedor || '',
+      regra.plano || '',
+      regra.tipoDoc || '',
+      regra.historico || '',
+      regra.parcial ? 'Histórico contém' : 'Exata',
+      codigo,
+      conta?.nome || '',
+      conta ? naturezaContabilPorClassificacao(classificacao) : 'Não identificada',
+      classificacao,
+      conta ? 'Encontrada' : 'Não encontrada'
+    ];
+  });
+
+  const ws = XLSX.utils.aoa_to_sheet([cabecalho, ...linhas]);
+  ws['!autofilter'] = { ref: `A1:M${linhas.length + 1}` };
+  ws['!cols'] = [
+    { wch: 20 }, { wch: 16 }, { wch: 55 }, { wch: 32 }, { wch: 26 }, { wch: 22 }, { wch: 42 },
+    { wch: 19 }, { wch: 24 }, { wch: 42 }, { wch: 20 }, { wch: 25 }, { wch: 25 }
+  ];
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, tipo === 'recebimentos' ? 'Regras Recebimentos' : 'Regras Pagamentos');
+
+  const data = new Date().toLocaleDateString('pt-BR').replace(/\//g, '-');
+  const grupoArquivo = limparTextoExportacaoDominio(grupoAtivo).replace(/[^a-z0-9]+/gi, '_').replace(/^_+|_+$/g, '') || 'grupo';
+  XLSX.writeFile(wb, `regras_${tipo}_${grupoArquivo}_${data}.xlsx`);
 }
 
 function importarArquivoRegras(event) {
