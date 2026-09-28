@@ -505,7 +505,7 @@
       <button class="btn btn-sm btn-primary" id="btn-regras-pagamentos" onclick="alterarTipoRegras('pagamentos')">Pagamentos</button>
       <button class="btn btn-sm" id="btn-regras-recebimentos" onclick="alterarTipoRegras('recebimentos')">Recebimentos</button>
     </div>
-    <input type="search" id="filtro-regras" placeholder="Filtrar fornecedor, plano, histórico ou código..." oninput="coletarInputsEdicaoRegras(); renderRegras()" style="margin-bottom:14px">
+    <input type="search" id="filtro-regras" placeholder="Filtrar fornecedor, plano, histórico ou código..." oninput="agendarFiltroRegras()" style="margin-bottom:14px">
     <div id="container-regras"></div>
   </div>
 
@@ -561,6 +561,7 @@ let editandoRegras = false;
 let editTemp = {};
 let regrasSelecionadasEdicao = new Set();
 let tipoRegrasAtivo = 'pagamentos';
+let timerFiltroRegras = null;
 let telaAtual = 'tela-home';
 let pilhaTelas = [];
 let confirmandoComEnter = false;
@@ -6524,6 +6525,20 @@ function coletarInputsEdicaoRegras() {
   });
 }
 
+function agendarFiltroRegras() {
+  if (timerFiltroRegras) clearTimeout(timerFiltroRegras);
+  timerFiltroRegras = setTimeout(() => {
+    timerFiltroRegras = null;
+    renderRegras();
+  }, 180);
+}
+
+function codigoRegraParaFiltro(valor) {
+  const texto = String(valor || '').trim();
+  if (!texto || /^\d+$/.test(texto)) return texto;
+  return obterCodigoContaParaDominio(texto);
+}
+
 function chavesRegrasFiltradas() {
   if (!grupoAtivo) return [];
   const regras = editandoRegras ? editTemp : (obterBaseRegrasAtiva()[grupoAtivo] || {});
@@ -6533,10 +6548,10 @@ function chavesRegrasFiltradas() {
   let chaves = Object.keys(regras);
   if (filtroCodigoExato) {
     const codigoBusca = filtroRaw.trim();
-    chaves = chaves.filter(c => obterCodigoContaParaDominio(regras[c]) === codigoBusca);
+    chaves = chaves.filter(c => codigoRegraParaFiltro(regras[c]) === codigoBusca);
   } else if (filtro) {
     chaves = chaves.filter(c => {
-      const codigo = obterCodigoContaParaDominio(regras[c]);
+      const codigo = codigoRegraParaFiltro(regras[c]);
       return c.toLowerCase().includes(filtro) || codigo.toLowerCase().includes(filtro);
     });
   }
@@ -6585,6 +6600,10 @@ function parseRegraParaTela(chave) {
 
 function renderRegras() {
   if (!grupoAtivo) return;
+  if (timerFiltroRegras) {
+    clearTimeout(timerFiltroRegras);
+    timerFiltroRegras = null;
+  }
   const ehRecebimentos = tipoRegrasAtivo === 'recebimentos';
   document.getElementById('titulo-regras').textContent = `Regras de ${ehRecebimentos ? 'recebimentos' : 'pagamentos'} — ${grupoAtivo}`;
   const btnPag = document.getElementById('btn-regras-pagamentos');
@@ -6610,10 +6629,10 @@ function renderRegras() {
   let chaves = Object.keys(dados);
   if (filtroCodigoExato) {
     const codigoBusca = filtroRaw.trim();
-    chaves = chaves.filter(c => obterCodigoContaParaDominio(dados[c]) === codigoBusca);
+    chaves = chaves.filter(c => codigoRegraParaFiltro(dados[c]) === codigoBusca);
   } else if (filtro) {
     chaves = chaves.filter(c => {
-      const codigo = obterCodigoContaParaDominio(dados[c]);
+      const codigo = codigoRegraParaFiltro(dados[c]);
       return c.toLowerCase().includes(filtro) || codigo.toLowerCase().includes(filtro);
     });
   }
