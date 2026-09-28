@@ -6607,13 +6607,13 @@ function renderRegras() {
   const filtroRaw = document.getElementById('filtro-regras').value || '';
   const filtro = filtroRaw.toLowerCase();
   const filtroCodigoExato = /^[0-9]+$/.test(filtroRaw.trim());
-  let chaves = Object.keys(regrasSalvas);
+  let chaves = Object.keys(dados);
   if (filtroCodigoExato) {
     const codigoBusca = filtroRaw.trim();
-    chaves = chaves.filter(c => obterCodigoContaParaDominio(dados[c] || regrasSalvas[c]) === codigoBusca);
+    chaves = chaves.filter(c => obterCodigoContaParaDominio(dados[c]) === codigoBusca);
   } else if (filtro) {
     chaves = chaves.filter(c => {
-      const codigo = obterCodigoContaParaDominio(dados[c] || regrasSalvas[c]);
+      const codigo = obterCodigoContaParaDominio(dados[c]);
       return c.toLowerCase().includes(filtro) || codigo.toLowerCase().includes(filtro);
     });
   }
@@ -6627,10 +6627,11 @@ function renderRegras() {
   const selecionadasVisiveis = chaves.filter(chave => regrasSelecionadasEdicao.has(chave)).length;
   const barraLote = editandoRegras ? `
     <div class="card" style="padding:12px;margin-bottom:12px">
-      <div style="display:grid;grid-template-columns:minmax(220px,1fr) auto auto auto;gap:10px;align-items:center">
-        <input type="text" id="codigo-lote-regras" class="conta-autocomplete" placeholder="Novo código para aplicar nas regras selecionadas" oninput="criarAutocompleteConta(this)">
+      <div style="display:flex;flex-wrap:wrap;gap:10px;align-items:center">
+        <input type="text" id="codigo-lote-regras" class="conta-autocomplete" placeholder="Novo código para aplicar nas regras selecionadas" oninput="criarAutocompleteConta(this)" style="flex:1 1 300px;min-width:220px">
         <button class="btn btn-sm" onclick="selecionarRegrasFiltradas()">Selecionar filtradas</button>
         <button class="btn btn-sm btn-primary" onclick="aplicarCodigoRegrasSelecionadas()">Aplicar código</button>
+        <button class="btn btn-sm btn-danger" onclick="excluirRegrasSelecionadas()">Excluir selecionadas</button>
         <button class="btn btn-sm" onclick="limparSelecaoRegras()">Limpar seleção</button>
       </div>
       <div class="conciliacao-note" style="margin-top:8px">${regrasSelecionadasEdicao.size} regra${regrasSelecionadasEdicao.size !== 1 ? 's' : ''} selecionada${regrasSelecionadasEdicao.size !== 1 ? 's' : ''}. ${selecionadasVisiveis} visíve${selecionadasVisiveis !== 1 ? 'is' : 'l'} neste filtro.</div>
@@ -6693,6 +6694,7 @@ function alternarRegraSelecionada(chave, selecionada) {
 function selecionarRegrasFiltradas() {
   if (!editandoRegras) return;
   coletarInputsEdicaoRegras();
+  regrasSelecionadasEdicao.clear();
   chavesRegrasFiltradas().forEach(chave => regrasSelecionadasEdicao.add(chave));
   renderRegras();
 }
@@ -6725,6 +6727,23 @@ function aplicarCodigoRegrasSelecionadas() {
   if (!confirm(`Aplicar o código ${codigo} em ${selecionadas.length} regra${selecionadas.length !== 1 ? 's' : ''} selecionada${selecionadas.length !== 1 ? 's' : ''}? A alteração só será gravada ao clicar em Salvar.`)) return;
   selecionadas.forEach(chave => { editTemp[chave] = codigo; });
   renderRegras();
+}
+
+function excluirRegrasSelecionadas() {
+  if (!editandoRegras) return;
+  coletarInputsEdicaoRegras();
+  const chavesVisiveis = new Set(chavesRegrasFiltradas());
+  const selecionadas = [...regrasSelecionadasEdicao].filter(chave => chavesVisiveis.has(chave) && chave in editTemp);
+  if (selecionadas.length === 0) {
+    alert('Selecione ao menos uma regra visível nesta pesquisa para excluir.');
+    return;
+  }
+  const rotulo = tipoRegrasAtivo === 'recebimentos' ? 'recebimento' : 'pagamento';
+  if (!confirm(`Excluir somente as ${selecionadas.length} regra${selecionadas.length !== 1 ? 's' : ''} de ${rotulo}${selecionadas.length !== 1 ? 's' : ''} selecionada${selecionadas.length !== 1 ? 's' : ''} e visível${selecionadas.length !== 1 ? 'is' : ''} nesta pesquisa? As demais regras não serão alteradas. A exclusão só será gravada ao clicar em Salvar.`)) return;
+  selecionadas.forEach(chave => { delete editTemp[chave]; });
+  regrasSelecionadasEdicao.clear();
+  renderRegras();
+  document.getElementById('container-regras')?.insertAdjacentHTML('afterbegin', `<div class="alert alert-warn" style="margin-bottom:12px">${selecionadas.length} regra${selecionadas.length !== 1 ? 's' : ''} removida${selecionadas.length !== 1 ? 's' : ''} da edição. Clique em Salvar para confirmar.</div>`);
 }
 
 function ativarEdicaoRegras() {
