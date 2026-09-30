@@ -99,6 +99,12 @@
   .grupo-card.ativo { border-color: var(--blue); }
   .grupos-toolbar { display: grid; grid-template-columns: minmax(240px, 1fr) auto; align-items: center; gap: 12px; margin-bottom: 12px; padding: 12px 14px; }
   .grupos-toolbar input[type=search] { height: 38px; }
+  .grupo-tags-filtros { grid-column: 1 / -1; display: flex; align-items: center; gap: 7px; flex-wrap: wrap; padding-top: 10px; border-top: 1px solid var(--border); }
+  .grupo-tag-filtro { border: 1px solid #cbd5e1; background: var(--bg); color: var(--text2); border-radius: 999px; padding: 6px 11px; font: inherit; font-size: 12px; font-weight: 600; cursor: pointer; }
+  .grupo-tag-filtro:hover { border-color: var(--blue); color: var(--blue); }
+  .grupo-tag-filtro.ativo { border-color: var(--blue); background: #eaf4ff; color: #075a9c; }
+  .grupo-tags-lista { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 7px; }
+  .grupo-tag { display: inline-flex; align-items: center; border: 1px solid #cbd5e1; background: #f8fafc; color: #334155; border-radius: 999px; padding: 3px 8px; font-size: 11px; font-weight: 600; }
   .grupo-lista { background: var(--bg); border: 1px solid var(--border); border-radius: var(--radius); overflow: hidden; box-shadow: var(--shadow); }
   .grupo-row { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 12px; padding: 12px 18px; border-bottom: 1px solid var(--border); }
   .grupo-row:last-child { border-bottom: 0; }
@@ -227,6 +233,7 @@
     <div class="card grupos-toolbar">
       <input type="search" id="busca-grupos" placeholder="Pesquisar empresa ou grupo..." oninput="renderGrupos()" autocomplete="off">
       <div class="grupo-info" id="status-lista-grupos"></div>
+      <div class="grupo-tags-filtros" id="filtros-tags-grupos"></div>
     </div>
     <div id="lista-grupos"></div>
     <input type="file" id="file-input" accept=".xlsx,.xlsm,.xls" multiple style="display:none" onchange="onFileChange(event)">
@@ -251,6 +258,8 @@
         <option value="parcelas_numerarios__f360_original">Parcelas com Numerários (FINANÇAS 360 - ORIGINAL)</option>
         <option value="rateio__f360_original">Rateio de Títulos (FINANÇAS 360 - ORIGINAL)</option>
       </select>
+      <label style="font-size:13px;color:var(--text2);display:block;margin-bottom:6px">Tags</label>
+      <input type="text" id="input-tags-grupo" placeholder="Ex: Varejo, Sul, Numerários" style="margin-bottom:16px">
       <div style="display:flex;gap:10px">
         <button class="btn btn-primary" onclick="criarGrupo()">Criar grupo</button>
         <button class="btn" onclick="mostrarTela('tela-home')">Cancelar</button>
@@ -554,6 +563,7 @@ let contasSemConciliacao = JSON.parse(localStorage.getItem(STORAGE_CONTAS_SEM_CO
 let configGrupos = JSON.parse(localStorage.getItem(STORAGE_CONFIG_GRUPOS) || '{}');
 let deparaSaidasExtrato = JSON.parse(localStorage.getItem(STORAGE_DEPARA_SAIDAS_EXTRATO) || '{}');
 let grupoAtivo = null;
+let filtroTagGrupos = '';
 let linhasImportadas = [];
 let modoImportacaoPagamentos = 'parcelas';
 let layoutImportacaoPagamentos = 'boticario';
@@ -4929,8 +4939,63 @@ function exportarConciliacaoBancaria() {
   XLSX.writeFile(wb, `Dominio_Conciliacao_Bancaria_${grupoAtivo}_${data}.xlsx`);
 }
 
+function normalizarListaTagsGrupos(valor) {
+  const lista = Array.isArray(valor) ? valor : String(valor || '').split(/[,;\n]+/);
+  const unicas = new Map();
+  lista.map(tag => limparTextoECD(tag)).filter(Boolean).forEach(tag => {
+    const chave = normalizarTexto(tag);
+    if (!unicas.has(chave)) unicas.set(chave, tag);
+  });
+  return [...unicas.values()];
+}
+
+function tagsDoGrupo(nome) {
+  return normalizarListaTagsGrupos(configGrupos?.[nome]?.tags || []);
+}
+
+function tagsDisponiveisGrupos() {
+  const unicas = new Map();
+  grupos.flatMap(tagsDoGrupo).forEach(tag => {
+    const chave = normalizarTexto(tag);
+    if (!unicas.has(chave)) unicas.set(chave, tag);
+  });
+  return [...unicas.values()].sort((a, b) => a.localeCompare(b, 'pt-BR'));
+}
+
+function selecionarFiltroTag(tag = '') {
+  filtroTagGrupos = limparTextoECD(tag);
+  renderGrupos();
+}
+
+function renderFiltrosTagsGrupos(tags) {
+  const el = document.getElementById('filtros-tags-grupos');
+  if (!el) return;
+  if (!tags.length) {
+    el.innerHTML = '<span class="grupo-info">Cadastre tags nos grupos para organizar esta lista.</span>';
+    return;
+  }
+  const botao = (tag, label) => `<button type="button" class="grupo-tag-filtro ${normalizarTexto(filtroTagGrupos) === normalizarTexto(tag) ? 'ativo' : ''}" data-tag="${escapeAttr(tag)}" onclick="selecionarFiltroTag(this.dataset.tag)">${escapeHtml(label)}</button>`;
+  el.innerHTML = `<span class="grupo-info" style="font-weight:600">Filtrar por tag:</span>${botao('', 'Todos')}${tags.map(tag => botao(tag, tag)).join('')}`;
+}
+
+function editarTagsGrupo(g) {
+  if (!grupos.includes(g)) return;
+  const atuais = tagsDoGrupo(g);
+  const entrada = prompt(`Tags de "${g}" (separe por vírgula):`, atuais.join(', '));
+  if (entrada === null) return;
+  const tags = normalizarListaTagsGrupos(entrada);
+  configGrupos[g] = Object.assign({}, configGrupos[g] || {}, { tags });
+  if (filtroTagGrupos && !tagsDisponiveisGrupos().some(tag => normalizarTexto(tag) === normalizarTexto(filtroTagGrupos))) filtroTagGrupos = '';
+  salvarStorage();
+  renderGrupos();
+  showMsg(tags.length ? `Tags de "${g}" atualizadas.` : `Tags de "${g}" removidas.`, 'ok');
+}
+
 function renderGrupos() {
   const el = document.getElementById('lista-grupos');
+  const tagsDisponiveis = tagsDisponiveisGrupos();
+  if (filtroTagGrupos && !tagsDisponiveis.some(tag => normalizarTexto(tag) === normalizarTexto(filtroTagGrupos))) filtroTagGrupos = '';
+  renderFiltrosTagsGrupos(tagsDisponiveis);
   if (grupos.length === 0) {
     el.innerHTML = `<div class="card"><div class="empty"><div class="empty-icon">🏢</div>Nenhum grupo cadastrado. Crie o primeiro para começar.</div></div>`;
     const status = document.getElementById('status-lista-grupos');
@@ -4945,13 +5010,15 @@ function renderGrupos() {
     const isAtivo = g === grupoAtivo;
     const modoGrupo = modoImportacaoDoGrupo(g);
     const modoLabel = nomeModoImportacao(modoGrupo, layoutImportacaoDoGrupo(g));
-    const textoBusca = normalizarTexto([g, qtd, qtdRecebimentos, qtdContas, modoLabel].join(' '));
-    return { g, qtd, qtdRecebimentos, qtdContas, isAtivo, modoGrupo, modoLabel, textoBusca };
-  }).filter(item => !termoBusca || item.textoBusca.includes(termoBusca));
+    const tags = tagsDoGrupo(g);
+    const textoBusca = normalizarTexto([g, qtd, qtdRecebimentos, qtdContas, modoLabel, ...tags].join(' '));
+    return { g, qtd, qtdRecebimentos, qtdContas, isAtivo, modoGrupo, modoLabel, tags, textoBusca };
+  }).filter(item => (!termoBusca || item.textoBusca.includes(termoBusca))
+    && (!filtroTagGrupos || item.tags.some(tag => normalizarTexto(tag) === normalizarTexto(filtroTagGrupos))));
 
   const status = document.getElementById('status-lista-grupos');
   if (status) {
-    status.textContent = `${itens.length} de ${grupos.length} grupo${grupos.length !== 1 ? 's' : ''} exibido${itens.length !== 1 ? 's' : ''}`;
+    status.textContent = `${itens.length} de ${grupos.length} grupo${grupos.length !== 1 ? 's' : ''} exibido${itens.length !== 1 ? 's' : ''}${filtroTagGrupos ? ` · tag: ${filtroTagGrupos}` : ''}`;
   }
 
   if (itens.length === 0) {
@@ -4959,14 +5026,16 @@ function renderGrupos() {
     return;
   }
 
-  el.innerHTML = `<div class="grupo-lista">${itens.map(({ g, qtd, qtdRecebimentos, qtdContas, isAtivo, modoGrupo, modoLabel }) => `
+  el.innerHTML = `<div class="grupo-lista">${itens.map(({ g, qtd, qtdRecebimentos, qtdContas, isAtivo, modoGrupo, modoLabel, tags }) => `
     <div class="grupo-row ${isAtivo ? 'ativo' : ''}">
       <div class="grupo-row-main">
         <div class="grupo-nome"><a href="#" class="grupo-nome-editavel" title="Editar nome e formato do grupo" onclick="event.preventDefault(); editarGrupoCadastro('${escapeAttr(g)}')">${escapeHtml(g)}</a> ${isAtivo ? '<span class="badge badge-blue">ativo</span>' : ''}</div>
         <div class="grupo-info">${qtd} regra${qtd !== 1 ? 's' : ''} de pagamentos · ${qtdRecebimentos} regra${qtdRecebimentos !== 1 ? 's' : ''} de recebimentos · ${qtdContas > 0 ? qtdContas + ' contas no plano' : 'plano de contas não carregado'} · ${modoLabel}</div>
+        ${tags.length ? `<div class="grupo-tags-lista">${tags.map(tag => `<span class="grupo-tag">${escapeHtml(tag)}</span>`).join('')}</div>` : ''}
       </div>
       <div class="grupo-row-actions">
         ${!isAtivo ? `<button class="btn btn-sm" onclick="selecionarGrupo('${g}')">Selecionar</button>` : ''}
+        <button class="btn btn-sm" onclick="editarTagsGrupo('${g}')">Tags</button>
         ${isAtivo ? `
           <button class="btn btn-sm" onclick="mostrarTela('tela-regras')">📋 Regras</button>
           <button class="btn btn-sm" onclick="mostrarTela('tela-plano-contas')">📑 Plano de Contas</button>
@@ -5063,16 +5132,20 @@ function selecionarGrupo(g) {
 function criarGrupo() {
   const nome = document.getElementById('input-nome-grupo').value.trim();
   const opcaoFormato = document.getElementById('select-modo-grupo')?.value || 'parcelas';
+  const tags = normalizarListaTagsGrupos(document.getElementById('input-tags-grupo')?.value || '');
   const formato = interpretarOpcaoFormatoPagamento(opcaoFormato);
   if (!nome) return;
   if (grupos.includes(nome)) { showMsg('Já existe um grupo com esse nome.', 'warn'); return; }
   grupos.push(nome);
   configGrupos[nome] = {
     modoImportacaoPagamentos: formato.modo,
-    layoutImportacaoPagamentos: formato.layout
+    layoutImportacaoPagamentos: formato.layout,
+    tags
   };
   salvarStorage();
   document.getElementById('input-nome-grupo').value = '';
+  const inputTags = document.getElementById('input-tags-grupo');
+  if (inputTags) inputTags.value = '';
   const selectModo = document.getElementById('select-modo-grupo');
   if (selectModo) selectModo.value = 'parcelas';
   mostrarTela('tela-home', false);
