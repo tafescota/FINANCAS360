@@ -992,7 +992,9 @@ function prepararLinhaParcelasNumerarios(row) {
   row.__parcelasNumerarios = true;
   row.__layoutF360Original = layoutImportacaoPagamentos === 'f360_original';
   row.__empresaOriginal = limparTextoECD(row[COLS.EMPRESA]);
-  row.__centroCusto = unidadeDespesaPorEmpresa(row[COLS.EMPRESA], row[COLS.CC] || row[COLS.EMPRESA]);
+  row.__centroCusto = row.__layoutF360Original
+    ? limparTextoECD(row[COLS.CC] || row[COLS.EMPRESA])
+    : unidadeDespesaPorEmpresa(row[COLS.EMPRESA], row[COLS.CC] || row[COLS.EMPRESA]);
   return row;
 }
 
@@ -1490,7 +1492,7 @@ function linhasPlanilhaTitulos(wb, layout = 'boticario') {
     const dados = raw.slice(headerIdx + 1)
       .filter(r => r && valorColuna(r, col.tipo) && String(valorColuna(r, col.tipo)).trim() !== '')
       .map(r => normalizarLinhaTitulosF360Original(r, col));
-    return { dados, nomePlanilha };
+    return { dados, nomePlanilha, linhaCabecalho: headerIdx + 1 };
   }
   let inicio = 0;
   for (let i = 0; i < Math.min(raw.length, 25); i++) {
@@ -2354,10 +2356,61 @@ function empresaRecebimentoNumerarios(valor, fallback = '') {
   return nomeEmpresaImportadaPorCodigo(codigo || valor, codigo || fallback || valor);
 }
 
-function linhasNumerariosCartoesReceber(wb, arquivoOrigem) {
+function linhasNumerariosCartoesReceber(wb, arquivoOrigem, layout = 'boticario') {
   const nomePlanilha = wb.SheetNames.find(n => /cart/i.test(n)) || wb.SheetNames[0];
   const ws = wb.Sheets[nomePlanilha];
   const raw = XLSX.utils.sheet_to_json(ws, { header: 1, defval: null });
+  if (layout === 'f360_original') {
+    const headerIdx = raw.findIndex(row => {
+      const headers = row || [];
+      return indiceColunaPorNomes(headers, ['empresa']) >= 0
+        && indiceColunaPorNomes(headers, ['adquirente']) >= 0
+        && indiceColunaPorNomes(headers, ['valor liquido', 'valor líquido']) >= 0
+        && indiceColunaPorNomes(headers, ['conta']) >= 0
+        && indiceColunaPorNomes(headers, ['dt. liquidacao', 'dt. liquidação', 'liquidacao', 'liquidação']) >= 0;
+    });
+    if (headerIdx === -1) return null;
+    const headers = raw[headerIdx] || [];
+    const idx = (...nomes) => indiceColunaPorNomes(headers, nomes);
+    const col = {
+      empresa: idx('empresa'),
+      adquirente: idx('adquirente'),
+      bandeira: idx('bandeira'),
+      modalidade: idx('modalidade'),
+      produto: idx('produto'),
+      valorLiquido: idx('valor liquido', 'valor líquido'),
+      conta: idx('conta'),
+      liquidacao: idx('dt. liquidacao', 'dt. liquidação', 'liquidacao', 'liquidação'),
+      tipoLancamento: idx('tipo de lancamento', 'tipo de lançamento')
+    };
+    const linhas = raw.slice(headerIdx + 1).map((row, rowIdx) => {
+      const valorLiquido = row[col.valorLiquido];
+      const formaRecebimento = limparTextoECD(row[col.adquirente] || 'Cartões');
+      const tipoLancamento = limparTextoECD(col.tipoLancamento >= 0 ? row[col.tipoLancamento] : '');
+      const historico = [
+        row[col.adquirente],
+        col.bandeira >= 0 ? row[col.bandeira] : '',
+        col.modalidade >= 0 ? row[col.modalidade] : '',
+        col.produto >= 0 ? row[col.produto] : '',
+        tipoLancamento
+      ].filter(Boolean).join(' - ');
+      return linhaRecebimentoRateioBase({
+        data: row[col.liquidacao],
+        valor: valorLiquido,
+        conta: row[col.conta],
+        empresaBanco: empresaRecebimentoNumerarios(row[col.conta], row[col.empresa]),
+        centroCusto: empresaRecebimentoNumerarios(row[col.empresa], row[col.empresa]),
+        tipo: valorNegativo(valorLiquido) ? `${formaRecebimento} - Taxa/Ajuste` : formaRecebimento,
+        historico,
+        plano: normalizarTexto(formaRecebimento).includes('boleto') ? 'Boletos recebidos' : 'Cartões recebidos',
+        origem: 'Parcelas de Cartões a Receber',
+        arquivoOrigem,
+        linhaOrigem: headerIdx + rowIdx + 2,
+        tipoLancamento
+      });
+    }).filter(Boolean);
+    return { tipo: 'cartoes', nomePlanilha, linhas };
+  }
   const headerIdx = linhaCabecalhoRecebimentosNumerarios(raw, [
     { coluna: 2, nome: 'Empresa' },
     { coluna: 5, nome: 'Adquirente' },
@@ -2389,7 +2442,33 @@ function linhasNumerariosCartoesReceber(wb, arquivoOrigem) {
   return { tipo: 'cartoes', nomePlanilha, linhas };
 }
 
-function linhasNumerariosTitulosReceber(wb, arquivoOrigem) {
+function linhasNumerariosTitulosReceber(wb, arquivoOrigem, layout = 'boticario') {
+  if (layout === 'f360_original') {
+    const leitura = linhasPlanilhaTitulos(wb, 'f360_original');
+    const linhas = leitura.dados.map((row, rowIdx) => {
+      const status = limparTextoECD(row[COLS.STATUS] || 'Liquidado');
+      if (status && !normalizarTexto(status).includes('liquidado')) return null;
+      const plano = limparTextoECD(row[COLS.PLANO] || 'Títulos recebidos');
+      const tipoDoc = limparTextoECD(row[COLS.TIPO_DOC] || 'Títulos recebidos');
+      const formaRecebimento = limparTextoECD(row[COLS.MEIO_PAG] || 'Título recebido');
+      const historico = [row[COLS.FORNECEDOR], tipoDoc, row[COLS.NUMERO], plano, row[COLS.HISTORICO]].filter(Boolean).join(' - ');
+      return linhaRecebimentoRateioBase({
+        data: row[COLS.LIQUIDACAO],
+        valor: row[COLS.VALOR_LIQ],
+        conta: row[COLS.CONTA],
+        empresaBanco: empresaRecebimentoNumerarios(row[COLS.CONTA], row[COLS.EMPRESA]),
+        centroCusto: empresaRecebimentoNumerarios(row[COLS.EMPRESA], row[COLS.EMPRESA]),
+        tipo: formaRecebimento,
+        historico,
+        plano,
+        origem: 'Parcela de Título a Receber',
+        arquivoOrigem,
+        linhaOrigem: (leitura.linhaCabecalho || 1) + rowIdx + 1,
+        tipoLancamento: status
+      });
+    }).filter(Boolean);
+    return { tipo: 'titulos', nomePlanilha: leitura.nomePlanilha, linhas };
+  }
   const nomePlanilha = wb.SheetNames.find(n => /receber|parcela|t[íi]tulo/i.test(n)) || wb.SheetNames[0];
   const ws = wb.Sheets[nomePlanilha];
   const raw = XLSX.utils.sheet_to_json(ws, { header: 1, defval: null });
@@ -2436,8 +2515,9 @@ function lerRecebimentosNumerariosArquivo(file, onProgress = null) {
       try {
         const data = new Uint8Array(e.target.result);
         const wb = XLSX.read(data, { type: 'array', cellDates: true });
-        const cartoes = linhasNumerariosCartoesReceber(wb, file.name);
-        const titulos = cartoes ? null : linhasNumerariosTitulosReceber(wb, file.name);
+        const layout = layoutImportacaoDoGrupo();
+        const cartoes = linhasNumerariosCartoesReceber(wb, file.name, layout);
+        const titulos = cartoes ? null : linhasNumerariosTitulosReceber(wb, file.name, layout);
         const resultado = cartoes || titulos;
         if (!resultado || resultado.linhas.length === 0) throw new Error('Nenhum recebimento liquidado foi encontrado nas colunas esperadas para Numerários.');
         resolve({ arquivo: file.name, ...resultado });
@@ -5702,7 +5782,7 @@ function configurarTelaNovasChaves() {
         + categorias.map(categoria => `<option value="${escapeAttr(categoria)}">${escapeHtml(categoria)}</option>`).join('');
     } else {
       const pendentesNovas = novasChavesTemp.filter(item => !obterCodigoContaParaDominio(codigosTemp[item.chave] || ''));
-      const tiposPresentes = new Set(pendentesNovas.map(item => tipoOperacaoNovaChave(item)).filter(Boolean));
+      const tiposPresentes = new Set(pendentesNovas.map(item => categoriaFiltroTipoNovaChave(item)).filter(Boolean));
       const tiposPossiveis = [
         ['DESPESA', 'Despesa/Fornecedor'],
         ['NUMERARIO ATIVO', 'Numerário ativo'],
@@ -5851,6 +5931,20 @@ function tipoOperacaoNovaChave(item) {
     || tipoDocumento.includes('acrescimo')
     || tipoDocumento.includes('acréscimo');
   if (grupoUsaNumerariosParcelas() && !item?.pontaNumerario && !ehAjuste && (!tipoRateio || tipoRateio === 'PROPRIO')) return 'DESPESA';
+  return tipoRateio || '';
+}
+
+function categoriaFiltroTipoNovaChave(item) {
+  const tipoDocumento = normalizarTexto(item?.tipoDoc || '');
+  if (tipoDocumento.includes('desconto')) return 'DESCONTO';
+  if (tipoDocumento.includes('acrescimo') || tipoDocumento.includes('acréscimo')) return 'ACRESCIMO';
+  if (item?.pontaNumerario) {
+    const natureza = String(item.naturezaNumerario || '').toUpperCase();
+    if (natureza === 'ATIVO') return 'NUMERARIO ATIVO';
+    if (natureza === 'PASSIVO') return 'NUMERARIO PASSIVO';
+  }
+  const tipoRateio = tipoRateioItem(item);
+  if (grupoUsaNumerariosParcelas() || tipoRateio === 'TRANSFERENCIA DE NUMERARIOS') return 'DESPESA';
   return tipoRateio || '';
 }
 
