@@ -199,6 +199,8 @@
   .conciliacao-status.ok { background: #dcfce7; color: #166534; border: 1px solid #86efac; }
   .conciliacao-status.warn { background: #fee2e2; color: #991b1b; border: 1px solid #fecaca; }
   .conciliacao-status.mid { background: #eff6ff; color: #1d4ed8; border: 1px solid #bfdbfe; }
+  button.conciliacao-status { font-family: inherit; cursor: pointer; }
+  button.conciliacao-status:hover { filter: brightness(.96); text-decoration: underline; }
 
   .tela { display: none; }
   .tela.ativa { display: block; }
@@ -254,6 +256,7 @@
         <option value="parcelas" selected>Parcelas de Títulos (BOTICARIO)</option>
         <option value="parcelas_numerarios">Parcelas com Numerários (BOTICARIO)</option>
         <option value="rateio">Rateio de Títulos (BOTICARIO)</option>
+        <option value="aromas">Aromas</option>
         <option value="parcelas__f360_original">Parcelas de Títulos (FINANÇAS 360 - ORIGINAL)</option>
         <option value="parcelas_numerarios__f360_original">Parcelas com Numerários (FINANÇAS 360 - ORIGINAL)</option>
         <option value="rateio__f360_original">Rateio de Títulos (FINANÇAS 360 - ORIGINAL)</option>
@@ -308,21 +311,21 @@
     <input type="file" id="file-input-plano" accept=".xlsx,.xls" style="display:none" onchange="onFileChangePlano(event)">
   </div>
 
-  <!-- TELA PROVISAO RATEIO -->
+  <!-- TELA PROVISOES AROMAS -->
   <div class="tela" id="tela-provisao-rateio">
     <div class="section-header">
       <button class="btn btn-sm" onclick="voltarTela()">← Voltar</button>
-      <h2 id="titulo-provisao-rateio">Provisão por rateio</h2>
+      <h2 id="titulo-provisao-rateio">Provisões Aromas</h2>
     </div>
     <div id="msg-provisao-rateio"></div>
     <div class="card" style="margin-bottom:16px">
-      <div class="metric-label" style="margin-bottom:8px">Módulo isolado de provisão</div>
+      <div class="metric-label" style="margin-bottom:8px">Módulo isolado de provisões Aromas</div>
       <p class="conciliacao-note" style="margin-bottom:14px">
-        Use para importar o relatório de rateio e gerar uma planilha no modelo Domínio para provisão. Esta tela tem seu próprio de-para de débito/crédito (não mexe nas regras de conciliação, pagamentos ou recebimentos). Preencha débito e crédito na tabela abaixo: ao sair do campo, a combinação fica salva e é sugerida automaticamente na próxima importação para o mesmo fornecedor/plano/documento.
+        Disponível somente no formato Aromas. Importe o relatório e gere a planilha de provisões no modelo Domínio. Esta tela tem seu próprio de-para de débito/crédito e não altera as regras de conciliação, pagamentos ou recebimentos.
       </p>
       <div class="drop-area" id="drop-area-provisao" onclick="document.getElementById('file-input-provisao-rateio').click()" ondragover="dragOver(event)" ondragleave="dragLeave(event)" ondrop="onDropProvisaoRateio(event)">
         <div class="drop-icon">📄</div>
-        <div class="drop-title">Arraste a planilha de provisão aqui ou clique para selecionar</div>
+        <div class="drop-title">Arraste a planilha de provisões Aromas aqui ou clique para selecionar</div>
         <div class="drop-sub">Arquivo no padrão Rateio de Títulos (.xlsx, .xlsm ou .xls)</div>
       </div>
       <input type="file" id="file-input-provisao-rateio" accept=".xlsx,.xlsm,.xls" multiple style="display:none" onchange="onFileChangeProvisaoRateio(event)">
@@ -339,6 +342,41 @@
           <tr><th>Emissão</th><th>Débito</th><th>Crédito</th><th style="text-align:right">Valor</th><th>Empresa</th><th>Fornecedor</th><th>Documento</th><th>Complemento</th></tr>
         </thead>
         <tbody id="tbody-provisao-rateio"></tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- TELA PROVISOES PARCELAS -->
+  <div class="tela" id="tela-provisao-parcelas">
+    <div class="section-header">
+      <button class="btn btn-sm" onclick="voltarTela()">← Voltar</button>
+      <h2 id="titulo-provisao-parcelas">Provisões de Parcelas de Títulos</h2>
+    </div>
+    <div id="msg-provisao-parcelas"></div>
+    <div class="card" style="margin-bottom:16px">
+      <div class="metric-label" style="margin-bottom:8px">Provisões por competência</div>
+      <p class="conciliacao-note" style="margin-bottom:14px">
+        O sistema usa a competência informada no relatório e considera somente Boleto, Cupom Fiscal, Nota de Débito e Outros. Entram apenas documentos emitidos na competência cujo vencimento e eventual liquidação estejam em outro mês.
+      </p>
+      <div class="drop-area" id="drop-area-provisao-parcelas" onclick="document.getElementById('file-input-provisao-parcelas').click()" ondragover="dragOver(event)" ondragleave="dragLeave(event)" ondrop="onDropProvisaoParcelas(event)">
+        <div class="drop-icon">📄</div>
+        <div class="drop-title">Arraste Parcela de Título a Pagar aqui ou clique para selecionar</div>
+        <div class="drop-sub">Arquivo no formato cadastrado para o grupo (.xlsx, .xlsm ou .xls)</div>
+      </div>
+      <input type="file" id="file-input-provisao-parcelas" accept=".xlsx,.xlsm,.xls" multiple style="display:none" onchange="onFileChangeProvisaoParcelas(event)">
+    </div>
+    <div id="resumo-provisao-parcelas"></div>
+    <div id="acoes-provisao-parcelas" style="display:none;gap:10px;flex-wrap:wrap;margin:0 0 16px">
+      <button class="btn btn-blue" onclick="exportarProvisaoParcelas()">⬇ Exportar provisões Domínio (.xlsx)</button>
+      <button class="btn" onclick="aplicarRegrasSalvasProvisaoParcelas()">🔁 Reaplicar regras salvas</button>
+      <button class="btn" onclick="limparProvisaoParcelas()">Limpar provisões</button>
+    </div>
+    <div class="table-wrap table-scroll" id="preview-provisao-parcelas" style="display:none;margin-bottom:16px">
+      <table>
+        <thead>
+          <tr><th>Competência</th><th>Emissão</th><th>Vencimento</th><th>Débito</th><th>Crédito</th><th style="text-align:right">Valor</th><th>Empresa</th><th>Fornecedor</th><th>Documento</th><th>Complemento</th></tr>
+        </thead>
+        <tbody id="tbody-provisao-parcelas"></tbody>
       </table>
     </div>
   </div>
@@ -533,6 +571,7 @@ const STORAGE_GRUPOS = 'zip_depara_grupos';
 const STORAGE_DEPARA = 'zip_depara_regras';
 const STORAGE_DEPARA_RECEBIMENTOS = 'zip_depara_regras_recebimentos';
 const STORAGE_DEPARA_PROVISAO = 'zip_depara_regras_provisao';
+const STORAGE_DEPARA_PROVISAO_PARCELAS = 'zip_depara_regras_provisao_parcelas';
 const STORAGE_PLANO_CONTAS = 'zip_depara_plano_contas';
 const STORAGE_CONTAS_SEM_CONCILIACAO = 'zip_depara_contas_sem_conciliacao';
 const STORAGE_CONFIG_GRUPOS = 'zip_depara_config_grupos';
@@ -558,6 +597,7 @@ let grupos = JSON.parse(localStorage.getItem(STORAGE_GRUPOS) || '[]');
 let depara = JSON.parse(localStorage.getItem(STORAGE_DEPARA) || '{}');
 let deparaRecebimentos = JSON.parse(localStorage.getItem(STORAGE_DEPARA_RECEBIMENTOS) || '{}');
 let deparaProvisao = JSON.parse(localStorage.getItem(STORAGE_DEPARA_PROVISAO) || '{}');
+let deparaProvisaoParcelas = JSON.parse(localStorage.getItem(STORAGE_DEPARA_PROVISAO_PARCELAS) || '{}');
 let planoContas = JSON.parse(localStorage.getItem(STORAGE_PLANO_CONTAS) || '{}');
 let contasSemConciliacao = JSON.parse(localStorage.getItem(STORAGE_CONTAS_SEM_CONCILIACAO) || '{}');
 let configGrupos = JSON.parse(localStorage.getItem(STORAGE_CONFIG_GRUPOS) || '{}');
@@ -608,6 +648,8 @@ let recebimentosRateioTemp = [];
 let infoRecebimentosRateioTemp = null;
 let provisaoRateioTemp = [];
 let infoProvisaoRateioTemp = null;
+let provisaoParcelasTemp = [];
+let infoProvisaoParcelasTemp = null;
 
 const COLS = { TIPO:0, NUMERO:1, PARCELA:2, EMPRESA:3, FORNECEDOR:4, EMISSAO:5, VENCIMENTO:6, LIQUIDACAO:7, VALOR_BRUTO:8, COMPETENCIA:9, PLANO:10, CC:11, ACRESCIMO:12, VALOR_LIQ:13, CONTA:14, MEIO_PAG:15, TIPO_DOC:16, APROVADA:17, STATUS:18, HISTORICO:19 };
 
@@ -803,6 +845,7 @@ function layoutImportacaoDoGrupo(nome = grupoAtivo) {
 
 function nomeModoImportacao(modo, layout = 'boticario') {
   const modoBase = normalizarModoImportacao(modo);
+  if (modoBase === 'aromas') return 'Aromas';
   const nome = modoBase === 'parcelas_numerarios'
     ? 'Parcelas com Numerários'
     : modoBase === 'rateio'
@@ -813,9 +856,15 @@ function nomeModoImportacao(modo, layout = 'boticario') {
 
 function normalizarModoImportacao(modo) {
   const texto = normalizarTexto(modo);
+  if (texto.includes('aromas')) return 'aromas';
   if (texto.includes('rateio')) return 'rateio';
   if (modo === 'parcelas_numerarios' || texto.includes('numerario')) return 'parcelas_numerarios';
   return 'parcelas';
+}
+
+function modoUsaFluxoRateio(modo = modoImportacaoDoGrupo()) {
+  const modoBase = normalizarModoImportacao(modo);
+  return modoBase === 'rateio' || modoBase === 'aromas';
 }
 
 function normalizarLayoutImportacao(valor) {
@@ -848,7 +897,7 @@ function alterarModoGrupo(nome, modo) {
 }
 
 function grupoUsaNumerariosRateio() {
-  return modoImportacaoDoGrupo() === 'rateio';
+  return modoUsaFluxoRateio();
 }
 
 function grupoUsaNumerariosParcelas() {
@@ -860,7 +909,7 @@ function empresaBancoRateioPorConta(conta, empresaFallback = '') {
   if (!grupoUsaNumerariosRateio() && !grupoUsaNumerariosParcelas()) return fallback;
   const porConta = empresaDonaBancoPorConta(conta, '');
   if (porConta) return porConta;
-  if (!normalizarTexto(grupoAtivo).includes('aromas')) return fallback;
+  if (modoImportacaoDoGrupo() !== 'aromas' && !normalizarTexto(grupoAtivo).includes('aromas')) return fallback;
   const contaNorm = normalizarTexto(conta);
   const contasAromas = [
     { termo: 'bradesco', empresa: '14463 - CACHOEIRA - LOJA' },
@@ -1074,6 +1123,7 @@ function salvarStorage() {
   localStorage.setItem(STORAGE_DEPARA, JSON.stringify(depara));
   localStorage.setItem(STORAGE_DEPARA_RECEBIMENTOS, JSON.stringify(deparaRecebimentos));
   localStorage.setItem(STORAGE_DEPARA_PROVISAO, JSON.stringify(deparaProvisao));
+  localStorage.setItem(STORAGE_DEPARA_PROVISAO_PARCELAS, JSON.stringify(deparaProvisaoParcelas));
   localStorage.setItem(STORAGE_PLANO_CONTAS, JSON.stringify(planoContas));
   localStorage.setItem(STORAGE_CONTAS_SEM_CONCILIACAO, JSON.stringify(contasSemConciliacao));
   localStorage.setItem(STORAGE_CONFIG_GRUPOS, JSON.stringify(configGrupos));
@@ -1101,6 +1151,7 @@ async function carregarBaseCompartilhada(mostrarMensagem = false) {
     depara = data.depara && typeof data.depara === 'object' ? data.depara : {};
     deparaRecebimentos = data.deparaRecebimentos && typeof data.deparaRecebimentos === 'object' ? data.deparaRecebimentos : {};
     deparaProvisao = data.deparaProvisao && typeof data.deparaProvisao === 'object' ? data.deparaProvisao : {};
+    deparaProvisaoParcelas = data.deparaProvisaoParcelas && typeof data.deparaProvisaoParcelas === 'object' ? data.deparaProvisaoParcelas : {};
     planoContas = data.planoContas && typeof data.planoContas === 'object' ? data.planoContas : {};
     contasSemConciliacao = data.contasSemConciliacao && typeof data.contasSemConciliacao === 'object' ? data.contasSemConciliacao : {};
     configGrupos = data.configGrupos && typeof data.configGrupos === 'object' ? data.configGrupos : {};
@@ -1110,6 +1161,7 @@ async function carregarBaseCompartilhada(mostrarMensagem = false) {
     localStorage.setItem(STORAGE_DEPARA, JSON.stringify(depara));
     localStorage.setItem(STORAGE_DEPARA_RECEBIMENTOS, JSON.stringify(deparaRecebimentos));
     localStorage.setItem(STORAGE_DEPARA_PROVISAO, JSON.stringify(deparaProvisao));
+    localStorage.setItem(STORAGE_DEPARA_PROVISAO_PARCELAS, JSON.stringify(deparaProvisaoParcelas));
     localStorage.setItem(STORAGE_PLANO_CONTAS, JSON.stringify(planoContas));
     localStorage.setItem(STORAGE_CONTAS_SEM_CONCILIACAO, JSON.stringify(contasSemConciliacao));
     localStorage.setItem(STORAGE_CONFIG_GRUPOS, JSON.stringify(configGrupos));
@@ -1133,7 +1185,7 @@ async function salvarBaseCompartilhada(forcar = false) {
   try {
     salvandoBaseCompartilhada = true;
     ultimaSyncLocal = Date.now();
-    const payload = { grupos, depara, deparaRecebimentos, deparaProvisao, planoContas, contasSemConciliacao, configGrupos, deparaSaidasExtrato };
+    const payload = { grupos, depara, deparaRecebimentos, deparaProvisao, deparaProvisaoParcelas, planoContas, contasSemConciliacao, configGrupos, deparaSaidasExtrato };
     const resp = await fetch(API_BASE_DEPARA, {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
@@ -1157,6 +1209,7 @@ function exportarBaseDePara() {
     depara,
     deparaRecebimentos,
     deparaProvisao,
+    deparaProvisaoParcelas,
     contasSemConciliacao,
     configGrupos,
     deparaSaidasExtrato
@@ -1188,6 +1241,7 @@ function importarBaseDePara(event) {
       depara = payload.depara;
       deparaRecebimentos = payload.deparaRecebimentos && typeof payload.deparaRecebimentos === 'object' ? payload.deparaRecebimentos : {};
       deparaProvisao = payload.deparaProvisao && typeof payload.deparaProvisao === 'object' ? payload.deparaProvisao : {};
+      deparaProvisaoParcelas = payload.deparaProvisaoParcelas && typeof payload.deparaProvisaoParcelas === 'object' ? payload.deparaProvisaoParcelas : {};
       contasSemConciliacao = payload.contasSemConciliacao && typeof payload.contasSemConciliacao === 'object' ? payload.contasSemConciliacao : {};
       configGrupos = payload.configGrupos && typeof payload.configGrupos === 'object' ? payload.configGrupos : {};
       deparaSaidasExtrato = payload.deparaSaidasExtrato && typeof payload.deparaSaidasExtrato === 'object' ? payload.deparaSaidasExtrato : {};
@@ -1248,6 +1302,7 @@ function mostrarTela(id, registrarHistorico = true) {
   if (id === 'tela-recebimentos') renderRecebimentosSeparados();
   if (id === 'tela-resultado') renderResumoConferenciaResultado();
   if (id === 'tela-provisao-rateio') renderProvisaoRateio();
+  if (id === 'tela-provisao-parcelas') renderProvisaoParcelas();
   if (id === 'tela-importar' && grupoAtivo) {
     document.getElementById('titulo-importar').textContent = 'Importar planilha — ' + grupoAtivo;
     selecionarModoImportacaoPagamentos(modoImportacaoDoGrupo(grupoAtivo));
@@ -1524,6 +1579,7 @@ function linhasPlanilhaTitulos(wb, layout = 'boticario') {
 function selecionarModoImportacaoPagamentos(modo, layout = layoutImportacaoDoGrupo()) {
   modoImportacaoPagamentos = normalizarModoImportacao(modo);
   layoutImportacaoPagamentos = layout === 'f360_original' ? 'f360_original' : 'boticario';
+  const usaFluxoRateio = modoUsaFluxoRateio(modoImportacaoPagamentos);
   const btnParcelas = document.getElementById('btn-modo-parcelas');
   const btnRateio = document.getElementById('btn-modo-rateio');
   const status = document.getElementById('modo-importacao-status');
@@ -1531,11 +1587,13 @@ function selecionarModoImportacaoPagamentos(modo, layout = layoutImportacaoDoGru
   const sub = document.getElementById('drop-sub-importacao');
   const dropTitle = document.querySelector('#drop-area .drop-title');
   if (btnParcelas) btnParcelas.className = 'btn btn-sm ' + (modoImportacaoPagamentos === 'parcelas' ? 'btn-primary' : '');
-  if (btnRateio) btnRateio.className = 'btn btn-sm ' + (modoImportacaoPagamentos === 'rateio' ? 'btn-primary' : '');
+  if (btnRateio) btnRateio.className = 'btn btn-sm ' + (usaFluxoRateio ? 'btn-primary' : '');
   if (status) status.textContent = nomeModoImportacao(modoImportacaoPagamentos, layoutImportacaoPagamentos);
   if (nota) {
-    const descricaoBase = modoImportacaoPagamentos === 'rateio'
-      ? 'Usa Rateio de Títulos: selecione juntos pagamentos e recebimentos. A regra considera a unidade da coluna Empresa e a dona do banco pela coluna Conta.'
+    const descricaoBase = modoImportacaoPagamentos === 'aromas'
+      ? 'Usa o fluxo Aromas para pagamentos, recebimentos e numerários por rateio. A Provisão fica disponível exclusivamente neste formato.'
+      : modoImportacaoPagamentos === 'rateio'
+        ? 'Usa Rateio de Títulos: selecione juntos pagamentos e recebimentos. A regra considera a unidade da coluna Empresa e a dona do banco pela coluna Conta.'
       : modoImportacaoPagamentos === 'parcelas_numerarios'
         ? 'Usa Parcelas de Títulos com numerários: quando a unidade da despesa for diferente da dona da conta bancária, gera uma ponta de numerário ativo e outra de numerário passivo. Recebimentos ficam fora deste módulo.'
         : layoutImportacaoPagamentos === 'f360_original'
@@ -1544,19 +1602,19 @@ function selecionarModoImportacaoPagamentos(modo, layout = layoutImportacaoDoGru
     nota.textContent = `${descricaoBase} Layout: ${layoutImportacaoPagamentos === 'f360_original' ? 'FINANÇAS 360 - ORIGINAL (colunas identificadas pelo cabeçalho)' : 'BOTICARIO'}.`;
   }
   if (sub) {
-    sub.textContent = modoImportacaoPagamentos === 'rateio'
+    sub.textContent = usaFluxoRateio
       ? 'Anexe aqui as planilhas de PAGAMENTOS e RECEBIMENTOS por rateio juntas (.xlsx ou .xlsm)'
       : modoImportacaoPagamentos === 'parcelas_numerarios'
         ? 'Arquivo de Parcelas de Títulos a Pagar para conciliar saídas e gerar numerários (.xlsx ou .xlsm)'
         : 'Arquivo de Parcelas de Títulos exportado do financeiro (.xlsx ou .xlsm)';
   }
   if (dropTitle) {
-    dropTitle.textContent = modoImportacaoPagamentos === 'rateio'
+    dropTitle.textContent = usaFluxoRateio
       ? 'Arraste pagamentos e recebimentos aqui ou clique para selecionar'
       : 'Arraste a planilha aqui ou clique para selecionar';
   }
   const blocoRecebInicio = document.getElementById('importar-recebimentos-rateio-inicio');
-  if (blocoRecebInicio) blocoRecebInicio.style.display = modoImportacaoPagamentos === 'rateio' ? '' : 'none';
+  if (blocoRecebInicio) blocoRecebInicio.style.display = usaFluxoRateio ? '' : 'none';
   renderResumoRecebimentosRateio();
 }
 
@@ -1686,8 +1744,8 @@ async function processarProvisaoRateio(files) {
     mostrarMsgProvisaoRateio('Selecione um grupo antes de importar a provisão.', 'warn');
     return;
   }
-  if (modoImportacaoDoGrupo(grupoAtivo) !== 'rateio') {
-    mostrarMsgProvisaoRateio('A provisão por rateio fica disponível apenas para grupos em Rateio de Títulos.', 'warn');
+  if (modoImportacaoDoGrupo(grupoAtivo) !== 'aromas') {
+    mostrarMsgProvisaoRateio('A provisão por rateio fica disponível apenas para grupos no formato Aromas.', 'warn');
     return;
   }
   iniciarProgressoImportacao('Lendo provisão por rateio...');
@@ -1739,14 +1797,14 @@ function limparProvisaoRateio() {
 
 function renderProvisaoRateio() {
   const titulo = document.getElementById('titulo-provisao-rateio');
-  if (titulo) titulo.textContent = 'Provisão por rateio — ' + (grupoAtivo || '');
+  if (titulo) titulo.textContent = 'Provisões Aromas — ' + (grupoAtivo || '');
   const resumo = document.getElementById('resumo-provisao-rateio');
   const acoes = document.getElementById('acoes-provisao-rateio');
   const preview = document.getElementById('preview-provisao-rateio');
   const tbody = document.getElementById('tbody-provisao-rateio');
   if (!resumo || !acoes || !preview || !tbody) return;
-  if (modoImportacaoDoGrupo(grupoAtivo) !== 'rateio') {
-    resumo.innerHTML = `<div class="alert alert-warn">Esta tela é usada somente para grupos configurados como Rateio de Títulos.</div>`;
+  if (modoImportacaoDoGrupo(grupoAtivo) !== 'aromas') {
+    resumo.innerHTML = `<div class="alert alert-warn">Esta tela é usada somente para grupos configurados no formato Aromas.</div>`;
     acoes.style.display = 'none';
     preview.style.display = 'none';
     return;
@@ -1859,7 +1917,296 @@ function exportarProvisaoRateio() {
   const wb = XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(wb, ws, 'Provisão Rateio');
   const data = new Date().toLocaleDateString('pt-BR').replace(/\//g,'-');
-  XLSX.writeFile(wb, `Dominio_Provisao_Rateio_${grupoAtivo}_${data}.xlsx`);
+  XLSX.writeFile(wb, `Dominio_Provisao_Aromas_${grupoAtivo}_${data}.xlsx`);
+}
+
+function modoPermiteProvisaoParcelas(nome = grupoAtivo) {
+  const modo = modoImportacaoDoGrupo(nome);
+  return modo === 'parcelas' || modo === 'parcelas_numerarios';
+}
+
+function partesDataProvisaoParcelas(valor) {
+  if (!valor) return null;
+  let data = valor;
+  if (typeof valor === 'number') data = new Date(Math.round((valor - 25569) * 86400 * 1000));
+  if (data instanceof Date && !Number.isNaN(data.getTime())) {
+    return { ano: data.getFullYear(), mes: data.getMonth() + 1, dia: data.getDate() };
+  }
+  const texto = limparTextoECD(valor);
+  let match = texto.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
+  if (match) return { ano: Number(match[3]), mes: Number(match[2]), dia: Number(match[1]) };
+  match = texto.match(/^(\d{1,2})\/(\d{4})$/);
+  if (match) return { ano: Number(match[2]), mes: Number(match[1]), dia: 1 };
+  match = texto.match(/^(\d{4})-(\d{1,2})(?:-(\d{1,2}))?/);
+  if (match) return { ano: Number(match[1]), mes: Number(match[2]), dia: Number(match[3] || 1) };
+  return null;
+}
+
+function chaveMesProvisaoParcelas(valor) {
+  const partes = partesDataProvisaoParcelas(valor);
+  return partes ? partes.ano * 100 + partes.mes : 0;
+}
+
+function rotuloMesProvisaoParcelas(valor) {
+  const partes = partesDataProvisaoParcelas(valor);
+  return partes ? `${String(partes.mes).padStart(2, '0')}/${partes.ano}` : '';
+}
+
+function ultimoDiaMesProvisaoParcelas(valor) {
+  const partes = partesDataProvisaoParcelas(valor);
+  if (!partes) return '';
+  return new Date(partes.ano, partes.mes, 0).toLocaleDateString('pt-BR');
+}
+
+function periodoCompetenciaPlanilha(wb) {
+  const nomePlanilha = wb.SheetNames.find(n => /parcela|t[íi]tulo/i.test(n)) || wb.SheetNames[0];
+  const raw = XLSX.utils.sheet_to_json(wb.Sheets[nomePlanilha], { header: 1, defval: null });
+  const idx = raw.findIndex(row => normalizarTexto(row?.[0]).replace(/:$/, '') === 'competencia');
+  if (idx === -1) throw new Error('Não encontrei o período de Competência no topo da planilha.');
+  const inicio = raw[idx]?.[1];
+  const fim = raw[idx]?.[2] || inicio;
+  const mesInicio = chaveMesProvisaoParcelas(inicio);
+  const mesFim = chaveMesProvisaoParcelas(fim);
+  if (!mesInicio || !mesFim) throw new Error('O período de Competência da planilha não é válido.');
+  return { inicio, fim, mesInicio: Math.min(mesInicio, mesFim), mesFim: Math.max(mesInicio, mesFim), nomePlanilha };
+}
+
+function encontrarRegraProvisaoParcelas(forn, plano, tipoDoc, historico, escopo = '') {
+  if (!grupoAtivo) return null;
+  const regras = deparaProvisaoParcelas[grupoAtivo] || {};
+  const chaveExata = montarChave(forn, plano, tipoDoc, historico, escopo);
+  if (regras[chaveExata]) return regras[chaveExata];
+  const prefixoEscopo = escopo ? limparTextoECD(escopo) + ' | ' : '';
+  const prefixo = prefixoEscopo + forn + ' | ' + plano + ' | ' + tipoDoc + ' | HISTORICO_CONTEM | ';
+  const historicoNormalizado = normalizarTexto(historico);
+  const achada = Object.keys(regras).find(chave => {
+    if (!chave.startsWith(prefixo)) return false;
+    const termos = normalizarTexto(chave.slice(prefixo.length)).split(/\s+/).filter(Boolean);
+    return termos.length > 0 && termos.every(termo => historicoNormalizado.includes(termo));
+  });
+  return achada ? regras[achada] : null;
+}
+
+function linhaProvisaoParcelas(r, periodo, arquivoOrigem = '') {
+  const forn = limparTextoECD(r[COLS.FORNECEDOR]);
+  const plano = limparTextoECD(r[COLS.PLANO]);
+  const tipoDoc = limparTextoECD(r[COLS.TIPO_DOC]);
+  const infoDoc = separarNumeroDoHistorico(tipoDoc, r[COLS.NUMERO], r[COLS.HISTORICO]);
+  const historico = infoDoc.historico;
+  const numero = infoDoc.numero;
+  const parcela = limparTextoECD(r[COLS.PARCELA]);
+  const valor = Math.abs(arredondarMoeda(r[COLS.VALOR_LIQ] || r[COLS.VALOR_BRUTO]));
+  if (!valor) return null;
+  const escopo = escopoRegraLinha(r);
+  const chave = montarChave(forn, plano, tipoDoc, historico, escopo);
+  const regraSalva = encontrarRegraProvisaoParcelas(forn, plano, tipoDoc, historico, escopo);
+  return {
+    data: ultimoDiaMesProvisaoParcelas(r[COLS.EMISSAO]),
+    competencia: rotuloMesProvisaoParcelas(r[COLS.EMISSAO]),
+    emissao: fmtDate(r[COLS.EMISSAO]),
+    vencimento: fmtDate(r[COLS.VENCIMENTO]),
+    liquidacao: fmtDate(r[COLS.LIQUIDACAO]),
+    chave, forn, plano, tipoDoc, historico, escopo,
+    debitoSugerido: plano,
+    debitoConta: regraSalva?.debito || '',
+    creditoConta: regraSalva?.credito || '',
+    valor,
+    empresa: empresaLancamentoLinha(r) || limparTextoECD(r[COLS.EMPRESA]),
+    fornecedor: forn,
+    documento: tipoDoc,
+    numero,
+    complemento: montarComplementoHistoricoPagamento(forn, tipoDoc, numero, parcela, plano, historico),
+    arquivoOrigem,
+    periodo: `${rotuloMesProvisaoParcelas(periodo.inicio)}${periodo.mesFim !== periodo.mesInicio ? ' a ' + rotuloMesProvisaoParcelas(periodo.fim) : ''}`
+  };
+}
+
+function filtrarLinhasProvisaoParcelas(dados, periodo) {
+  const permitidos = new Set(['boleto', 'cupom fiscal', 'nota de debito', 'outros']);
+  const contadores = { total: dados.length, foraCompetencia: 0, tipoExcluido: 0, vencimentoMesmoMes: 0, liquidacaoMesmoMes: 0, semData: 0, selecionadas: 0 };
+  const linhas = dados.filter(r => {
+    const mesEmissao = chaveMesProvisaoParcelas(r[COLS.EMISSAO]);
+    const mesVencimento = chaveMesProvisaoParcelas(r[COLS.VENCIMENTO]);
+    const mesLiquidacao = chaveMesProvisaoParcelas(r[COLS.LIQUIDACAO]);
+    if (!mesEmissao || !mesVencimento) { contadores.semData++; return false; }
+    if (mesEmissao < periodo.mesInicio || mesEmissao > periodo.mesFim) { contadores.foraCompetencia++; return false; }
+    if (!permitidos.has(normalizarTexto(r[COLS.TIPO_DOC]))) { contadores.tipoExcluido++; return false; }
+    if (mesVencimento <= mesEmissao) { contadores.vencimentoMesmoMes++; return false; }
+    if (mesLiquidacao && mesLiquidacao === mesEmissao) { contadores.liquidacaoMesmoMes++; return false; }
+    contadores.selecionadas++;
+    return true;
+  });
+  return { linhas, contadores };
+}
+
+async function processarProvisaoParcelas(files) {
+  if (!grupoAtivo || !modoPermiteProvisaoParcelas()) {
+    mostrarMsgProvisaoParcelas('As provisões ficam disponíveis apenas para Parcelas de Títulos e Parcelas com Numerários.', 'warn');
+    return;
+  }
+  iniciarProgressoImportacao('Lendo provisões de parcelas...');
+  try {
+    const modo = modoImportacaoDoGrupo();
+    const layout = layoutImportacaoDoGrupo();
+    selecionarModoImportacaoPagamentos(modo, layout);
+    const resultados = await Promise.all(files.map(async file => {
+      const wb = await lerWorkbookArquivoAsync(file, p => atualizarProgressoImportacao(p, 'Lendo provisões de parcelas...', file.name));
+      const periodo = periodoCompetenciaPlanilha(wb);
+      const leitura = linhasPlanilhaTitulos(wb, layout);
+      registrarMapaEmpresasImportadas(leitura.dados);
+      const dados = modo === 'parcelas_numerarios' ? leitura.dados.map(prepararLinhaParcelasNumerarios) : leitura.dados;
+      const filtrado = filtrarLinhasProvisaoParcelas(dados, periodo);
+      return {
+        arquivo: file.name,
+        periodo,
+        contadores: filtrado.contadores,
+        linhas: filtrado.linhas.map(r => linhaProvisaoParcelas(r, periodo, file.name)).filter(Boolean)
+      };
+    }));
+    provisaoParcelasTemp = resultados.flatMap(r => r.linhas);
+    infoProvisaoParcelasTemp = { arquivos: resultados.map(r => r.arquivo), resultados };
+    renderProvisaoParcelas();
+    mostrarMsgProvisaoParcelas(`${provisaoParcelasTemp.length} lançamento${provisaoParcelasTemp.length !== 1 ? 's' : ''} de provisão selecionado${provisaoParcelasTemp.length !== 1 ? 's' : ''}.`, provisaoParcelasTemp.length ? 'ok' : 'warn');
+    finalizarProgressoImportacao('Provisões carregadas.');
+  } catch (err) {
+    mostrarMsgProvisaoParcelas('Erro ao importar provisões: ' + err.message, 'warn');
+    erroProgressoImportacao('Erro ao carregar as provisões.');
+  }
+}
+
+function onFileChangeProvisaoParcelas(e) {
+  const files = Array.from(e.target.files || []);
+  e.target.value = '';
+  if (files.length > 0) processarProvisaoParcelas(files);
+}
+
+function onDropProvisaoParcelas(e) {
+  e.preventDefault();
+  e.currentTarget.classList.remove('drag');
+  const files = Array.from(e.dataTransfer.files || []);
+  if (files.length > 0) processarProvisaoParcelas(files);
+}
+
+function mostrarMsgProvisaoParcelas(texto, tipo = 'ok') {
+  const el = document.getElementById('msg-provisao-parcelas');
+  if (el) el.innerHTML = `<div class="alert alert-${tipo}" style="margin-bottom:16px">${escapeHtml(texto)}</div>`;
+}
+
+function limparProvisaoParcelas() {
+  provisaoParcelasTemp = [];
+  infoProvisaoParcelasTemp = null;
+  renderProvisaoParcelas();
+  mostrarMsgProvisaoParcelas('Provisões removidas desta sessão.', 'ok');
+}
+
+function renderProvisaoParcelas() {
+  const titulo = document.getElementById('titulo-provisao-parcelas');
+  if (titulo) titulo.textContent = 'Provisões de Parcelas de Títulos — ' + (grupoAtivo || '');
+  const resumo = document.getElementById('resumo-provisao-parcelas');
+  const acoes = document.getElementById('acoes-provisao-parcelas');
+  const preview = document.getElementById('preview-provisao-parcelas');
+  const tbody = document.getElementById('tbody-provisao-parcelas');
+  if (!resumo || !acoes || !preview || !tbody) return;
+  if (!modoPermiteProvisaoParcelas()) {
+    resumo.innerHTML = '<div class="alert alert-warn">Esta tela é exclusiva de Parcelas de Títulos e Parcelas com Numerários.</div>';
+    acoes.style.display = 'none';
+    preview.style.display = 'none';
+    return;
+  }
+  if (!provisaoParcelasTemp.length) {
+    resumo.innerHTML = '<div class="card" style="margin-bottom:16px"><div class="empty">Nenhuma provisão de parcelas importada nesta sessão.</div></div>';
+    acoes.style.display = 'none';
+    preview.style.display = 'none';
+    return;
+  }
+  const total = arredondarMoeda(provisaoParcelasTemp.reduce((s, r) => s + r.valor, 0));
+  const empresas = new Set(provisaoParcelasTemp.map(r => r.empresa).filter(Boolean));
+  const semCodigo = provisaoParcelasTemp.filter(r => !r.debitoConta || !r.creditoConta).length;
+  const contadores = (infoProvisaoParcelasTemp?.resultados || []).reduce((acc, r) => {
+    Object.keys(r.contadores || {}).forEach(chave => { acc[chave] = (acc[chave] || 0) + r.contadores[chave]; });
+    return acc;
+  }, {});
+  resumo.innerHTML = `<div class="conciliacao-grid">
+    <div class="metric"><div class="metric-label">Lançamentos selecionados</div><div class="metric-value">${provisaoParcelasTemp.length}</div></div>
+    <div class="metric"><div class="metric-label">Total provisionado</div><div class="metric-value" style="font-size:18px">R$ ${fmtValor(total)}</div></div>
+    <div class="metric"><div class="metric-label">Empresas / unidades</div><div class="metric-value" style="font-size:18px">${empresas.size}</div></div>
+    <div class="metric"><div class="metric-label">Sem débito/crédito</div><div class="metric-value ${semCodigo ? 'warn' : 'ok'}">${semCodigo}</div></div>
+  </div>
+  <div class="alert alert-ok" style="margin-bottom:14px"><strong>Filtro aplicado:</strong> ${contadores.foraCompetencia || 0} fora da competência, ${contadores.tipoExcluido || 0} por tipo de documento, ${contadores.vencimentoMesmoMes || 0} com vencimento no mesmo mês e ${contadores.liquidacaoMesmoMes || 0} liquidados no mesmo mês.</div>
+  <div class="conciliacao-note" style="margin-bottom:14px">Arquivos: ${escapeHtml((infoProvisaoParcelasTemp?.arquivos || []).join(', '))}${provisaoParcelasTemp.length > 500 ? ' · Mostrando as primeiras 500 linhas na tela; a exportação inclui todas.' : ''}</div>`;
+  acoes.style.display = 'flex';
+  preview.style.display = '';
+  tbody.innerHTML = provisaoParcelasTemp.slice(0, 500).map((r, i) => `<tr class="${(!r.debitoConta || !r.creditoConta) ? 'sem-codigo' : ''}">
+    <td style="white-space:nowrap"><strong>${escapeHtml(r.competencia)}</strong></td>
+    <td style="white-space:nowrap">${escapeHtml(r.emissao)}</td>
+    <td style="white-space:nowrap">${escapeHtml(r.vencimento)}</td>
+    <td><input type="text" class="conta-autocomplete" style="width:115px" placeholder="${escapeAttr(r.debitoSugerido || 'Débito')}" value="${escapeAttr(r.debitoConta || '')}" data-idx="${i}" data-campo="debito" oninput="atualizarContaProvisaoParcelas(this); criarAutocompleteConta(this)" onblur="salvarRegraProvisaoParcelasLinha(${i})"></td>
+    <td><input type="text" class="conta-autocomplete" style="width:115px" placeholder="Crédito" value="${escapeAttr(r.creditoConta || '')}" data-idx="${i}" data-campo="credito" oninput="atualizarContaProvisaoParcelas(this); criarAutocompleteConta(this)" onblur="salvarRegraProvisaoParcelasLinha(${i})"></td>
+    <td style="text-align:right;white-space:nowrap">R$ ${fmtValor(r.valor)}</td>
+    <td>${escapeHtml(r.empresa || '')}</td><td>${escapeHtml(r.fornecedor || '')}</td>
+    <td>${escapeHtml([r.documento, r.numero].filter(Boolean).join(' - '))}</td>
+    <td title="${escapeAttr(r.complemento)}">${descTruncada(r.complemento)}</td>
+  </tr>`).join('');
+}
+
+function atualizarContaProvisaoParcelas(input) {
+  const item = provisaoParcelasTemp[Number(input.dataset.idx)];
+  if (!item) return;
+  if (input.dataset.campo === 'debito') item.debitoConta = input.value;
+  else item.creditoConta = input.value;
+}
+
+function salvarRegraProvisaoParcelasLinha(idx) {
+  const item = provisaoParcelasTemp[idx];
+  if (!item || !grupoAtivo) return;
+  const debito = obterCodigoContaParaDominio(item.debitoConta || '');
+  const credito = obterCodigoContaParaDominio(item.creditoConta || '');
+  if (!debito || !credito) return;
+  item.debitoConta = debito;
+  item.creditoConta = credito;
+  deparaProvisaoParcelas[grupoAtivo] = deparaProvisaoParcelas[grupoAtivo] || {};
+  deparaProvisaoParcelas[grupoAtivo][item.chave] = { debito, credito };
+  provisaoParcelasTemp.forEach(outro => {
+    if (outro !== item && outro.chave === item.chave) {
+      outro.debitoConta = debito;
+      outro.creditoConta = credito;
+    }
+  });
+  salvarStorage();
+  renderProvisaoParcelas();
+}
+
+function aplicarRegrasSalvasProvisaoParcelas() {
+  let aplicadas = 0;
+  provisaoParcelasTemp.forEach(item => {
+    const regra = encontrarRegraProvisaoParcelas(item.forn, item.plano, item.tipoDoc, item.historico, item.escopo);
+    if (regra && (!item.debitoConta || !item.creditoConta)) {
+      item.debitoConta = regra.debito || item.debitoConta;
+      item.creditoConta = regra.credito || item.creditoConta;
+      aplicadas++;
+    }
+  });
+  renderProvisaoParcelas();
+  mostrarMsgProvisaoParcelas(aplicadas ? `${aplicadas} linha${aplicadas !== 1 ? 's' : ''} preenchida${aplicadas !== 1 ? 's' : ''} com regras salvas.` : 'Nenhuma regra salva encontrada para as linhas pendentes.', aplicadas ? 'ok' : 'warn');
+}
+
+function exportarProvisaoParcelas() {
+  if (!provisaoParcelasTemp.length) {
+    mostrarMsgProvisaoParcelas('Importe a planilha antes de exportar.', 'warn');
+    return;
+  }
+  const semCodigo = provisaoParcelasTemp.filter(r => !obterCodigoContaParaDominio(r.debitoConta) || !obterCodigoContaParaDominio(r.creditoConta)).length;
+  if (semCodigo) {
+    mostrarMsgProvisaoParcelas(`Ainda existem ${semCodigo} lançamento${semCodigo !== 1 ? 's' : ''} sem débito e/ou crédito.`, 'warn');
+    return;
+  }
+  const linhas = provisaoParcelasTemp.map(r => linhaDominio(r.data, obterCodigoContaParaDominio(r.debitoConta), obterCodigoContaParaDominio(r.creditoConta), r.valor, r.complemento, r.empresa, ''));
+  linhas.forEach(l => { l[6] = ''; });
+  if (linhas.length) linhas[0][6] = 1;
+  const wb = XLSX.utils.book_new();
+  adicionarAbasDominioExportacao(wb, linhas, grupoUsaNumerariosParcelas());
+  const data = new Date().toLocaleDateString('pt-BR').replace(/\//g, '-');
+  XLSX.writeFile(wb, `Dominio_Provisoes_Parcelas_${grupoAtivo}_${data}.xlsx`);
 }
 
 function prepararPagamentosImportados(dados, abrirTelaPendencias = true) {
@@ -2171,7 +2518,7 @@ function renderConciliacaoBancaria() {
 
 function grupoPodeRecebimentosRateio() {
   const modo = modoImportacaoDoGrupo();
-  return modo === 'rateio' || modo === 'parcelas_numerarios';
+  return modoUsaFluxoRateio(modo) || modo === 'parcelas_numerarios';
 }
 
 function grupoPodeRecebimentosSeparados() {
@@ -2672,9 +3019,11 @@ function resumoRecebimentosRateio() {
 }
 
 function adicionarGrupoConciliacaoRecebimento(mapa, chave, valor, dados = {}) {
-  const atual = mapa.get(chave) || { chave, valor: 0, qtd: 0, ...dados };
+  const { item, ...metadados } = dados;
+  const atual = mapa.get(chave) || { chave, valor: 0, qtd: 0, itens: [], ...metadados };
   atual.valor = arredondarMoeda(atual.valor + arredondarMoeda(valor));
   atual.qtd += 1;
+  if (item) atual.itens.push(item);
   mapa.set(chave, atual);
 }
 
@@ -2722,10 +3071,18 @@ function resumoConciliacaoRecebimentosNumerarios() {
     if (origem.includes('cart')) {
       const categoria = categoriaCartaoConciliacao(r.conciliacaoCategoria || r.tipo || r.historico);
       const chave = [dataKey(r.data), contaNorm, categoria].join('|');
-      adicionarGrupoConciliacaoRecebimento(cartoesPlanilha, chave, r.valor, { data: dataKey(r.data), conta, categoria });
+      adicionarGrupoConciliacaoRecebimento(cartoesPlanilha, chave, r.valor, { data: dataKey(r.data), conta, categoria, item: {
+        data: dataKey(r.data), valor: r.valor, conta, empresaBanco: r.empresaBanco, centroCusto: r.centroCusto,
+        tipo: r.tipo, historico: r.historico, plano: r.plano, origem: r.origem,
+        arquivoOrigem: r.arquivoOrigem, linhaOrigem: r.linhaOrigem
+      } });
     } else if (origem.includes('titulo')) {
       const chave = [dataKey(r.data), contaNorm].join('|');
-      adicionarGrupoConciliacaoRecebimento(titulosPlanilha, chave, r.valor, { data: dataKey(r.data), conta });
+      adicionarGrupoConciliacaoRecebimento(titulosPlanilha, chave, r.valor, { data: dataKey(r.data), conta, item: {
+        data: dataKey(r.data), valor: r.valor, conta, empresaBanco: r.empresaBanco, centroCusto: r.centroCusto,
+        tipo: r.tipo, historico: r.historico, plano: r.plano, origem: r.origem,
+        arquivoOrigem: r.arquivoOrigem, linhaOrigem: r.linhaOrigem
+      } });
     }
   });
 
@@ -2737,10 +3094,18 @@ function resumoConciliacaoRecebimentosNumerarios() {
     if (tipo.includes('parcelas de cartoes')) {
       const categoria = categoriaCartaoConciliacao(m.complemento || m.historico);
       const chave = [dataKey(m.data), contaNorm, categoria].join('|');
-      adicionarGrupoConciliacaoRecebimento(cartoesExtrato, chave, m.valor, { data: dataKey(m.data), conta, categoria });
+      adicionarGrupoConciliacaoRecebimento(cartoesExtrato, chave, m.valor, { data: dataKey(m.data), conta, categoria, item: {
+        data: dataKey(m.data), valor: m.valor, conta, tipo: m.tipoConciliacao,
+        historico: [m.historico, m.complemento].filter(Boolean).join(' - '), origem: 'Extrato bancário',
+        arquivoOrigem: m.arquivoOrigem, linhaOrigem: m.linhaOrigem
+      } });
     } else if (tipo.includes('parcelas de titulos')) {
       const chave = [dataKey(m.data), contaNorm].join('|');
-      adicionarGrupoConciliacaoRecebimento(titulosExtrato, chave, m.valor, { data: dataKey(m.data), conta });
+      adicionarGrupoConciliacaoRecebimento(titulosExtrato, chave, m.valor, { data: dataKey(m.data), conta, item: {
+        data: dataKey(m.data), valor: m.valor, conta, tipo: m.tipoConciliacao,
+        historico: [m.historico, m.complemento].filter(Boolean).join(' - '), origem: 'Extrato bancário',
+        arquivoOrigem: m.arquivoOrigem, linhaOrigem: m.linhaOrigem
+      } });
     }
   });
 
@@ -2757,6 +3122,94 @@ function resumoConciliacaoRecebimentosNumerarios() {
   };
 }
 
+function fecharDetalhesPendenciasRecebimentos() {
+  document.getElementById('modal-detalhes-pendencias-recebimentos')?.remove();
+}
+
+function filtrarDetalhesPendenciasRecebimentos(input) {
+  const modal = input?.closest('#modal-detalhes-pendencias-recebimentos');
+  if (!modal) return;
+  const termo = normalizarTexto(input.value);
+  const linhas = [...modal.querySelectorAll('tbody tr[data-search]')];
+  let visiveis = 0;
+  linhas.forEach(linha => {
+    const exibir = !termo || linha.dataset.search.includes(termo);
+    linha.style.display = exibir ? '' : 'none';
+    if (exibir) visiveis++;
+  });
+  const status = modal.querySelector('[data-status-detalhes]');
+  if (status) status.textContent = `${visiveis} de ${linhas.length} lançamento${linhas.length !== 1 ? 's' : ''} exibido${visiveis !== 1 ? 's' : ''}`;
+}
+
+function abrirPendenciasRecebimentosNumerarios(tipo) {
+  const resumo = resumoConciliacaoRecebimentosNumerarios();
+  const dados = tipo === 'cartoes' ? resumo?.cartoes : resumo?.titulos;
+  if (!dados || dados.pendentes.length === 0) return;
+  fecharDetalhesPendenciasRecebimentos();
+  const registros = [];
+  dados.pendentes.forEach(grupo => {
+    const somentePlanilha = !!grupo.planilha && !grupo.extrato;
+    const somenteExtrato = !grupo.planilha && !!grupo.extrato;
+    const motivo = somentePlanilha
+      ? 'Não encontrado no extrato'
+      : somenteExtrato
+        ? 'Existe somente no extrato'
+        : `Total do grupo difere em R$ ${fmtValor(Math.abs(grupo.diferenca))}`;
+    const itens = grupo.planilha?.itens?.length ? grupo.planilha.itens : (grupo.extrato?.itens || []);
+    itens.forEach(item => registros.push({
+      ...item,
+      motivo,
+      diferencaGrupo: grupo.diferenca,
+      valorPlanilhaGrupo: grupo.valorPlanilha,
+      valorExtratoGrupo: grupo.valorExtrato
+    }));
+  });
+  const valorData = valor => {
+    const [dia, mes, ano] = String(valor || '').split('/').map(Number);
+    return ano && mes && dia ? Date.UTC(ano, mes - 1, dia) : 0;
+  };
+  registros.sort((a, b) => valorData(a.data) - valorData(b.data) || Number(a.linhaOrigem || 0) - Number(b.linhaOrigem || 0));
+  const linhas = registros.map(item => {
+    const origemLinha = [item.arquivoOrigem, item.linhaOrigem ? `linha ${item.linhaOrigem}` : ''].filter(Boolean).join(' · ');
+    const busca = normalizarTexto([
+      item.data, item.conta, item.empresaBanco, item.centroCusto, item.tipo,
+      item.historico, item.plano, item.valor, item.motivo, origemLinha
+    ].join(' '));
+    return `<tr data-search="${escapeAttr(busca)}">
+      <td style="white-space:nowrap"><strong>${escapeHtml(item.data || '')}</strong></td>
+      <td>${escapeHtml(item.conta || '')}</td>
+      <td>${escapeHtml(item.empresaBanco || '')}</td>
+      <td>${escapeHtml(item.centroCusto || '')}</td>
+      <td><div class="cell-main">${escapeHtml(item.tipo || item.origem || '')}</div><div class="cell-subtle">${escapeHtml(item.plano || '')}</div></td>
+      <td title="${escapeAttr(item.historico || '')}">${descTruncada(item.historico || '')}</td>
+      <td style="text-align:right;white-space:nowrap"><strong>R$ ${fmtValor(item.valor)}</strong></td>
+      <td><span class="conciliacao-status warn">${escapeHtml(item.motivo)}</span></td>
+      <td><div class="cell-subtle">${escapeHtml(origemLinha)}</div></td>
+    </tr>`;
+  }).join('');
+  const rotulo = tipo === 'cartoes' ? 'cartões' : 'títulos recebidos';
+  const modal = document.createElement('div');
+  modal.id = 'modal-detalhes-pendencias-recebimentos';
+  modal.style.cssText = 'position:fixed;inset:0;background:rgba(15,23,42,.58);display:flex;align-items:center;justify-content:center;z-index:10030;padding:12px';
+  modal.innerHTML = `<div style="background:var(--bg);border-radius:var(--radius);box-shadow:0 16px 48px rgba(0,0,0,.28);width:min(1500px,calc(100vw - 24px));max-height:94vh;display:flex;flex-direction:column">
+    <div style="padding:18px 22px;border-bottom:1px solid var(--border);display:flex;align-items:flex-start;justify-content:space-between;gap:16px">
+      <div><h3 style="margin-bottom:4px">Lançamentos pendentes de ${escapeHtml(rotulo)}</h3><div class="conciliacao-note">${dados.pendentes.length} grupo${dados.pendentes.length !== 1 ? 's' : ''} pendente${dados.pendentes.length !== 1 ? 's' : ''}. Os dados abaixo vieram da planilha importada e permanecem como base dos lançamentos.</div></div>
+      <button class="btn btn-sm" onclick="fecharDetalhesPendenciasRecebimentos()">Fechar</button>
+    </div>
+    <div style="padding:12px 22px;border-bottom:1px solid var(--border);display:grid;grid-template-columns:minmax(240px,1fr) auto;gap:12px;align-items:center">
+      <input type="search" placeholder="Pesquisar data, unidade, histórico, plano ou valor..." oninput="filtrarDetalhesPendenciasRecebimentos(this)" autocomplete="off">
+      <div class="grupo-info" data-status-detalhes>${registros.length} lançamento${registros.length !== 1 ? 's' : ''}</div>
+    </div>
+    <div style="padding:0 22px 18px;overflow:auto"><div class="table-wrap table-scroll"><table>
+      <thead><tr><th>Data</th><th>Conta</th><th>Empresa</th><th>Unidade</th><th>Tipo / Plano</th><th>Histórico</th><th style="text-align:right">Valor</th><th>Motivo</th><th>Origem</th></tr></thead>
+      <tbody>${linhas}</tbody>
+    </table></div></div>
+  </div>`;
+  modal.addEventListener('click', event => { if (event.target === modal) fecharDetalhesPendenciasRecebimentos(); });
+  document.body.appendChild(modal);
+  setTimeout(() => modal.querySelector('input[type=search]')?.focus(), 0);
+}
+
 function renderResumoConciliacaoRecebimentosNumerarios() {
   const el = document.getElementById('resumo-conciliacao-recebimentos');
   if (!el) return;
@@ -2769,10 +3222,13 @@ function renderResumoConciliacaoRecebimentosNumerarios() {
     el.innerHTML = `<div class="alert alert-warn" style="margin:14px 0"><strong>Conferência com o extrato pendente.</strong> Importe o extrato de todas as contas e caixas informados nos recebimentos antes de exportar.</div>`;
     return;
   }
-  const linha = (rotulo, dados) => {
+  const linha = (rotulo, dados, tipo) => {
     const diferenca = arredondarMoeda(dados.totalPlanilha - dados.totalExtrato);
     const ok = dados.pendentes.length === 0;
-    return `<tr><td><strong>${escapeHtml(rotulo)}</strong></td><td style="text-align:right">R$ ${fmtValor(dados.totalPlanilha)}</td><td style="text-align:right">R$ ${fmtValor(dados.totalExtrato)}</td><td style="text-align:right">R$ ${fmtValor(diferenca)}</td><td>${dados.conciliados} grupo${dados.conciliados !== 1 ? 's' : ''} conciliado${dados.conciliados !== 1 ? 's' : ''} · <span class="conciliacao-status ${ok ? 'ok' : 'warn'}">${dados.pendentes.length} pendente${dados.pendentes.length !== 1 ? 's' : ''}</span></td></tr>`;
+    const status = ok
+      ? '<span class="conciliacao-status ok">0 pendentes</span>'
+      : `<button type="button" class="conciliacao-status warn" onclick="abrirPendenciasRecebimentosNumerarios('${tipo}')" title="Abrir os lançamentos pendentes">${dados.pendentes.length} pendente${dados.pendentes.length !== 1 ? 's' : ''}</button>`;
+    return `<tr><td><strong>${escapeHtml(rotulo)}</strong></td><td style="text-align:right">R$ ${fmtValor(dados.totalPlanilha)}</td><td style="text-align:right">R$ ${fmtValor(dados.totalExtrato)}</td><td style="text-align:right">R$ ${fmtValor(diferenca)}</td><td>${dados.conciliados} grupo${dados.conciliados !== 1 ? 's' : ''} conciliado${dados.conciliados !== 1 ? 's' : ''} · ${status}</td></tr>`;
   };
   const contas = resumo.contasAusentes.length
     ? `<div class="alert alert-warn" style="margin-top:10px"><strong>Extratos que ainda faltam:</strong> ${resumo.contasAusentes.map(escapeHtml).join(', ')}. Movimentos de depósito em outra conta não substituem o extrato desta conta/caixa.</div>`
@@ -2785,7 +3241,7 @@ function renderResumoConciliacaoRecebimentosNumerarios() {
     ? `<div class="conciliacao-note" style="margin-top:10px"><strong>Divergências de cartões:</strong> ${divergenciasCartoes.join('<br>')}</div>`
     : '';
   el.innerHTML = `<div class="alert ${resumo.bate ? 'alert-ok' : 'alert-warn'}" style="margin:14px 0 8px"><strong>${resumo.bate ? 'Recebimentos conferidos com o extrato.' : 'Existem recebimentos pendentes de conferência.'}</strong> O confronto usa data, conta e tipo; cartões também usam adquirente/bandeira.</div>
-    <div class="table-wrap"><table><thead><tr><th>Origem</th><th style="text-align:right">Planilhas</th><th style="text-align:right">Extrato</th><th style="text-align:right">Diferença</th><th>Resultado</th></tr></thead><tbody>${linha('Cartões', resumo.cartoes)}${linha('Títulos recebidos', resumo.titulos)}</tbody></table></div>${detalhes}${contas}`;
+    <div class="table-wrap"><table><thead><tr><th>Origem</th><th style="text-align:right">Planilhas</th><th style="text-align:right">Extrato</th><th style="text-align:right">Diferença</th><th>Resultado</th></tr></thead><tbody>${linha('Cartões', resumo.cartoes, 'cartoes')}${linha('Títulos recebidos', resumo.titulos, 'titulos')}</tbody></table></div>${detalhes}${contas}`;
 }
 
 function bloquearExportacaoRecebimentosSemConciliacao() {
@@ -5043,7 +5499,8 @@ function renderGrupos() {
             ? `<button class="btn btn-sm btn-pagamentos-numerarios" onclick="mostrarTela('tela-importar')">⬇ Pagamentos</button>
                <button class="btn btn-sm btn-recebimentos-numerarios" onclick="mostrarTela('tela-recebimentos')">⬆ Recebimentos</button>`
             : `<button class="btn btn-sm btn-blue" onclick="mostrarTela('tela-importar')">⬆ Importar planilha</button>`}
-          ${modoGrupo === 'rateio' ? `<button class="btn btn-sm" onclick="mostrarTela('tela-provisao-rateio')">Provisão</button>` : ''}
+          ${modoGrupo === 'aromas' ? `<button class="btn btn-sm" onclick="mostrarTela('tela-provisao-rateio')">Provisão</button>` : ''}
+          ${(modoGrupo === 'parcelas' || modoGrupo === 'parcelas_numerarios') ? `<button class="btn btn-sm" onclick="mostrarTela('tela-provisao-parcelas')">Provisões</button>` : ''}
         ` : ''}
         <button class="btn btn-sm btn-danger" onclick="excluirGrupo('${g}')">🗑</button>
       </div>
@@ -5063,19 +5520,23 @@ function editarGrupoCadastro(g) {
     if (!nomeLimpo) { showMsg('Nome do grupo não pode ficar em branco.', 'warn'); return; }
     if (nomeLimpo !== atual && grupos.includes(nomeLimpo)) { showMsg('Já existe um grupo com esse nome.', 'warn'); return; }
     const modoAtual = valorOpcaoFormatoGrupo(atual);
-    const novoModoRaw = prompt('Formato do grupo: use parcelas, parcelas_numerarios ou rateio. Para o layout original, acrescente __f360_original.', modoAtual);
+    const novoModoRaw = prompt('Formato do grupo: use parcelas, parcelas_numerarios, rateio ou aromas. Para o layout original, acrescente __f360_original.', modoAtual);
     if (novoModoRaw === null) return;
     const novoFormato = interpretarOpcaoFormatoPagamento(novoModoRaw);
     if (nomeLimpo !== atual) {
       grupos = grupos.map(x => x === atual ? nomeLimpo : x);
       depara[nomeLimpo] = depara[atual] || {};
       deparaRecebimentos[nomeLimpo] = deparaRecebimentos[atual] || {};
+      deparaProvisao[nomeLimpo] = deparaProvisao[atual] || {};
+      deparaProvisaoParcelas[nomeLimpo] = deparaProvisaoParcelas[atual] || {};
       planoContas[nomeLimpo] = planoContas[atual] || [];
       contasSemConciliacao[nomeLimpo] = contasSemConciliacao[atual] || {};
       configGrupos[nomeLimpo] = configGrupos[atual] || {};
       deparaSaidasExtrato[nomeLimpo] = deparaSaidasExtrato[atual] || {};
       delete depara[atual];
       delete deparaRecebimentos[atual];
+      delete deparaProvisao[atual];
+      delete deparaProvisaoParcelas[atual];
       delete planoContas[atual];
       delete contasSemConciliacao[atual];
       delete configGrupos[atual];
@@ -5115,6 +5576,8 @@ function limparSessaoImportacao() {
   infoRecebimentosRateioTemp = null;
   provisaoRateioTemp = [];
   infoProvisaoRateioTemp = null;
+  provisaoParcelasTemp = [];
+  infoProvisaoParcelasTemp = null;
   mostrarLancamentosConciliados = false;
   mostrarPendenciasPreenchidas = false;
   filtroPendenciasConciliacaoTemp = '';
@@ -5186,6 +5649,8 @@ function excluirGrupo(g) {
     grupos = grupos.filter(x => x !== g);
     delete depara[g];
     delete deparaRecebimentos[g];
+    delete deparaProvisao[g];
+    delete deparaProvisaoParcelas[g];
     delete configGrupos[g];
     delete deparaSaidasExtrato[g];
     if (grupoAtivo === g) grupoAtivo = null;
@@ -5798,7 +6263,7 @@ function adicionarRecebimentosRateio(resultados) {
 async function processarArquivosImportacao(files) {
   if (!grupoAtivo) { alert('Selecione um grupo antes de importar.'); erroProgressoImportacao('Selecione um grupo antes de importar.'); return; }
   selecionarModoImportacaoPagamentos(modoImportacaoDoGrupo(grupoAtivo));
-  if (modoImportacaoPagamentos !== 'rateio') {
+  if (!modoUsaFluxoRateio(modoImportacaoPagamentos)) {
     const file = files[0];
     const reader = new FileReader();
     reader.onprogress = function(e) {

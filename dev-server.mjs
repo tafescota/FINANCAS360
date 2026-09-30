@@ -13,6 +13,7 @@ const baseVazia = {
   depara: {},
   deparaRecebimentos: {},
   deparaProvisao: {},
+  deparaProvisaoParcelas: {},
   planoContas: {},
   contasSemConciliacao: {},
   configGrupos: {},
