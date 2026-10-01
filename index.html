@@ -2057,6 +2057,7 @@ function configuracaoPadraoProvisaoParcelas(nome = grupoAtivo) {
   const cpSimone = normalizarTexto(nome).includes('cp simone');
   return {
     tiposIncluidos: cpSimone ? ['Boleto', 'Cupom Fiscal', 'Nota de Débito', 'Outros'] : [...TIPOS_DOCUMENTO_PROVISAO],
+    fornecedoresConsiderados: null,
     fornecedoresExcluidos: cpSimone ? [
       'DARF',
       'ICMS',
@@ -2108,6 +2109,7 @@ function configuracaoProvisaoParcelasGrupo(nome = grupoAtivo) {
     : [...new Set([...padrao.fornecedoresExcluidos, ...fornecedoresSalvos])];
   return {
     tiposIncluidos: Array.isArray(salva.tiposIncluidos) ? salva.tiposIncluidos : padrao.tiposIncluidos,
+    fornecedoresConsiderados: Array.isArray(salva.fornecedoresConsiderados) ? salva.fornecedoresConsiderados : padrao.fornecedoresConsiderados,
     fornecedoresExcluidos,
     considerarCompetenciaEmissao: salva.considerarCompetenciaEmissao === undefined ? padrao.considerarCompetenciaEmissao : !!salva.considerarCompetenciaEmissao,
     desconsiderarValorZerado: salva.desconsiderarValorZerado === undefined ? padrao.desconsiderarValorZerado : !!salva.desconsiderarValorZerado,
@@ -2122,10 +2124,11 @@ function configuracaoProvisaoParcelasGrupo(nome = grupoAtivo) {
 
 function filtrarLinhasProvisaoParcelas(dados, periodo, configuracao = configuracaoProvisaoParcelasGrupo()) {
   const permitidos = new Set((configuracao.tiposIncluidos || []).map(normalizarTexto));
+  const fornecedoresConsiderados = (configuracao.fornecedoresConsiderados || []).map(normalizarTexto).filter(Boolean);
   const fornecedoresExcluidos = (configuracao.fornecedoresExcluidos || []).map(normalizarTexto).filter(Boolean);
   const fornecedoresBoticario = (configuracao.fornecedoresBoticario || []).map(normalizarTexto).filter(Boolean);
   const fornecedoresNotaDebitoEspecial = (configuracao.fornecedoresNotaDebitoEspecial || []).map(normalizarTexto).filter(Boolean);
-  const contadores = { total: dados.length, foraCompetencia: 0, tipoExcluido: 0, fornecedorExcluido: 0, vencimentoMesmoMes: 0, liquidacaoMesmoMes: 0, semData: 0, valorZerado: 0, selecionadas: 0, boticarioNotaFiscalServico: 0, boticarioNotaDebito: 0, notaFiscalServicoPrestado: 0 };
+  const contadores = { total: dados.length, foraCompetencia: 0, tipoExcluido: 0, fornecedorExcluido: 0, naoConsiderado: 0, vencimentoMesmoMes: 0, liquidacaoMesmoMes: 0, semData: 0, valorZerado: 0, selecionadas: 0, boticarioNotaFiscalServico: 0, boticarioNotaDebito: 0, notaFiscalServicoPrestado: 0 };
   const linhas = [];
   const desconsideradas = [];
   const boticarioNotaFiscalServico = [];
@@ -2161,6 +2164,10 @@ function filtrarLinhasProvisaoParcelas(dados, periodo, configuracao = configurac
     }
     if (fornecedoresExcluidos.some(termo => fornecedor.includes(termo) || plano.includes(termo))) {
       desconsiderar(r, 'Fornecedor ou plano de contas desconsiderado pela regra do grupo', 'fornecedorExcluido');
+      return;
+    }
+    if (fornecedoresConsiderados.length && !fornecedoresConsiderados.some(termo => fornecedor.includes(termo) || plano.includes(termo))) {
+      desconsiderar(r, 'Fornecedor ou plano de contas não incluído na lista de considerados', 'naoConsiderado');
       return;
     }
     if (!mesEmissao) { desconsiderar(r, 'Sem data de emissão válida', 'semData'); return; }
@@ -2224,20 +2231,26 @@ function fecharConfiguracaoProvisaoParcelas() {
   document.getElementById('modal-config-provisao-parcelas')?.remove();
 }
 
+function fornecedoresPlanosConsideradosSugeridos() {
+  const nomes = new Map();
+  provisaoParcelasTemp.forEach(item => [item.fornecedor || item.forn, item.plano].forEach(valor => {
+    const nome = limparTextoECD(valor);
+    const chave = normalizarTexto(nome);
+    if (chave && !nomes.has(chave)) nomes.set(chave, nome);
+  }));
+  return [...nomes.values()].sort((a, b) => a.localeCompare(b, 'pt-BR'));
+}
+
 function preencherFormularioConfiguracaoProvisaoParcelas(configuracao) {
   const modal = document.getElementById('modal-config-provisao-parcelas');
   if (!modal) return;
   const tipos = new Set((configuracao.tiposIncluidos || []).map(normalizarTexto));
   modal.querySelectorAll('[data-tipo-provisao]').forEach(input => { input.checked = tipos.has(normalizarTexto(input.value)); });
+  const considerados = Array.isArray(configuracao.fornecedoresConsiderados) ? configuracao.fornecedoresConsiderados : fornecedoresPlanosConsideradosSugeridos();
+  modal.querySelector('[data-fornecedores-considerados]').value = considerados.join('\n');
   modal.querySelector('[data-fornecedores-excluidos]').value = (configuracao.fornecedoresExcluidos || []).join('\n');
   modal.querySelector('[data-fornecedores-boticario]').value = (configuracao.fornecedoresBoticario || []).join('\n');
   modal.querySelector('[data-fornecedores-nota-debito]').value = (configuracao.fornecedoresNotaDebitoEspecial || []).join('\n');
-  modal.querySelector('[data-considerar-competencia]').checked = !!configuracao.considerarCompetenciaEmissao;
-  modal.querySelector('[data-desconsiderar-zero]').checked = !!configuracao.desconsiderarValorZerado;
-  modal.querySelector('[data-aceitar-sem-vencimento]').checked = !!configuracao.aceitarSemVencimento;
-  modal.querySelector('[data-incluir-nota-debito-provisoes]').checked = !!configuracao.incluirNotaDebitoEspecialEmProvisoes;
-  modal.querySelector('[data-excluir-vencimento]').checked = !!configuracao.excluirVencimentoAteEmissao;
-  modal.querySelector('[data-excluir-liquidacao]').checked = !!configuracao.excluirLiquidacaoMesmoMes;
 }
 
 function restaurarPadraoConfiguracaoProvisaoParcelas() {
@@ -2259,19 +2272,11 @@ function abrirConfiguracaoProvisaoParcelas() {
     <div style="padding:18px 20px;overflow:auto;display:grid;gap:18px">
       <div><div class="metric-label" style="margin-bottom:8px">Tipos de documento que entram em Provisões</div><div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:8px">${tipos}</div></div>
       <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:16px">
+        <label class="filtro-lote-field"><span>Fornecedores ou planos considerados em Provisões</span><textarea data-fornecedores-considerados rows="8" placeholder="Um termo por linha"></textarea><small class="conciliacao-note">A lista é preenchida com os nomes atualmente considerados. Você pode remover ou acrescentar termos. Com a lista vazia, nenhum filtro adicional de inclusão é aplicado.</small></label>
         <label class="filtro-lote-field"><span>Fornecedores ou planos desconsiderados</span><textarea data-fornecedores-excluidos rows="6" placeholder="Um termo por linha, por exemplo: DARF"></textarea><small class="conciliacao-note">A busca considera o termo dentro do nome do fornecedor e do plano de contas.</small></label>
         <label class="filtro-lote-field"><span>Fornecedores de NFS Boticário</span><textarea data-fornecedores-boticario rows="6" placeholder="Um fornecedor ou termo por linha"></textarea><small class="conciliacao-note">Somente as Notas Fiscais de Serviço destes fornecedores irão para a aba do Boticário.</small></label>
         <label class="filtro-lote-field"><span>Fornecedores da aba Nota de Débito</span><textarea data-fornecedores-nota-debito rows="6" placeholder="Um fornecedor ou termo por linha"></textarea><small class="conciliacao-note">Notas de Débito destes fornecedores irão para a aba GB TECH/Boticário. Este cadastro não altera as Notas Fiscais de Serviço.</small></label>
       </div>
-      <div><div class="metric-label" style="margin-bottom:8px">Regras gerais aplicadas às Provisões</div><div style="display:grid;gap:10px;padding:12px;border:1px solid var(--border);border-radius:6px;background:var(--bg)">
-        <label style="display:flex;align-items:flex-start;gap:8px"><input type="checkbox" data-considerar-competencia> <span>Considerar somente emissões dentro da competência informada no arquivo</span></label>
-        <label style="display:flex;align-items:flex-start;gap:8px"><input type="checkbox" data-desconsiderar-zero> <span>Desconsiderar lançamentos com valor zerado</span></label>
-        <label style="display:flex;align-items:flex-start;gap:8px"><input type="checkbox" data-aceitar-sem-vencimento> <span>Aceitar lançamentos sem vencimento, usando a emissão como referência</span></label>
-        <label style="display:flex;align-items:center;gap:8px"><input type="checkbox" data-excluir-vencimento> Desconsiderar quando o vencimento estiver no mesmo mês ou antes da emissão</label>
-        <label style="display:flex;align-items:center;gap:8px"><input type="checkbox" data-excluir-liquidacao> Desconsiderar quando emissão e liquidação estiverem no mesmo mês</label>
-        <label style="display:flex;align-items:flex-start;gap:8px"><input type="checkbox" data-incluir-nota-debito-provisoes> <span>Incluir em Provisões as Notas de Débito dos fornecedores da aba especial</span></label>
-        <small class="conciliacao-note">A emissão precisa ser válida para gerar a data do lançamento. Desmarque ou marque as demais regras conforme a orientação da empresa.</small>
-      </div></div>
     </div>
     <div style="padding:14px 20px;border-top:1px solid var(--border);display:flex;justify-content:space-between;gap:10px;flex-wrap:wrap">
       <div><button class="btn" onclick="pedirSenha(restaurarPadraoConfiguracaoProvisaoParcelas)">Restaurar padrão deste grupo</button><div class="conciliacao-note" style="margin-top:5px">Exige senha administrativa.</div></div>
@@ -2292,19 +2297,21 @@ function salvarConfiguracaoProvisaoParcelas() {
     return;
   }
   const lista = atributo => String(modal.querySelector(atributo)?.value || '').split(/[;\n]+/).map(limparTextoECD).filter(Boolean);
+  const configuracaoAtual = configuracaoProvisaoParcelasGrupo();
   configGrupos[grupoAtivo] = configGrupos[grupoAtivo] || {};
   configGrupos[grupoAtivo].provisoesParcelas = {
     versaoFiltrosEditaveis: 1,
     tiposIncluidos,
+    fornecedoresConsiderados: lista('[data-fornecedores-considerados]'),
     fornecedoresExcluidos: lista('[data-fornecedores-excluidos]'),
     fornecedoresBoticario: lista('[data-fornecedores-boticario]'),
     fornecedoresNotaDebitoEspecial: lista('[data-fornecedores-nota-debito]'),
-    considerarCompetenciaEmissao: !!modal.querySelector('[data-considerar-competencia]')?.checked,
-    desconsiderarValorZerado: !!modal.querySelector('[data-desconsiderar-zero]')?.checked,
-    aceitarSemVencimento: !!modal.querySelector('[data-aceitar-sem-vencimento]')?.checked,
-    incluirNotaDebitoEspecialEmProvisoes: !!modal.querySelector('[data-incluir-nota-debito-provisoes]')?.checked,
-    excluirVencimentoAteEmissao: !!modal.querySelector('[data-excluir-vencimento]')?.checked,
-    excluirLiquidacaoMesmoMes: !!modal.querySelector('[data-excluir-liquidacao]')?.checked
+    considerarCompetenciaEmissao: configuracaoAtual.considerarCompetenciaEmissao,
+    desconsiderarValorZerado: configuracaoAtual.desconsiderarValorZerado,
+    aceitarSemVencimento: configuracaoAtual.aceitarSemVencimento,
+    incluirNotaDebitoEspecialEmProvisoes: configuracaoAtual.incluirNotaDebitoEspecialEmProvisoes,
+    excluirVencimentoAteEmissao: configuracaoAtual.excluirVencimentoAteEmissao,
+    excluirLiquidacaoMesmoMes: configuracaoAtual.excluirLiquidacaoMesmoMes
   };
   salvarStorage();
   fecharConfiguracaoProvisaoParcelas();
