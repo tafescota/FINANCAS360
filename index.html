@@ -356,7 +356,7 @@
     <div class="card" style="margin-bottom:16px">
       <div class="metric-label" style="margin-bottom:8px">Provisões por competência</div>
       <p class="conciliacao-note" style="margin-bottom:14px">
-        O sistema usa a competência informada no relatório e considera somente Boleto, Cupom Fiscal, Nota de Débito e Outros. Entram apenas documentos emitidos na competência cujo vencimento e eventual liquidação estejam em outro mês.
+        O sistema usa a competência informada no relatório e considera somente Boleto, Cupom Fiscal, Nota de Débito e Outros. Entram apenas documentos emitidos na competência cujo vencimento e eventual liquidação estejam em outro mês. Fornecedores com DARF, ICMS, DARE - ICMS, FGTS ou IRRF não entram.
       </p>
       <div class="drop-area" id="drop-area-provisao-parcelas" onclick="document.getElementById('file-input-provisao-parcelas').click()" ondragover="dragOver(event)" ondragleave="dragLeave(event)" ondrop="onDropProvisaoParcelas(event)">
         <div class="drop-icon">📄</div>
@@ -368,6 +368,7 @@
     <div id="resumo-provisao-parcelas"></div>
     <div id="acoes-provisao-parcelas" style="display:none;gap:10px;flex-wrap:wrap;margin:0 0 16px">
       <button class="btn btn-blue" onclick="exportarProvisaoParcelas()">⬇ Exportar provisões Domínio (.xlsx)</button>
+      <button class="btn btn-primary" onclick="abrirModalRegrasProvisaoParcelas()">Preencher regras pendentes</button>
       <button class="btn" onclick="aplicarRegrasSalvasProvisaoParcelas()">🔁 Reaplicar regras salvas</button>
       <button class="btn" onclick="limparProvisaoParcelas()">Limpar provisões</button>
     </div>
@@ -2023,7 +2024,8 @@ function linhaProvisaoParcelas(r, periodo, arquivoOrigem = '') {
 
 function filtrarLinhasProvisaoParcelas(dados, periodo) {
   const permitidos = new Set(['boleto', 'cupom fiscal', 'nota de debito', 'outros']);
-  const contadores = { total: dados.length, foraCompetencia: 0, tipoExcluido: 0, vencimentoMesmoMes: 0, liquidacaoMesmoMes: 0, semData: 0, selecionadas: 0 };
+  const fornecedoresExcluidos = ['darf', 'icms', 'dare - icms', 'fgts', 'irrf'];
+  const contadores = { total: dados.length, foraCompetencia: 0, tipoExcluido: 0, fornecedorExcluido: 0, vencimentoMesmoMes: 0, liquidacaoMesmoMes: 0, semData: 0, selecionadas: 0 };
   const linhas = dados.filter(r => {
     const mesEmissao = chaveMesProvisaoParcelas(r[COLS.EMISSAO]);
     const mesVencimento = chaveMesProvisaoParcelas(r[COLS.VENCIMENTO]);
@@ -2031,6 +2033,8 @@ function filtrarLinhasProvisaoParcelas(dados, periodo) {
     if (!mesEmissao || !mesVencimento) { contadores.semData++; return false; }
     if (mesEmissao < periodo.mesInicio || mesEmissao > periodo.mesFim) { contadores.foraCompetencia++; return false; }
     if (!permitidos.has(normalizarTexto(r[COLS.TIPO_DOC]))) { contadores.tipoExcluido++; return false; }
+    const fornecedor = normalizarTexto(r[COLS.FORNECEDOR]);
+    if (fornecedoresExcluidos.some(termo => fornecedor.includes(termo))) { contadores.fornecedorExcluido++; return false; }
     if (mesVencimento <= mesEmissao) { contadores.vencimentoMesmoMes++; return false; }
     if (mesLiquidacao && mesLiquidacao === mesEmissao) { contadores.liquidacaoMesmoMes++; return false; }
     contadores.selecionadas++;
@@ -2068,6 +2072,7 @@ async function processarProvisaoParcelas(files) {
     renderProvisaoParcelas();
     mostrarMsgProvisaoParcelas(`${provisaoParcelasTemp.length} lançamento${provisaoParcelasTemp.length !== 1 ? 's' : ''} de provisão selecionado${provisaoParcelasTemp.length !== 1 ? 's' : ''}.`, provisaoParcelasTemp.length ? 'ok' : 'warn');
     finalizarProgressoImportacao('Provisões carregadas.');
+    if (regrasPendentesProvisaoParcelas().length > 0) setTimeout(() => abrirModalRegrasProvisaoParcelas(), 0);
   } catch (err) {
     mostrarMsgProvisaoParcelas('Erro ao importar provisões: ' + err.message, 'warn');
     erroProgressoImportacao('Erro ao carregar as provisões.');
@@ -2132,7 +2137,7 @@ function renderProvisaoParcelas() {
     <div class="metric"><div class="metric-label">Empresas / unidades</div><div class="metric-value" style="font-size:18px">${empresas.size}</div></div>
     <div class="metric"><div class="metric-label">Sem débito/crédito</div><div class="metric-value ${semCodigo ? 'warn' : 'ok'}">${semCodigo}</div></div>
   </div>
-  <div class="alert alert-ok" style="margin-bottom:14px"><strong>Filtro aplicado:</strong> ${contadores.foraCompetencia || 0} fora da competência, ${contadores.tipoExcluido || 0} por tipo de documento, ${contadores.vencimentoMesmoMes || 0} com vencimento no mesmo mês e ${contadores.liquidacaoMesmoMes || 0} liquidados no mesmo mês.</div>
+  <div class="alert alert-ok" style="margin-bottom:14px"><strong>Filtro aplicado:</strong> ${contadores.foraCompetencia || 0} fora da competência, ${contadores.tipoExcluido || 0} por tipo de documento, ${contadores.fornecedorExcluido || 0} por fornecedor, ${contadores.vencimentoMesmoMes || 0} com vencimento no mesmo mês e ${contadores.liquidacaoMesmoMes || 0} liquidados no mesmo mês.</div>
   <div class="conciliacao-note" style="margin-bottom:14px">Arquivos: ${escapeHtml((infoProvisaoParcelasTemp?.arquivos || []).join(', '))}${provisaoParcelasTemp.length > 500 ? ' · Mostrando as primeiras 500 linhas na tela; a exportação inclui todas.' : ''}</div>`;
   acoes.style.display = 'flex';
   preview.style.display = '';
@@ -2174,6 +2179,127 @@ function salvarRegraProvisaoParcelasLinha(idx) {
   });
   salvarStorage();
   renderProvisaoParcelas();
+}
+
+function regrasPendentesProvisaoParcelas() {
+  const porChave = new Map();
+  provisaoParcelasTemp.forEach(item => {
+    const debito = obterCodigoContaParaDominio(item.debitoConta || '');
+    const credito = obterCodigoContaParaDominio(item.creditoConta || '');
+    if (debito && credito) return;
+    if (!porChave.has(item.chave)) porChave.set(item.chave, item);
+  });
+  return Array.from(porChave.values());
+}
+
+function fecharModalRegrasProvisaoParcelas() {
+  document.getElementById('modal-regras-provisao-parcelas')?.remove();
+}
+
+function filtrarModalRegrasProvisaoParcelas(input) {
+  const modal = input?.closest('#modal-regras-provisao-parcelas');
+  if (!modal) return;
+  const busca = normalizarTexto(input.value || '');
+  let visiveis = 0;
+  modal.querySelectorAll('tbody tr[data-search]').forEach(tr => {
+    const mostrar = !busca || (tr.dataset.search || '').includes(busca);
+    tr.style.display = mostrar ? '' : 'none';
+    if (mostrar) visiveis++;
+  });
+  const status = modal.querySelector('[data-status-regras-provisao]');
+  if (status) status.textContent = `${visiveis} de ${modal.querySelectorAll('tbody tr[data-search]').length} regras visíveis`;
+}
+
+function abrirModalRegrasProvisaoParcelas() {
+  fecharModalRegrasProvisaoParcelas();
+  const pendentes = regrasPendentesProvisaoParcelas();
+  if (!provisaoParcelasTemp.length) {
+    mostrarMsgProvisaoParcelas('Importe a planilha antes de preencher as regras.', 'warn');
+    return;
+  }
+  if (!pendentes.length) {
+    mostrarMsgProvisaoParcelas('Todas as regras de provisão já estão preenchidas.', 'ok');
+    return;
+  }
+  const modal = document.createElement('div');
+  modal.id = 'modal-regras-provisao-parcelas';
+  modal.style.cssText = 'position:fixed;inset:0;background:rgba(15,23,42,.58);display:flex;align-items:center;justify-content:center;z-index:10040;padding:12px';
+  const linhas = pendentes.map(item => {
+    const busca = normalizarTexto([item.empresa, item.fornecedor, item.plano, item.documento, item.historico].join(' '));
+    return `<tr data-search="${escapeAttr(busca)}" data-chave="${escapeAttr(item.chave)}">
+      <td>${escapeHtml(item.empresa || '')}</td>
+      <td><strong>${escapeHtml(item.fornecedor || '')}</strong></td>
+      <td>${escapeHtml(item.plano || '')}</td>
+      <td>${escapeHtml(item.documento || '')}</td>
+      <td title="${escapeAttr(item.historico || '')}">${descTruncada(item.historico || '')}</td>
+      <td><input type="text" class="conta-autocomplete" data-regra-campo="debito" value="${escapeAttr(item.debitoConta || '')}" placeholder="Conta de débito" oninput="criarAutocompleteConta(this)" style="width:145px"></td>
+      <td><input type="text" class="conta-autocomplete" data-regra-campo="credito" value="${escapeAttr(item.creditoConta || '')}" placeholder="Conta de crédito" oninput="criarAutocompleteConta(this)" style="width:145px"></td>
+    </tr>`;
+  }).join('');
+  modal.innerHTML = `<div style="background:var(--bg);border-radius:var(--radius);box-shadow:0 16px 48px rgba(0,0,0,.28);width:min(1500px,calc(100vw - 24px));max-height:94vh;display:flex;flex-direction:column">
+    <div style="padding:18px 20px 12px;border-bottom:1px solid var(--border)">
+      <div style="display:flex;align-items:center;justify-content:space-between;gap:14px">
+        <div><h3 style="margin:0 0 4px">Preencher regras das provisões</h3><div class="conciliacao-note">Uma regra preenchida será aplicada a todas as parcelas com a mesma combinação.</div></div>
+        <button class="btn btn-sm" onclick="fecharModalRegrasProvisaoParcelas()">Fechar</button>
+      </div>
+      <div style="display:flex;align-items:center;gap:12px;margin-top:14px;flex-wrap:wrap">
+        <input type="search" placeholder="Pesquisar empresa, fornecedor, plano, tipo ou histórico..." oninput="filtrarModalRegrasProvisaoParcelas(this)" style="flex:1;min-width:280px">
+        <span class="conciliacao-note" data-status-regras-provisao>${pendentes.length} de ${pendentes.length} regras visíveis</span>
+      </div>
+      <div class="alert alert-warn" data-msg-regras-provisao style="display:none;margin-top:12px;margin-bottom:0"></div>
+    </div>
+    <div class="table-wrap" style="overflow:auto;flex:1;margin:0;border:0;border-radius:0">
+      <table><thead><tr><th>Empresa</th><th>Fornecedor</th><th>Plano de contas</th><th>Documento</th><th>Histórico</th><th>Débito</th><th>Crédito</th></tr></thead><tbody>${linhas}</tbody></table>
+    </div>
+    <div style="padding:14px 20px;border-top:1px solid var(--border);display:flex;justify-content:flex-end;gap:10px">
+      <button class="btn" onclick="fecharModalRegrasProvisaoParcelas()">Cancelar</button>
+      <button class="btn btn-primary" onclick="salvarModalRegrasProvisaoParcelas()">Salvar regras e continuar</button>
+    </div>
+  </div>`;
+  modal.addEventListener('click', event => { if (event.target === modal) fecharModalRegrasProvisaoParcelas(); });
+  document.body.appendChild(modal);
+  setTimeout(() => modal.querySelector('input[type=search]')?.focus(), 0);
+}
+
+function salvarModalRegrasProvisaoParcelas() {
+  const modal = document.getElementById('modal-regras-provisao-parcelas');
+  if (!modal || !grupoAtivo) return;
+  deparaProvisaoParcelas[grupoAtivo] = deparaProvisaoParcelas[grupoAtivo] || {};
+  let salvas = 0;
+  let incompletas = 0;
+  modal.querySelectorAll('tbody tr[data-chave]').forEach(tr => {
+    const debito = obterCodigoContaParaDominio(tr.querySelector('[data-regra-campo="debito"]')?.value || '');
+    const credito = obterCodigoContaParaDominio(tr.querySelector('[data-regra-campo="credito"]')?.value || '');
+    tr.style.background = '';
+    if (!debito && !credito) return;
+    if (!debito || !credito) {
+      incompletas++;
+      tr.style.background = '#fff7ed';
+      return;
+    }
+    const chave = tr.dataset.chave || '';
+    deparaProvisaoParcelas[grupoAtivo][chave] = { debito, credito };
+    provisaoParcelasTemp.forEach(item => {
+      if (item.chave === chave) {
+        item.debitoConta = debito;
+        item.creditoConta = credito;
+      }
+    });
+    salvas++;
+  });
+  if (salvas) salvarStorage();
+  renderProvisaoParcelas();
+  if (incompletas) {
+    const msg = modal.querySelector('[data-msg-regras-provisao]');
+    if (msg) {
+      msg.style.display = '';
+      msg.textContent = `${salvas} regra${salvas !== 1 ? 's' : ''} salva${salvas !== 1 ? 's' : ''}. Complete débito e crédito nas ${incompletas} linha${incompletas !== 1 ? 's' : ''} destacada${incompletas !== 1 ? 's' : ''}.`;
+    }
+    return;
+  }
+  fecharModalRegrasProvisaoParcelas();
+  const restantes = regrasPendentesProvisaoParcelas().length;
+  mostrarMsgProvisaoParcelas(salvas ? `${salvas} regra${salvas !== 1 ? 's' : ''} salva${salvas !== 1 ? 's' : ''}. ${restantes ? `${restantes} regra${restantes !== 1 ? 's' : ''} ainda precisa${restantes === 1 ? '' : 'm'} ser preenchida${restantes !== 1 ? 's' : ''}.` : 'As provisões estão prontas para exportar.'}` : 'Nenhuma regra foi preenchida.', salvas ? 'ok' : 'warn');
 }
 
 function aplicarRegrasSalvasProvisaoParcelas() {
