@@ -2182,15 +2182,19 @@ function montarResultadoProvisaoParcelas(dados, periodo, arquivo, cabecalhos = [
   categorias.forEach(item => ocorrencias.set(item.r, [...(ocorrencias.get(item.r) || []), item.categoria]));
   const duplicadas = [...ocorrencias.values()].filter(lista => lista.length !== 1);
   if (categorias.length !== dados.length || ocorrencias.size !== dados.length || duplicadas.length) {
-    throw new Error(`${arquivo}: a classificação não separou todas as ${dados.length} linhas em abas exclusivas. A exportação foi interrompida para não perder nem duplicar registros.`);
+    throw new Error(`${arquivo}: a classificação principal não processou corretamente todas as ${dados.length} linhas. A exportação foi interrompida para não perder nem duplicar registros indevidamente.`);
   }
+  const linhasProvisoes = [
+    ...filtrado.linhas,
+    ...filtrado.boticarioNotaDebito.map(item => item.r)
+  ].map(r => linhaProvisaoParcelas(r, periodo, arquivo)).filter(Boolean);
   return {
     arquivo,
     periodo,
     dados,
     cabecalhos,
     contadores: filtrado.contadores,
-    linhas: filtrado.linhas.map(r => linhaProvisaoParcelas(r, periodo, arquivo)).filter(Boolean),
+    linhas: linhasProvisoes,
     desconsideradas: filtrado.desconsideradas,
     boticarioNotaFiscalServico: filtrado.boticarioNotaFiscalServico,
     boticarioNotaDebito: filtrado.boticarioNotaDebito,
@@ -2380,7 +2384,7 @@ function renderProvisaoParcelas() {
     <div class="metric"><div class="metric-label">Empresas / unidades</div><div class="metric-value" style="font-size:18px">${empresas.size}</div></div>
     <div class="metric"><div class="metric-label">Sem débito/crédito</div><div class="metric-value ${semCodigo ? 'warn' : 'ok'}">${semCodigo}</div></div>
   </div>
-  <div class="alert alert-ok" style="margin-bottom:14px"><strong>Filtro deste grupo:</strong> ${contadores.selecionadas || 0} em Provisões, ${(contadores.total || 0) - (contadores.selecionadas || 0) - (contadores.boticarioNotaFiscalServico || 0) - (contadores.boticarioNotaDebito || 0) - (contadores.notaFiscalServicoPrestado || 0)} desconsideradas, ${contadores.boticarioNotaFiscalServico || 0} NFS Boticário, ${contadores.boticarioNotaDebito || 0} Notas de Débito GB TECH/Boticário e ${contadores.notaFiscalServicoPrestado || 0} Notas de Serviços Prestados.</div>
+  <div class="alert alert-ok" style="margin-bottom:14px"><strong>Filtro deste grupo:</strong> ${(contadores.selecionadas || 0) + (contadores.boticarioNotaDebito || 0)} em Provisões, ${(contadores.total || 0) - (contadores.selecionadas || 0) - (contadores.boticarioNotaFiscalServico || 0) - (contadores.boticarioNotaDebito || 0) - (contadores.notaFiscalServicoPrestado || 0)} desconsideradas, ${contadores.boticarioNotaFiscalServico || 0} NFS Boticário, ${contadores.boticarioNotaDebito || 0} Notas de Débito GB TECH/Boticário também incluídas em Provisões e ${contadores.notaFiscalServicoPrestado || 0} Notas de Serviços Prestados.</div>
   <div class="conciliacao-note" style="margin-bottom:14px">Arquivos: ${escapeHtml((infoProvisaoParcelasTemp?.arquivos || []).join(', '))}${provisaoParcelasTemp.length > 150 ? ' · Mostrando as primeiras 150 linhas na tela; a exportação inclui todas.' : ''}</div>`;
   acoes.style.display = 'flex';
   preview.style.display = '';
