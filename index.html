@@ -2159,8 +2159,7 @@ function filtrarLinhasProvisaoParcelas(dados, periodo, configuracao = configurac
     if (!mesEmissao) { desconsiderar(r, 'Sem data de emissão válida', 'semData'); return; }
     if (mesEmissao < periodo.mesInicio || mesEmissao > periodo.mesFim) { desconsiderar(r, 'Emissão fora da competência', 'foraCompetencia'); return; }
     if (!Math.abs(arredondarMoeda(r[COLS.VALOR_LIQ] || r[COLS.VALOR_BRUTO]))) { desconsiderar(r, 'Valor zerado', 'valorZerado'); return; }
-    if (!mesVencimento) { desconsiderar(r, 'Sem data de vencimento válida', 'semData'); return; }
-    if (configuracao.excluirVencimentoAteEmissao && mesVencimento <= mesEmissao) { desconsiderar(r, 'Vencimento no mesmo mês ou anterior à emissão', 'vencimentoMesmoMes'); return; }
+    if (configuracao.excluirVencimentoAteEmissao && mesVencimento && mesVencimento <= mesEmissao) { desconsiderar(r, 'Vencimento no mesmo mês ou anterior à emissão', 'vencimentoMesmoMes'); return; }
     if (configuracao.excluirLiquidacaoMesmoMes && mesLiquidacao && mesLiquidacao === mesEmissao) { desconsiderar(r, 'Liquidação no mesmo mês da emissão', 'liquidacaoMesmoMes'); return; }
     if (permitidos.size && !permitidos.has(tipoDocumento)) { desconsiderar(r, 'Tipo de documento não incluído na regra do grupo', 'tipoExcluido'); return; }
     linhas.push(r);
