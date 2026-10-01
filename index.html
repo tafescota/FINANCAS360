@@ -2109,11 +2109,12 @@ function filtrarLinhasProvisaoParcelas(dados, periodo, configuracao = configurac
   const permitidos = new Set((configuracao.tiposIncluidos || []).map(normalizarTexto));
   const fornecedoresExcluidos = (configuracao.fornecedoresExcluidos || []).map(normalizarTexto).filter(Boolean);
   const fornecedoresBoticario = (configuracao.fornecedoresBoticario || []).map(normalizarTexto).filter(Boolean);
-  const contadores = { total: dados.length, foraCompetencia: 0, tipoExcluido: 0, fornecedorExcluido: 0, vencimentoMesmoMes: 0, liquidacaoMesmoMes: 0, semData: 0, valorZerado: 0, selecionadas: 0, notaFiscalServico: 0, boticarioNotaDebito: 0 };
+  const contadores = { total: dados.length, foraCompetencia: 0, tipoExcluido: 0, fornecedorExcluido: 0, vencimentoMesmoMes: 0, liquidacaoMesmoMes: 0, semData: 0, valorZerado: 0, selecionadas: 0, boticarioNotaFiscalServico: 0, boticarioNotaDebito: 0, notaFiscalServicoPrestado: 0 };
   const linhas = [];
   const desconsideradas = [];
+  const boticarioNotaFiscalServico = [];
   const boticarioNotaDebito = [];
-  const notaFiscalServico = [];
+  const notaFiscalServicoPrestado = [];
   const desconsiderar = (r, motivo, contador) => {
     if (contador) contadores[contador]++;
     desconsideradas.push({ r, motivo });
@@ -2124,34 +2125,39 @@ function filtrarLinhasProvisaoParcelas(dados, periodo, configuracao = configurac
     const mesLiquidacao = chaveMesProvisaoParcelas(r[COLS.LIQUIDACAO]);
     const tipoDocumento = normalizarTexto(r[COLS.TIPO_DOC]);
     const fornecedor = normalizarTexto(r[COLS.FORNECEDOR]);
-    if (!mesEmissao) { desconsiderar(r, 'Sem data de emissão válida', 'semData'); return; }
-    if (mesEmissao < periodo.mesInicio || mesEmissao > periodo.mesFim) { desconsiderar(r, 'Emissão fora da competência', 'foraCompetencia'); return; }
-    if (!Math.abs(arredondarMoeda(r[COLS.VALOR_LIQ] || r[COLS.VALOR_BRUTO]))) { desconsiderar(r, 'Valor zerado', 'valorZerado'); return; }
     const fornecedorEspecial = fornecedoresBoticario.some(termo => fornecedor.includes(termo));
+    if (tipoDocumento === 'nota fiscal de servico') {
+      if (fornecedorEspecial) {
+        boticarioNotaFiscalServico.push({ r, motivo: 'Nota Fiscal de Serviço do Boticário / INTERBELLE separada para validação' });
+        contadores.boticarioNotaFiscalServico++;
+      } else {
+        notaFiscalServicoPrestado.push({ r, motivo: 'Nota Fiscal de Serviço prestado separada para validação' });
+        contadores.notaFiscalServicoPrestado++;
+      }
+      return;
+    }
     if (fornecedorEspecial && tipoDocumento === 'nota de debito') {
-      boticarioNotaDebito.push({ r, motivo: 'Fornecedor Boticário / INTERBELLE com Nota de Débito' });
+      boticarioNotaDebito.push({ r, motivo: 'Nota de Débito do Boticário / INTERBELLE separada para validação' });
       contadores.boticarioNotaDebito++;
       return;
     }
+    if (!mesEmissao) { desconsiderar(r, 'Sem data de emissão válida', 'semData'); return; }
+    if (mesEmissao < periodo.mesInicio || mesEmissao > periodo.mesFim) { desconsiderar(r, 'Emissão fora da competência', 'foraCompetencia'); return; }
+    if (!Math.abs(arredondarMoeda(r[COLS.VALOR_LIQ] || r[COLS.VALOR_BRUTO]))) { desconsiderar(r, 'Valor zerado', 'valorZerado'); return; }
     if (!mesVencimento) { desconsiderar(r, 'Sem data de vencimento válida', 'semData'); return; }
     if (fornecedoresExcluidos.some(termo => fornecedor.includes(termo))) { desconsiderar(r, 'Fornecedor desconsiderado pela regra do grupo', 'fornecedorExcluido'); return; }
     if (configuracao.excluirVencimentoAteEmissao && mesVencimento <= mesEmissao) { desconsiderar(r, 'Vencimento no mesmo mês ou anterior à emissão', 'vencimentoMesmoMes'); return; }
     if (configuracao.excluirLiquidacaoMesmoMes && mesLiquidacao && mesLiquidacao === mesEmissao) { desconsiderar(r, 'Liquidação no mesmo mês da emissão', 'liquidacaoMesmoMes'); return; }
-    if (tipoDocumento === 'nota fiscal de servico') {
-      notaFiscalServico.push({ r, motivo: 'Nota Fiscal de Serviço separada para validação antes da importação' });
-      contadores.notaFiscalServico++;
-      return;
-    }
     if (permitidos.size && !permitidos.has(tipoDocumento)) { desconsiderar(r, 'Tipo de documento não incluído na regra do grupo', 'tipoExcluido'); return; }
     linhas.push(r);
     contadores.selecionadas++;
   });
-  return { linhas, desconsideradas, notaFiscalServico, boticarioNotaDebito, contadores };
+  return { linhas, desconsideradas, boticarioNotaFiscalServico, boticarioNotaDebito, notaFiscalServicoPrestado, contadores };
 }
 
 function montarResultadoProvisaoParcelas(dados, periodo, arquivo, cabecalhos = []) {
   const filtrado = filtrarLinhasProvisaoParcelas(dados, periodo);
-  const totalClassificado = filtrado.linhas.length + filtrado.desconsideradas.length + filtrado.notaFiscalServico.length + filtrado.boticarioNotaDebito.length;
+  const totalClassificado = filtrado.linhas.length + filtrado.desconsideradas.length + filtrado.boticarioNotaFiscalServico.length + filtrado.boticarioNotaDebito.length + filtrado.notaFiscalServicoPrestado.length;
   if (totalClassificado !== dados.length) throw new Error(`${arquivo}: a classificação processou ${totalClassificado} de ${dados.length} linhas. A exportação foi interrompida para não perder registros.`);
   return {
     arquivo,
@@ -2161,8 +2167,9 @@ function montarResultadoProvisaoParcelas(dados, periodo, arquivo, cabecalhos = [
     contadores: filtrado.contadores,
     linhas: filtrado.linhas.map(r => linhaProvisaoParcelas(r, periodo, arquivo)).filter(Boolean),
     desconsideradas: filtrado.desconsideradas,
-    notaFiscalServico: filtrado.notaFiscalServico,
-    boticarioNotaDebito: filtrado.boticarioNotaDebito
+    boticarioNotaFiscalServico: filtrado.boticarioNotaFiscalServico,
+    boticarioNotaDebito: filtrado.boticarioNotaDebito,
+    notaFiscalServicoPrestado: filtrado.notaFiscalServicoPrestado
   };
 }
 
@@ -2209,7 +2216,7 @@ function abrirConfiguracaoProvisaoParcelas() {
       <div><div class="metric-label" style="margin-bottom:8px">Tipos de documento que entram em Provisões</div><div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:8px">${tipos}</div></div>
       <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:16px">
         <label class="filtro-lote-field"><span>Fornecedores desconsiderados</span><textarea data-fornecedores-excluidos rows="6" placeholder="Um termo por linha, por exemplo: DARF"></textarea><small class="conciliacao-note">A busca considera o termo dentro do nome do fornecedor.</small></label>
-        <label class="filtro-lote-field"><span>Fornecedores da aba Boticário</span><textarea data-fornecedores-boticario rows="6" placeholder="Um fornecedor ou termo por linha"></textarea><small class="conciliacao-note">Notas de Débito destes fornecedores irão para uma aba separada. Todas as Notas Fiscais de Serviço provisionáveis também terão uma aba própria.</small></label>
+        <label class="filtro-lote-field"><span>Fornecedores das abas Boticário</span><textarea data-fornecedores-boticario rows="6" placeholder="Um fornecedor ou termo por linha"></textarea><small class="conciliacao-note">Notas Fiscais de Serviço e Notas de Débito destes fornecedores terão abas próprias. As demais Notas Fiscais de Serviço irão para Serviços Prestados.</small></label>
       </div>
       <div style="display:grid;gap:10px">
         <label style="display:flex;align-items:center;gap:8px"><input type="checkbox" data-excluir-vencimento> Desconsiderar quando o vencimento estiver no mesmo mês ou antes da emissão</label>
@@ -2341,7 +2348,7 @@ function renderProvisaoParcelas() {
     <div class="metric"><div class="metric-label">Empresas / unidades</div><div class="metric-value" style="font-size:18px">${empresas.size}</div></div>
     <div class="metric"><div class="metric-label">Sem débito/crédito</div><div class="metric-value ${semCodigo ? 'warn' : 'ok'}">${semCodigo}</div></div>
   </div>
-  <div class="alert alert-ok" style="margin-bottom:14px"><strong>Filtro deste grupo:</strong> ${contadores.selecionadas || 0} em Provisões, ${(contadores.total || 0) - (contadores.selecionadas || 0) - (contadores.notaFiscalServico || 0) - (contadores.boticarioNotaDebito || 0)} desconsideradas, ${contadores.notaFiscalServico || 0} Notas Fiscais de Serviço para validação e ${contadores.boticarioNotaDebito || 0} Boticário Nota de Débito.</div>
+  <div class="alert alert-ok" style="margin-bottom:14px"><strong>Filtro deste grupo:</strong> ${contadores.selecionadas || 0} em Provisões, ${(contadores.total || 0) - (contadores.selecionadas || 0) - (contadores.boticarioNotaFiscalServico || 0) - (contadores.boticarioNotaDebito || 0) - (contadores.notaFiscalServicoPrestado || 0)} desconsideradas, ${contadores.boticarioNotaFiscalServico || 0} NFS Boticário, ${contadores.boticarioNotaDebito || 0} Notas de Débito Boticário e ${contadores.notaFiscalServicoPrestado || 0} Notas de Serviços Prestados.</div>
   <div class="conciliacao-note" style="margin-bottom:14px">Arquivos: ${escapeHtml((infoProvisaoParcelasTemp?.arquivos || []).join(', '))}${provisaoParcelasTemp.length > 150 ? ' · Mostrando as primeiras 150 linhas na tela; a exportação inclui todas.' : ''}</div>`;
   acoes.style.display = 'flex';
   preview.style.display = '';
@@ -2565,21 +2572,38 @@ function aplicarRegrasSalvasProvisaoParcelas() {
 }
 
 const CABECALHO_DOMINIO_PROVISAO = ['Data', 'Cód. Conta Débito', 'Cód. Conta Crédito', 'Valor', 'Cód. Histórico', 'Complemento Histórico', 'Inicia Lote', 'Código Matriz/Filial', 'Tipo de Operação'];
+const CABECALHO_CONFERENCIA_PROVISAO = ['Fornecedor (Conferência)', 'Plano de Contas (Conferência)', 'Histórico Original (Conferência)', 'Tipo de Documento (Conferência)', 'Número do Documento (Conferência)'];
 
 function linhaDominioProvisao(item) {
   const linha = linhaDominio(item.data, obterCodigoContaParaDominio(item.debitoConta), obterCodigoContaParaDominio(item.creditoConta), item.valor, item.complemento, item.empresa, '');
   return [...linha.slice(0, 8), linha[10]];
 }
 
+function linhaOperacionalProvisao(item) {
+  return [
+    ...linhaDominioProvisao(item),
+    item.fornecedor || item.forn || '',
+    item.plano || '',
+    item.historico || '',
+    item.tipoDoc || item.documento || '',
+    item.numero || ''
+  ];
+}
+
 function linhasDominioCategoriaProvisao(campo) {
-  return (infoProvisaoParcelasTemp?.resultados || []).flatMap(resultado => (resultado[campo] || []).map(item => linhaProvisaoParcelas(item.r, resultado.periodo, resultado.arquivo)).filter(Boolean).map(linhaDominioProvisao));
+  return (infoProvisaoParcelasTemp?.resultados || []).flatMap(resultado => (resultado[campo] || []).map(item => linhaProvisaoParcelas(item.r, resultado.periodo, resultado.arquivo)).filter(Boolean).map(linhaOperacionalProvisao));
 }
 
 function adicionarAbaOperacionalProvisao(wb, nome, linhas) {
   linhas.forEach(linha => { linha[6] = ''; });
   if (linhas.length) linhas[0][6] = 1;
-  const ws = XLSX.utils.aoa_to_sheet([CABECALHO_DOMINIO_PROVISAO, ...linhas]);
-  ws['!autofilter'] = { ref: `A1:I${Math.max(1, linhas.length + 1)}` };
+  const cabecalho = [...CABECALHO_DOMINIO_PROVISAO, ...CABECALHO_CONFERENCIA_PROVISAO];
+  const ws = XLSX.utils.aoa_to_sheet([cabecalho, ...linhas]);
+  ws['!autofilter'] = { ref: `A1:N${Math.max(1, linhas.length + 1)}` };
+  ws['!cols'] = [
+    { wch: 13 }, { wch: 19 }, { wch: 19 }, { wch: 15 }, { wch: 16 }, { wch: 52 }, { wch: 12 }, { wch: 22 }, { wch: 18 },
+    { wch: 38 }, { wch: 30 }, { wch: 48 }, { wch: 26 }, { wch: 22 }
+  ];
   XLSX.utils.book_append_sheet(wb, ws, nome);
 }
 
@@ -2624,11 +2648,12 @@ function exportarProvisaoParcelas() {
     return;
   }
   const semCodigo = provisaoParcelasTemp.filter(r => !obterCodigoContaParaDominio(r.debitoConta) || !obterCodigoContaParaDominio(r.creditoConta)).length;
-  const linhas = provisaoParcelasTemp.map(linhaDominioProvisao);
+  const linhas = provisaoParcelasTemp.map(linhaOperacionalProvisao);
   const wb = XLSX.utils.book_new();
   adicionarAbaOperacionalProvisao(wb, 'Provisoes', linhas);
-  adicionarAbaOperacionalProvisao(wb, 'Nota Fiscal de Servico', linhasDominioCategoriaProvisao('notaFiscalServico'));
-  adicionarAbaOperacionalProvisao(wb, 'Boticario Nota Debito', linhasDominioCategoriaProvisao('boticarioNotaDebito'));
+  adicionarAbaOperacionalProvisao(wb, 'Nota Fiscal Servico Boticario', linhasDominioCategoriaProvisao('boticarioNotaFiscalServico'));
+  adicionarAbaOperacionalProvisao(wb, 'Nota de Debito Boticario', linhasDominioCategoriaProvisao('boticarioNotaDebito'));
+  adicionarAbaOperacionalProvisao(wb, 'Notas de Servicos Prestados', linhasDominioCategoriaProvisao('notaFiscalServicoPrestado'));
   adicionarAbaDesconsideradasProvisao(wb);
   const data = new Date().toLocaleDateString('pt-BR').replace(/\//g, '-');
   XLSX.writeFile(wb, `Dominio_Provisoes_Parcelas_${grupoAtivo}_${data}.xlsx`);
