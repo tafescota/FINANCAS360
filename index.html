@@ -356,8 +356,9 @@
     <div class="card" style="margin-bottom:16px">
       <div class="metric-label" style="margin-bottom:8px">Provisões por competência</div>
       <p class="conciliacao-note" style="margin-bottom:14px">
-        O sistema usa a competência informada no relatório e considera somente Boleto, Cupom Fiscal, Nota de Débito e Outros. Entram apenas documentos emitidos na competência cujo vencimento e eventual liquidação estejam em outro mês. Fornecedores com DARF, ICMS, DARE - ICMS, FGTS ou IRRF não entram.
+        O sistema usa a competência informada no relatório e aplica os filtros de provisões cadastrados especificamente para este grupo.
       </p>
+      <button class="btn btn-sm" type="button" onclick="abrirConfiguracaoProvisaoParcelas()" style="margin-bottom:14px">Configurar filtros deste grupo</button>
       <div class="drop-area" id="drop-area-provisao-parcelas" onclick="document.getElementById('file-input-provisao-parcelas').click()" ondragover="dragOver(event)" ondragleave="dragLeave(event)" ondrop="onDropProvisaoParcelas(event)">
         <div class="drop-icon">📄</div>
         <div class="drop-title">Arraste Parcela de Título a Pagar aqui ou clique para selecionar</div>
@@ -406,6 +407,7 @@
         </div>
         <div class="bulk-action-panel">
           <div class="bulk-panel-title">▱ <span>AÇÃO EM LOTE</span></div>
+          <div class="filtro-lote-field" id="campo-ponta-lote-provisao" style="display:none"><span>Aplicar em</span><select id="ponta-lote-provisao"><option value="debito">Débito</option><option value="credito">Crédito</option></select></div>
           <div class="filtro-lote-field campo-conta-lote"><span>Conta para lote</span><input type="text" id="codigo-lote" class="conta-autocomplete" placeholder="Conta para aplicar nos selecionados" oninput="criarAutocompleteConta(this)"></div>
           <button class="btn btn-primary" onclick="aplicarCodigoEmLote()">▣ &nbsp; Aplicar conta</button>
         </div>
@@ -1260,6 +1262,29 @@ function importarBaseDePara(event) {
 function salvarCodigosPreenchidosNoGrupo(coletarDaTela = true) {
   if (!grupoAtivo) return;
   if (coletarDaTela) coletarCodigosNovasChaves();
+  if (origemNovasChaves === 'provisao_parcelas') {
+    deparaProvisaoParcelas[grupoAtivo] = deparaProvisaoParcelas[grupoAtivo] || {};
+    const porRegra = new Map();
+    novasChavesTemp.forEach(item => {
+      const chaveRegra = item.chaveRegraProvisao;
+      if (!chaveRegra) return;
+      const atual = porRegra.get(chaveRegra) || { ...(deparaProvisaoParcelas[grupoAtivo][chaveRegra] || {}) };
+      const codigo = obterCodigoContaParaDominio(codigosTemp[item.chave] || '');
+      if (codigo && item.pontaProvisao === 'debito') atual.debito = codigo;
+      if (codigo && item.pontaProvisao === 'credito') atual.credito = codigo;
+      porRegra.set(chaveRegra, atual);
+    });
+    porRegra.forEach((regra, chave) => {
+      if (regra.debito || regra.credito) deparaProvisaoParcelas[grupoAtivo][chave] = regra;
+      provisaoParcelasTemp.forEach(item => {
+        if (item.chave !== chave) return;
+        if (regra.debito) item.debitoConta = regra.debito;
+        if (regra.credito) item.creditoConta = regra.credito;
+      });
+    });
+    salvarStorage();
+    return;
+  }
   if (origemNovasChaves === 'recebimentos') {
     novasChavesTemp.forEach(item => {
       const codigo = obterCodigoContaParaDominio(codigosTemp[item.chave] || '');
@@ -1562,8 +1587,12 @@ function linhasPlanilhaTitulos(wb, layout = 'boticario') {
     if (col.valorLiquido < 0 && col.valorBruto < 0) throw new Error('Não encontrei uma coluna de valor no FINANÇAS 360 - ORIGINAL.');
     const dados = raw.slice(headerIdx + 1)
       .filter(r => r && valorColuna(r, col.tipo) && String(valorColuna(r, col.tipo)).trim() !== '')
-      .map(r => normalizarLinhaTitulosF360Original(r, col));
-    return { dados, nomePlanilha, linhaCabecalho: headerIdx + 1 };
+      .map(r => {
+        const normalizada = normalizarLinhaTitulosF360Original(r, col);
+        normalizada.__linhaOriginal = r;
+        return normalizada;
+      });
+    return { dados, nomePlanilha, linhaCabecalho: headerIdx + 1, cabecalhos: raw[headerIdx] || [] };
   }
   let inicio = 0;
   for (let i = 0; i < Math.min(raw.length, 25); i++) {
@@ -1574,7 +1603,7 @@ function linhasPlanilhaTitulos(wb, layout = 'boticario') {
     if (r && String(r[0]||'').toLowerCase() === 'conta a pagar') { inicio = i; break; }
   }
   const dados = raw.slice(inicio).filter(r => r && r[0] && String(r[0]).trim() !== '');
-  return { dados, nomePlanilha };
+  return { dados, nomePlanilha, cabecalhos: inicio > 0 ? (raw[inicio - 1] || []) : [] };
 }
 
 function selecionarModoImportacaoPagamentos(modo, layout = layoutImportacaoDoGrupo()) {
@@ -2002,7 +2031,7 @@ function linhaProvisaoParcelas(r, periodo, arquivoOrigem = '') {
   const chave = montarChave(forn, plano, tipoDoc, historico, escopo);
   const regraSalva = encontrarRegraProvisaoParcelas(forn, plano, tipoDoc, historico, escopo);
   return {
-    data: ultimoDiaMesProvisaoParcelas(r[COLS.EMISSAO]),
+    data: fmtDate(r[COLS.EMISSAO]),
     competencia: rotuloMesProvisaoParcelas(r[COLS.EMISSAO]),
     emissao: fmtDate(r[COLS.EMISSAO]),
     vencimento: fmtDate(r[COLS.VENCIMENTO]),
@@ -2022,25 +2051,202 @@ function linhaProvisaoParcelas(r, periodo, arquivoOrigem = '') {
   };
 }
 
-function filtrarLinhasProvisaoParcelas(dados, periodo) {
-  const permitidos = new Set(['boleto', 'cupom fiscal', 'nota de debito', 'outros']);
-  const fornecedoresExcluidos = ['darf', 'icms', 'dare - icms', 'fgts', 'irrf'];
-  const contadores = { total: dados.length, foraCompetencia: 0, tipoExcluido: 0, fornecedorExcluido: 0, vencimentoMesmoMes: 0, liquidacaoMesmoMes: 0, semData: 0, selecionadas: 0 };
-  const linhas = dados.filter(r => {
+const TIPOS_DOCUMENTO_PROVISAO = ['Boleto', 'Cupom Fiscal', 'Encargos Sociais', 'Folha de Pagamento', 'Nota de Débito', 'Nota Fiscal', 'Nota Fiscal de Serviço', 'Outros'];
+
+function configuracaoPadraoProvisaoParcelas(nome = grupoAtivo) {
+  const cpSimone = normalizarTexto(nome).includes('cp simone');
+  return {
+    tiposIncluidos: cpSimone ? ['Boleto', 'Cupom Fiscal', 'Nota de Débito', 'Outros'] : [...TIPOS_DOCUMENTO_PROVISAO],
+    fornecedoresExcluidos: cpSimone ? [
+      'DARF',
+      'ICMS',
+      'DARE - ICMS',
+      'FGTS',
+      'IRRF',
+      'SALARIO FUNCIONARIOS',
+      'ADIANTAMENTO SALARIAL',
+      'CSLL - CONTRIBUIÇÃO SOCIAL',
+      'CONTRIBUIÇÃO SINDICAL',
+      'CONTRIBUIÇÃO SINDICAL PATRONAL',
+      'FÉRIAS',
+      'FGTS - EMPRESA',
+      'INDENIZAÇÕES / RESCISÕES',
+      'INSS - FUNCIONÁRIO',
+      'IR SOBRE APLICAÇÕES FINANCEIRAS',
+      'IRPJ',
+      'IRRF - FUNCIONÁRIO',
+      'ISS - IMPOSTO SOBRE SERVIÇO',
+      'PIS SOBRE RECEITA BRUTA',
+      'PRO-LABORE',
+      'COFINS SOBRE RECEITA BRUTA',
+      'SIMPLES (DAS) SOBRE RECEITA BRUTA',
+      'TAR. PG. SALÁRIO',
+      'TARIFAS BANCÁRIAS'
+    ] : [],
+    excluirVencimentoAteEmissao: cpSimone,
+    excluirLiquidacaoMesmoMes: cpSimone,
+    fornecedoresBoticario: ['BOTICARIO', 'INTERBELLE - OBF - BOTICARIO PRODUTOS DE BELEZA LTDA']
+  };
+}
+
+function configuracaoProvisaoParcelasGrupo(nome = grupoAtivo) {
+  const padrao = configuracaoPadraoProvisaoParcelas(nome);
+  const salva = configGrupos[nome]?.provisoesParcelas || {};
+  const fornecedoresSalvos = Array.isArray(salva.fornecedoresExcluidos) ? salva.fornecedoresExcluidos : padrao.fornecedoresExcluidos;
+  const fornecedoresExcluidos = normalizarTexto(nome).includes('cp simone')
+    ? [...new Set([...padrao.fornecedoresExcluidos, ...fornecedoresSalvos])]
+    : fornecedoresSalvos;
+  return {
+    tiposIncluidos: Array.isArray(salva.tiposIncluidos) ? salva.tiposIncluidos : padrao.tiposIncluidos,
+    fornecedoresExcluidos,
+    excluirVencimentoAteEmissao: salva.excluirVencimentoAteEmissao === undefined ? padrao.excluirVencimentoAteEmissao : !!salva.excluirVencimentoAteEmissao,
+    excluirLiquidacaoMesmoMes: salva.excluirLiquidacaoMesmoMes === undefined ? padrao.excluirLiquidacaoMesmoMes : !!salva.excluirLiquidacaoMesmoMes,
+    fornecedoresBoticario: Array.isArray(salva.fornecedoresBoticario) ? salva.fornecedoresBoticario : padrao.fornecedoresBoticario
+  };
+}
+
+function filtrarLinhasProvisaoParcelas(dados, periodo, configuracao = configuracaoProvisaoParcelasGrupo()) {
+  const permitidos = new Set((configuracao.tiposIncluidos || []).map(normalizarTexto));
+  const fornecedoresExcluidos = (configuracao.fornecedoresExcluidos || []).map(normalizarTexto).filter(Boolean);
+  const fornecedoresBoticario = (configuracao.fornecedoresBoticario || []).map(normalizarTexto).filter(Boolean);
+  const contadores = { total: dados.length, foraCompetencia: 0, tipoExcluido: 0, fornecedorExcluido: 0, vencimentoMesmoMes: 0, liquidacaoMesmoMes: 0, semData: 0, valorZerado: 0, selecionadas: 0, notaFiscalServico: 0, boticarioNotaDebito: 0 };
+  const linhas = [];
+  const desconsideradas = [];
+  const boticarioNotaDebito = [];
+  const notaFiscalServico = [];
+  const desconsiderar = (r, motivo, contador) => {
+    if (contador) contadores[contador]++;
+    desconsideradas.push({ r, motivo });
+  };
+  dados.forEach(r => {
     const mesEmissao = chaveMesProvisaoParcelas(r[COLS.EMISSAO]);
     const mesVencimento = chaveMesProvisaoParcelas(r[COLS.VENCIMENTO]);
     const mesLiquidacao = chaveMesProvisaoParcelas(r[COLS.LIQUIDACAO]);
-    if (!mesEmissao || !mesVencimento) { contadores.semData++; return false; }
-    if (mesEmissao < periodo.mesInicio || mesEmissao > periodo.mesFim) { contadores.foraCompetencia++; return false; }
-    if (!permitidos.has(normalizarTexto(r[COLS.TIPO_DOC]))) { contadores.tipoExcluido++; return false; }
+    const tipoDocumento = normalizarTexto(r[COLS.TIPO_DOC]);
     const fornecedor = normalizarTexto(r[COLS.FORNECEDOR]);
-    if (fornecedoresExcluidos.some(termo => fornecedor.includes(termo))) { contadores.fornecedorExcluido++; return false; }
-    if (mesVencimento <= mesEmissao) { contadores.vencimentoMesmoMes++; return false; }
-    if (mesLiquidacao && mesLiquidacao === mesEmissao) { contadores.liquidacaoMesmoMes++; return false; }
+    if (!mesEmissao) { desconsiderar(r, 'Sem data de emissão válida', 'semData'); return; }
+    if (mesEmissao < periodo.mesInicio || mesEmissao > periodo.mesFim) { desconsiderar(r, 'Emissão fora da competência', 'foraCompetencia'); return; }
+    if (!Math.abs(arredondarMoeda(r[COLS.VALOR_LIQ] || r[COLS.VALOR_BRUTO]))) { desconsiderar(r, 'Valor zerado', 'valorZerado'); return; }
+    const fornecedorEspecial = fornecedoresBoticario.some(termo => fornecedor.includes(termo));
+    if (fornecedorEspecial && tipoDocumento === 'nota de debito') {
+      boticarioNotaDebito.push({ r, motivo: 'Fornecedor Boticário / INTERBELLE com Nota de Débito' });
+      contadores.boticarioNotaDebito++;
+      return;
+    }
+    if (!mesVencimento) { desconsiderar(r, 'Sem data de vencimento válida', 'semData'); return; }
+    if (fornecedoresExcluidos.some(termo => fornecedor.includes(termo))) { desconsiderar(r, 'Fornecedor desconsiderado pela regra do grupo', 'fornecedorExcluido'); return; }
+    if (configuracao.excluirVencimentoAteEmissao && mesVencimento <= mesEmissao) { desconsiderar(r, 'Vencimento no mesmo mês ou anterior à emissão', 'vencimentoMesmoMes'); return; }
+    if (configuracao.excluirLiquidacaoMesmoMes && mesLiquidacao && mesLiquidacao === mesEmissao) { desconsiderar(r, 'Liquidação no mesmo mês da emissão', 'liquidacaoMesmoMes'); return; }
+    if (tipoDocumento === 'nota fiscal de servico') {
+      notaFiscalServico.push({ r, motivo: 'Nota Fiscal de Serviço separada para validação antes da importação' });
+      contadores.notaFiscalServico++;
+      return;
+    }
+    if (permitidos.size && !permitidos.has(tipoDocumento)) { desconsiderar(r, 'Tipo de documento não incluído na regra do grupo', 'tipoExcluido'); return; }
+    linhas.push(r);
     contadores.selecionadas++;
-    return true;
   });
-  return { linhas, contadores };
+  return { linhas, desconsideradas, notaFiscalServico, boticarioNotaDebito, contadores };
+}
+
+function montarResultadoProvisaoParcelas(dados, periodo, arquivo, cabecalhos = []) {
+  const filtrado = filtrarLinhasProvisaoParcelas(dados, periodo);
+  const totalClassificado = filtrado.linhas.length + filtrado.desconsideradas.length + filtrado.notaFiscalServico.length + filtrado.boticarioNotaDebito.length;
+  if (totalClassificado !== dados.length) throw new Error(`${arquivo}: a classificação processou ${totalClassificado} de ${dados.length} linhas. A exportação foi interrompida para não perder registros.`);
+  return {
+    arquivo,
+    periodo,
+    dados,
+    cabecalhos,
+    contadores: filtrado.contadores,
+    linhas: filtrado.linhas.map(r => linhaProvisaoParcelas(r, periodo, arquivo)).filter(Boolean),
+    desconsideradas: filtrado.desconsideradas,
+    notaFiscalServico: filtrado.notaFiscalServico,
+    boticarioNotaDebito: filtrado.boticarioNotaDebito
+  };
+}
+
+function reprocessarProvisaoParcelasComConfiguracao() {
+  if (!infoProvisaoParcelasTemp?.resultados?.length) return;
+  const resultados = infoProvisaoParcelasTemp.resultados.map(resultado => montarResultadoProvisaoParcelas(resultado.dados || [], resultado.periodo, resultado.arquivo, resultado.cabecalhos || []));
+  provisaoParcelasTemp = resultados.flatMap(resultado => resultado.linhas);
+  infoProvisaoParcelasTemp = { arquivos: resultados.map(resultado => resultado.arquivo), resultados };
+  renderProvisaoParcelas();
+}
+
+function fecharConfiguracaoProvisaoParcelas() {
+  document.getElementById('modal-config-provisao-parcelas')?.remove();
+}
+
+function preencherFormularioConfiguracaoProvisaoParcelas(configuracao) {
+  const modal = document.getElementById('modal-config-provisao-parcelas');
+  if (!modal) return;
+  const tipos = new Set((configuracao.tiposIncluidos || []).map(normalizarTexto));
+  modal.querySelectorAll('[data-tipo-provisao]').forEach(input => { input.checked = tipos.has(normalizarTexto(input.value)); });
+  modal.querySelector('[data-fornecedores-excluidos]').value = (configuracao.fornecedoresExcluidos || []).join('\n');
+  modal.querySelector('[data-fornecedores-boticario]').value = (configuracao.fornecedoresBoticario || []).join('\n');
+  modal.querySelector('[data-excluir-vencimento]').checked = !!configuracao.excluirVencimentoAteEmissao;
+  modal.querySelector('[data-excluir-liquidacao]').checked = !!configuracao.excluirLiquidacaoMesmoMes;
+}
+
+function restaurarPadraoConfiguracaoProvisaoParcelas() {
+  preencherFormularioConfiguracaoProvisaoParcelas(configuracaoPadraoProvisaoParcelas());
+}
+
+function abrirConfiguracaoProvisaoParcelas() {
+  if (!grupoAtivo) return;
+  fecharConfiguracaoProvisaoParcelas();
+  const modal = document.createElement('div');
+  modal.id = 'modal-config-provisao-parcelas';
+  modal.style.cssText = 'position:fixed;inset:0;background:rgba(15,23,42,.58);display:flex;align-items:center;justify-content:center;z-index:10050;padding:14px';
+  const tipos = TIPOS_DOCUMENTO_PROVISAO.map(tipo => `<label style="display:flex;align-items:center;gap:8px;padding:8px 10px;border:1px solid var(--border);border-radius:6px;background:var(--bg)"><input type="checkbox" data-tipo-provisao value="${escapeAttr(tipo)}"> <span>${escapeHtml(tipo)}</span></label>`).join('');
+  modal.innerHTML = `<div style="background:var(--bg);border-radius:var(--radius);box-shadow:0 16px 48px rgba(0,0,0,.28);width:min(880px,calc(100vw - 28px));max-height:92vh;display:flex;flex-direction:column">
+    <div style="padding:18px 20px;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between;gap:14px">
+      <div><h3 style="margin:0 0 4px">Filtros de provisões do grupo</h3><div class="conciliacao-note">${escapeHtml(grupoAtivo)} · Esta configuração não afeta os demais grupos.</div></div>
+      <button class="btn btn-sm" onclick="fecharConfiguracaoProvisaoParcelas()">Fechar</button>
+    </div>
+    <div style="padding:18px 20px;overflow:auto;display:grid;gap:18px">
+      <div><div class="metric-label" style="margin-bottom:8px">Tipos de documento que entram em Provisões</div><div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:8px">${tipos}</div></div>
+      <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:16px">
+        <label class="filtro-lote-field"><span>Fornecedores desconsiderados</span><textarea data-fornecedores-excluidos rows="6" placeholder="Um termo por linha, por exemplo: DARF"></textarea><small class="conciliacao-note">A busca considera o termo dentro do nome do fornecedor.</small></label>
+        <label class="filtro-lote-field"><span>Fornecedores da aba Boticário</span><textarea data-fornecedores-boticario rows="6" placeholder="Um fornecedor ou termo por linha"></textarea><small class="conciliacao-note">Notas de Débito destes fornecedores irão para uma aba separada. Todas as Notas Fiscais de Serviço provisionáveis também terão uma aba própria.</small></label>
+      </div>
+      <div style="display:grid;gap:10px">
+        <label style="display:flex;align-items:center;gap:8px"><input type="checkbox" data-excluir-vencimento> Desconsiderar quando o vencimento estiver no mesmo mês ou antes da emissão</label>
+        <label style="display:flex;align-items:center;gap:8px"><input type="checkbox" data-excluir-liquidacao> Desconsiderar quando emissão e liquidação estiverem no mesmo mês</label>
+      </div>
+    </div>
+    <div style="padding:14px 20px;border-top:1px solid var(--border);display:flex;justify-content:space-between;gap:10px;flex-wrap:wrap">
+      <button class="btn" onclick="restaurarPadraoConfiguracaoProvisaoParcelas()">Restaurar padrão deste grupo</button>
+      <div style="display:flex;gap:10px"><button class="btn" onclick="fecharConfiguracaoProvisaoParcelas()">Cancelar</button><button class="btn btn-primary" onclick="salvarConfiguracaoProvisaoParcelas()">Salvar filtros</button></div>
+    </div>
+  </div>`;
+  modal.addEventListener('click', event => { if (event.target === modal) fecharConfiguracaoProvisaoParcelas(); });
+  document.body.appendChild(modal);
+  preencherFormularioConfiguracaoProvisaoParcelas(configuracaoProvisaoParcelasGrupo());
+}
+
+function salvarConfiguracaoProvisaoParcelas() {
+  const modal = document.getElementById('modal-config-provisao-parcelas');
+  if (!modal || !grupoAtivo) return;
+  const tiposIncluidos = [...modal.querySelectorAll('[data-tipo-provisao]:checked')].map(input => input.value);
+  if (!tiposIncluidos.length) {
+    alert('Selecione pelo menos um tipo de documento para as provisões.');
+    return;
+  }
+  const lista = atributo => String(modal.querySelector(atributo)?.value || '').split(/[;\n]+/).map(limparTextoECD).filter(Boolean);
+  configGrupos[grupoAtivo] = configGrupos[grupoAtivo] || {};
+  configGrupos[grupoAtivo].provisoesParcelas = {
+    tiposIncluidos,
+    fornecedoresExcluidos: lista('[data-fornecedores-excluidos]'),
+    fornecedoresBoticario: lista('[data-fornecedores-boticario]'),
+    excluirVencimentoAteEmissao: !!modal.querySelector('[data-excluir-vencimento]')?.checked,
+    excluirLiquidacaoMesmoMes: !!modal.querySelector('[data-excluir-liquidacao]')?.checked
+  };
+  salvarStorage();
+  fecharConfiguracaoProvisaoParcelas();
+  reprocessarProvisaoParcelasComConfiguracao();
+  mostrarMsgProvisaoParcelas('Filtros de provisões salvos somente para este grupo.', 'ok');
 }
 
 async function processarProvisaoParcelas(files) {
@@ -2059,20 +2265,18 @@ async function processarProvisaoParcelas(files) {
       const leitura = linhasPlanilhaTitulos(wb, layout);
       registrarMapaEmpresasImportadas(leitura.dados);
       const dados = modo === 'parcelas_numerarios' ? leitura.dados.map(prepararLinhaParcelasNumerarios) : leitura.dados;
-      const filtrado = filtrarLinhasProvisaoParcelas(dados, periodo);
-      return {
-        arquivo: file.name,
-        periodo,
-        contadores: filtrado.contadores,
-        linhas: filtrado.linhas.map(r => linhaProvisaoParcelas(r, periodo, file.name)).filter(Boolean)
-      };
+      return montarResultadoProvisaoParcelas(dados, periodo, file.name, leitura.cabecalhos || []);
     }));
     provisaoParcelasTemp = resultados.flatMap(r => r.linhas);
     infoProvisaoParcelasTemp = { arquivos: resultados.map(r => r.arquivo), resultados };
-    renderProvisaoParcelas();
-    mostrarMsgProvisaoParcelas(`${provisaoParcelasTemp.length} lançamento${provisaoParcelasTemp.length !== 1 ? 's' : ''} de provisão selecionado${provisaoParcelasTemp.length !== 1 ? 's' : ''}.`, provisaoParcelasTemp.length ? 'ok' : 'warn');
+    const regrasPendentes = regrasPendentesProvisaoParcelas().length;
     finalizarProgressoImportacao('Provisões carregadas.');
-    if (regrasPendentesProvisaoParcelas().length > 0) setTimeout(() => abrirModalRegrasProvisaoParcelas(), 0);
+    if (regrasPendentes > 0) {
+      abrirModalRegrasProvisaoParcelas();
+    } else {
+      renderProvisaoParcelas();
+      mostrarMsgProvisaoParcelas(`${provisaoParcelasTemp.length} lançamento${provisaoParcelasTemp.length !== 1 ? 's' : ''} de provisão selecionado${provisaoParcelasTemp.length !== 1 ? 's' : ''}.`, provisaoParcelasTemp.length ? 'ok' : 'warn');
+    }
   } catch (err) {
     mostrarMsgProvisaoParcelas('Erro ao importar provisões: ' + err.message, 'warn');
     erroProgressoImportacao('Erro ao carregar as provisões.');
@@ -2118,7 +2322,7 @@ function renderProvisaoParcelas() {
     preview.style.display = 'none';
     return;
   }
-  if (!provisaoParcelasTemp.length) {
+  if (!provisaoParcelasTemp.length && !infoProvisaoParcelasTemp?.resultados?.length) {
     resumo.innerHTML = '<div class="card" style="margin-bottom:16px"><div class="empty">Nenhuma provisão de parcelas importada nesta sessão.</div></div>';
     acoes.style.display = 'none';
     preview.style.display = 'none';
@@ -2137,11 +2341,11 @@ function renderProvisaoParcelas() {
     <div class="metric"><div class="metric-label">Empresas / unidades</div><div class="metric-value" style="font-size:18px">${empresas.size}</div></div>
     <div class="metric"><div class="metric-label">Sem débito/crédito</div><div class="metric-value ${semCodigo ? 'warn' : 'ok'}">${semCodigo}</div></div>
   </div>
-  <div class="alert alert-ok" style="margin-bottom:14px"><strong>Filtro aplicado:</strong> ${contadores.foraCompetencia || 0} fora da competência, ${contadores.tipoExcluido || 0} por tipo de documento, ${contadores.fornecedorExcluido || 0} por fornecedor, ${contadores.vencimentoMesmoMes || 0} com vencimento no mesmo mês e ${contadores.liquidacaoMesmoMes || 0} liquidados no mesmo mês.</div>
-  <div class="conciliacao-note" style="margin-bottom:14px">Arquivos: ${escapeHtml((infoProvisaoParcelasTemp?.arquivos || []).join(', '))}${provisaoParcelasTemp.length > 500 ? ' · Mostrando as primeiras 500 linhas na tela; a exportação inclui todas.' : ''}</div>`;
+  <div class="alert alert-ok" style="margin-bottom:14px"><strong>Filtro deste grupo:</strong> ${contadores.selecionadas || 0} em Provisões, ${(contadores.total || 0) - (contadores.selecionadas || 0) - (contadores.notaFiscalServico || 0) - (contadores.boticarioNotaDebito || 0)} desconsideradas, ${contadores.notaFiscalServico || 0} Notas Fiscais de Serviço para validação e ${contadores.boticarioNotaDebito || 0} Boticário Nota de Débito.</div>
+  <div class="conciliacao-note" style="margin-bottom:14px">Arquivos: ${escapeHtml((infoProvisaoParcelasTemp?.arquivos || []).join(', '))}${provisaoParcelasTemp.length > 150 ? ' · Mostrando as primeiras 150 linhas na tela; a exportação inclui todas.' : ''}</div>`;
   acoes.style.display = 'flex';
   preview.style.display = '';
-  tbody.innerHTML = provisaoParcelasTemp.slice(0, 500).map((r, i) => `<tr class="${(!r.debitoConta || !r.creditoConta) ? 'sem-codigo' : ''}">
+  tbody.innerHTML = provisaoParcelasTemp.slice(0, 150).map((r, i) => `<tr class="${(!r.debitoConta || !r.creditoConta) ? 'sem-codigo' : ''}">
     <td style="white-space:nowrap"><strong>${escapeHtml(r.competencia)}</strong></td>
     <td style="white-space:nowrap">${escapeHtml(r.emissao)}</td>
     <td style="white-space:nowrap">${escapeHtml(r.vencimento)}</td>
@@ -2210,7 +2414,7 @@ function filtrarModalRegrasProvisaoParcelas(input) {
   if (status) status.textContent = `${visiveis} de ${modal.querySelectorAll('tbody tr[data-search]').length} regras visíveis`;
 }
 
-function abrirModalRegrasProvisaoParcelas() {
+function abrirModalRegrasProvisaoParcelasAntigo() {
   fecharModalRegrasProvisaoParcelas();
   const pendentes = regrasPendentesProvisaoParcelas();
   if (!provisaoParcelasTemp.length) {
@@ -2259,6 +2463,50 @@ function abrirModalRegrasProvisaoParcelas() {
   modal.addEventListener('click', event => { if (event.target === modal) fecharModalRegrasProvisaoParcelas(); });
   document.body.appendChild(modal);
   setTimeout(() => modal.querySelector('input[type=search]')?.focus(), 0);
+}
+
+function abrirModalRegrasProvisaoParcelas() {
+  fecharModalRegrasProvisaoParcelas();
+  if (!provisaoParcelasTemp.length) {
+    mostrarMsgProvisaoParcelas('Importe a planilha antes de preencher as regras.', 'warn');
+    return;
+  }
+  const unicas = new Map();
+  provisaoParcelasTemp.forEach(item => {
+    if (!unicas.has(item.chave)) unicas.set(item.chave, item);
+  });
+  origemNovasChaves = 'provisao_parcelas';
+  novasChavesTemp = [];
+  codigosTemp = {};
+  unicas.forEach(item => {
+    const dadosBase = {
+      chaveRegraProvisao: item.chave,
+      fornecedor: item.fornecedor || item.forn || '',
+      plano: item.plano || '',
+      tipoDocumentoOrigem: item.tipoDoc || item.documento || '',
+      historico: item.historico || '',
+      trechoHistorico: '',
+      trechoHistoricoIndices: [],
+      numero: item.numero || '',
+      empresa: item.empresa || '',
+      empresaOrigem: item.empresa || '',
+      centroCusto: item.empresa || '',
+      escopoRegra: item.escopo || '',
+      provisaoParcelas: true
+    };
+    const chaveDebito = `PROVISAO_PARCELAS_DEBITO::${item.chave}`;
+    const chaveCredito = `PROVISAO_PARCELAS_CREDITO::${item.chave}`;
+    novasChavesTemp.push({ ...dadosBase, chave: chaveDebito, tipoDoc: 'PROVISÃO - DÉBITO', pontaProvisao: 'debito' });
+    novasChavesTemp.push({ ...dadosBase, chave: chaveCredito, tipoDoc: 'PROVISÃO - CRÉDITO', pontaProvisao: 'credito' });
+    codigosTemp[chaveDebito] = obterCodigoContaParaDominio(item.debitoConta || '');
+    codigosTemp[chaveCredito] = obterCodigoContaParaDominio(item.creditoConta || '');
+  });
+  selecionadasLote.clear();
+  filtrosNovasChaves = { empresa: '', centroCusto: '', fornecedor: '', plano: '', historico: '', tipoRateio: '', numero: '', tipoDoc: '', codigo: '' };
+  const filtro = document.getElementById('filtro-lote');
+  if (filtro) filtro.value = '';
+  mostrarTela('tela-novas-chaves');
+  renderNovasChaves();
 }
 
 function salvarModalRegrasProvisaoParcelas() {
@@ -2316,23 +2564,77 @@ function aplicarRegrasSalvasProvisaoParcelas() {
   mostrarMsgProvisaoParcelas(aplicadas ? `${aplicadas} linha${aplicadas !== 1 ? 's' : ''} preenchida${aplicadas !== 1 ? 's' : ''} com regras salvas.` : 'Nenhuma regra salva encontrada para as linhas pendentes.', aplicadas ? 'ok' : 'warn');
 }
 
+const CABECALHO_DOMINIO_PROVISAO = ['Data', 'Cód. Conta Débito', 'Cód. Conta Crédito', 'Valor', 'Cód. Histórico', 'Complemento Histórico', 'Inicia Lote', 'Código Matriz/Filial', 'Tipo de Operação'];
+
+function linhaDominioProvisao(item) {
+  const linha = linhaDominio(item.data, obterCodigoContaParaDominio(item.debitoConta), obterCodigoContaParaDominio(item.creditoConta), item.valor, item.complemento, item.empresa, '');
+  return [...linha.slice(0, 8), linha[10]];
+}
+
+function linhasDominioCategoriaProvisao(campo) {
+  return (infoProvisaoParcelasTemp?.resultados || []).flatMap(resultado => (resultado[campo] || []).map(item => linhaProvisaoParcelas(item.r, resultado.periodo, resultado.arquivo)).filter(Boolean).map(linhaDominioProvisao));
+}
+
+function adicionarAbaOperacionalProvisao(wb, nome, linhas) {
+  linhas.forEach(linha => { linha[6] = ''; });
+  if (linhas.length) linhas[0][6] = 1;
+  const ws = XLSX.utils.aoa_to_sheet([CABECALHO_DOMINIO_PROVISAO, ...linhas]);
+  ws['!autofilter'] = { ref: `A1:I${Math.max(1, linhas.length + 1)}` };
+  XLSX.utils.book_append_sheet(wb, ws, nome);
+}
+
+function dadosCompletosDesconsideradas() {
+  const resultados = infoProvisaoParcelasTemp?.resultados || [];
+  const cabecalhos = [];
+  const chavesCabecalho = new Set();
+  resultados.forEach(resultado => (resultado.cabecalhos || []).forEach((cabecalho, indice) => {
+    const nome = limparTextoECD(cabecalho) || `Coluna ${indice + 1}`;
+    const chave = normalizarTexto(nome);
+    if (!chavesCabecalho.has(chave)) {
+      chavesCabecalho.add(chave);
+      cabecalhos.push({ nome, chave });
+    }
+  }));
+  const linhas = resultados.flatMap(resultado => {
+    const cabecalhosOrigem = resultado.cabecalhos || [];
+    const indices = new Map(cabecalhosOrigem.map((cabecalho, indice) => [normalizarTexto(limparTextoECD(cabecalho) || `Coluna ${indice + 1}`), indice]));
+    return (resultado.desconsideradas || []).map(item => {
+      const origem = item.r.__linhaOriginal || item.r;
+      return [item.motivo || '', ...cabecalhos.map(cabecalho => {
+        const indice = indices.get(cabecalho.chave);
+        return indice === undefined ? '' : origem[indice];
+      })];
+    });
+  });
+  return { cabecalho: ['Regra / Motivo', ...cabecalhos.map(item => item.nome)], linhas };
+}
+
+function adicionarAbaDesconsideradasProvisao(wb) {
+  const auditoria = dadosCompletosDesconsideradas();
+  const ws = XLSX.utils.aoa_to_sheet([auditoria.cabecalho, ...auditoria.linhas], { cellDates: true });
+  const ultimaColuna = XLSX.utils.encode_col(Math.max(0, auditoria.cabecalho.length - 1));
+  ws['!autofilter'] = { ref: `A1:${ultimaColuna}${Math.max(1, auditoria.linhas.length + 1)}` };
+  ws['!cols'] = auditoria.cabecalho.map((_, indice) => ({ wch: indice === 0 ? 46 : 20 }));
+  XLSX.utils.book_append_sheet(wb, ws, 'Desconsideradas');
+}
+
 function exportarProvisaoParcelas() {
-  if (!provisaoParcelasTemp.length) {
+  if (!infoProvisaoParcelasTemp?.resultados?.length) {
     mostrarMsgProvisaoParcelas('Importe a planilha antes de exportar.', 'warn');
     return;
   }
   const semCodigo = provisaoParcelasTemp.filter(r => !obterCodigoContaParaDominio(r.debitoConta) || !obterCodigoContaParaDominio(r.creditoConta)).length;
-  if (semCodigo) {
-    mostrarMsgProvisaoParcelas(`Ainda existem ${semCodigo} lançamento${semCodigo !== 1 ? 's' : ''} sem débito e/ou crédito.`, 'warn');
-    return;
-  }
-  const linhas = provisaoParcelasTemp.map(r => linhaDominio(r.data, obterCodigoContaParaDominio(r.debitoConta), obterCodigoContaParaDominio(r.creditoConta), r.valor, r.complemento, r.empresa, ''));
-  linhas.forEach(l => { l[6] = ''; });
-  if (linhas.length) linhas[0][6] = 1;
+  const linhas = provisaoParcelasTemp.map(linhaDominioProvisao);
   const wb = XLSX.utils.book_new();
-  adicionarAbasDominioExportacao(wb, linhas, grupoUsaNumerariosParcelas());
+  adicionarAbaOperacionalProvisao(wb, 'Provisoes', linhas);
+  adicionarAbaOperacionalProvisao(wb, 'Nota Fiscal de Servico', linhasDominioCategoriaProvisao('notaFiscalServico'));
+  adicionarAbaOperacionalProvisao(wb, 'Boticario Nota Debito', linhasDominioCategoriaProvisao('boticarioNotaDebito'));
+  adicionarAbaDesconsideradasProvisao(wb);
   const data = new Date().toLocaleDateString('pt-BR').replace(/\//g, '-');
   XLSX.writeFile(wb, `Dominio_Provisoes_Parcelas_${grupoAtivo}_${data}.xlsx`);
+  mostrarMsgProvisaoParcelas(semCodigo
+    ? `Arquivo exportado com ${semCodigo} lançamento${semCodigo !== 1 ? 's' : ''} sem débito e/ou crédito para preenchimento posterior.`
+    : 'Arquivo de provisões exportado com todas as regras preenchidas.', semCodigo ? 'warn' : 'ok');
 }
 
 function prepararPagamentosImportados(dados, abrirTelaPendencias = true) {
@@ -6444,10 +6746,10 @@ async function processarArquivosImportacao(files) {
 
 function infoAjusteComPonta(tipoDoc) {
   const texto = limparTextoECD(tipoDoc).toUpperCase();
-  const m = texto.match(/^(DESCONTO|ACRÉSCIMO|ACRESCIMO)\s*-\s*(DÉBITO|DEBITO|CRÉDITO|CREDITO)$/);
+  const m = texto.match(/^(DESCONTO|ACRÉSCIMO|ACRESCIMO|PROVISÃO|PROVISAO)\s*-\s*(DÉBITO|DEBITO|CRÉDITO|CREDITO)$/);
   if (!m) return null;
   return {
-    tipo: m[1] === 'ACRESCIMO' ? 'ACRÉSCIMO' : m[1],
+    tipo: m[1] === 'ACRESCIMO' ? 'ACRÉSCIMO' : m[1] === 'PROVISAO' ? 'PROVISÃO' : m[1],
     ponta: m[2].startsWith('D') ? 'DÉBITO' : 'CRÉDITO'
   };
 }
@@ -6470,6 +6772,13 @@ function chaveParAjuste(item) {
 function montarLinhasNovasChavesVisiveis(visiveis) {
   const visiveisSet = new Set(visiveis.map(item => item.chave));
   const usados = new Set();
+  const paresAjuste = new Map();
+  novasChavesTemp.forEach(item => {
+    if (!infoAjusteComPonta(item.tipoDoc)) return;
+    const base = chaveParAjuste(item);
+    if (!paresAjuste.has(base)) paresAjuste.set(base, []);
+    paresAjuste.get(base).push(item);
+  });
   return visiveis.flatMap(item => {
     if (usados.has(item.chave)) return [];
     const info = infoAjusteComPonta(item.tipoDoc);
@@ -6478,7 +6787,7 @@ function montarLinhasNovasChavesVisiveis(visiveis) {
       return [{ tipo: 'simples', item }];
     }
     const base = chaveParAjuste(item);
-    const par = novasChavesTemp.filter(n => chaveParAjuste(n) === base);
+    const par = paresAjuste.get(base) || [];
     const debito = par.find(n => infoAjusteComPonta(n.tipoDoc)?.ponta === 'DÉBITO');
     const credito = par.find(n => infoAjusteComPonta(n.tipoDoc)?.ponta === 'CRÉDITO');
     if (!par.some(n => visiveisSet.has(n.chave))) return [];
@@ -6501,10 +6810,11 @@ function renderLinhaAjustePar(linha) {
   const baseItem = linha.item;
   const { chave, fornecedor, plano, historico, trechoHistorico, numero, empresa, centroCusto, empresaOrigem, rateio, parcelasNumerarios } = baseItem;
   const infoDoc = separarNumeroDoHistorico(baseItem.tipoDoc, numero, historico);
+  const tipoDocumentoExibido = origemNovasChaves === 'provisao_parcelas' ? (baseItem.tipoDocumentoOrigem || '') : (infoDoc.numero || '');
   const historicoExibido = infoDoc.historico;
-  const palavras = renderPalavrasHistorico(chave, historicoExibido, trechoHistorico);
+  const palavras = renderPalavrasHistorico(chave, historicoExibido, trechoHistorico, baseItem);
   const tipoRateio = tipoOperacaoNovaChave(baseItem);
-  const tipoRateioTitulo = tipoRateio === 'TRANSFERENCIA DE NUMERARIOS' ? 'DESPESA' : tipoRateio === 'PROPRIO' ? 'PRÓPRIO' : tipoRateio;
+  const tipoRateioTitulo = origemNovasChaves === 'provisao_parcelas' ? 'PROVISÃO' : tipoRateio === 'TRANSFERENCIA DE NUMERARIOS' ? 'DESPESA' : tipoRateio === 'PROPRIO' ? 'PRÓPRIO' : tipoRateio;
   const tipoRateioSub = tipoRateio === 'TRANSFERENCIA DE NUMERARIOS' ? 'Unidade da despesa' : '';
   const chavesPar = [linha.debito?.chave, linha.credito?.chave].filter(Boolean);
   const chavesParEncoded = encodeURIComponent(JSON.stringify(chavesPar));
@@ -6526,8 +6836,8 @@ function renderLinhaAjustePar(linha) {
       ${historicoExibido ? `<div class="historico-regra-label">Clique nas palavras da regra:</div>${palavras}` : ''}
     </td>
     <td title="${escapeAttr([tipoRateioTitulo, tipoRateioSub].filter(Boolean).join(' - '))}" style="color:var(--text2)">${tipoRateioTitulo ? `<span class="badge ${tipoRateio === 'PROPRIO' ? 'badge-blue' : ''}">${escapeHtml(tipoRateioTitulo)}</span>${tipoRateioSub ? `<div class="cell-subtle">${escapeHtml(tipoRateioSub)}</div>` : ''}` : ''}</td>
-    <td title="${escapeAttr(infoDoc.numero || '')}" style="color:var(--text2)">${escapeHtml(infoDoc.numero || '')}</td>
-    <td title="${escapeAttr(linha.ajuste + ' - débito/crédito')}" style="color:var(--text2)"><span class="tipo-ajuste-badge tipo-ajuste-dc">D/C</span></td>
+    <td title="${escapeAttr(tipoDocumentoExibido)}" style="color:var(--text2)">${escapeHtml(tipoDocumentoExibido)}</td>
+    <td title="${escapeAttr(origemNovasChaves === 'provisao_parcelas' ? 'Débito / Crédito' : linha.ajuste + ' - débito/crédito')}" style="color:var(--text2)"><span class="tipo-ajuste-badge tipo-ajuste-dc">D/C</span></td>
     <td>
       <div class="ajuste-par-inputs">
         ${inputAjuste(linha.debito, 'D', 'Débito')}
@@ -6539,6 +6849,20 @@ function renderLinhaAjustePar(linha) {
 }
 
 function resumoRegrasNovasChaves() {
+  if (origemNovasChaves === 'provisao_parcelas') {
+    const regras = new Map();
+    novasChavesTemp.forEach(item => {
+      const chave = item.chaveRegraProvisao;
+      if (!chave) return;
+      const atual = regras.get(chave) || { debito: false, credito: false };
+      if (item.pontaProvisao === 'debito') atual.debito = !!obterCodigoContaParaDominio(codigosTemp[item.chave]);
+      if (item.pontaProvisao === 'credito') atual.credito = !!obterCodigoContaParaDominio(codigosTemp[item.chave]);
+      regras.set(chave, atual);
+    });
+    const total = regras.size;
+    const ok = [...regras.values()].filter(regra => regra.debito && regra.credito).length;
+    return { total, ok, pendentes: total - ok };
+  }
   const total = grupoUsaNumerariosParcelas()
     ? Math.max(resumoRegrasImportacaoTemp.total || 0, novasChavesTemp.length)
     : novasChavesTemp.length;
@@ -6555,19 +6879,24 @@ function resumoRegrasNovasChaves() {
 
 function configurarTelaNovasChaves() {
   const recebimentos = origemNovasChaves === 'recebimentos';
+  const provisoes = origemNovasChaves === 'provisao_parcelas';
   const titulo = document.getElementById('titulo-novas-chaves');
   const alerta = document.getElementById('alerta-novas-chaves');
   const filtro = document.getElementById('filtro-lote');
   const filtroFornecedor = document.getElementById('filtro-fornecedor-lote');
   const filtroPlano = document.getElementById('filtro-plano-lote');
   const filtroTipo = document.getElementById('filtro-tipo-lote');
+  const campoPontaProvisao = document.getElementById('campo-ponta-lote-provisao');
   const btnLimparFiltros = document.getElementById('btn-limpar-filtros-lote');
   const cabecalho = document.getElementById('cabecalho-novas-chaves');
   const concluir = document.getElementById('btn-concluir-novas-chaves');
-  if (titulo) titulo.textContent = recebimentos ? 'Novas combinações de recebimentos' : 'Novas combinações encontradas';
+  if (campoPontaProvisao) campoPontaProvisao.style.display = provisoes ? '' : 'none';
+  if (titulo) titulo.textContent = recebimentos ? 'Novas combinações de recebimentos' : provisoes ? 'Regras das provisões de parcelas' : 'Novas combinações encontradas';
   if (alerta) alerta.textContent = recebimentos
     ? '⚠️ Preencha o código contábil do Domínio para cada regra nova de recebimento. As regras já salvas foram aplicadas automaticamente.'
-    : '⚠️ Preencha o código contábil do Domínio para cada combinação nova. Pode deixar em branco — o lançamento ficará marcado para revisão.';
+    : provisoes
+      ? '⚠️ Preencha as contas de débito e crédito que desejar salvar. As provisões podem ser exportadas mesmo com regras em branco.'
+      : '⚠️ Preencha o código contábil do Domínio para cada combinação nova. Pode deixar em branco — o lançamento ficará marcado para revisão.';
   if (filtro) filtro.placeholder = recebimentos
     ? 'Pesquisar forma de recebimento, empresa ou conta...'
     : 'Pesquisar fornecedor, histórico, plano ou tipo...';
@@ -6606,6 +6935,8 @@ function configurarTelaNovasChaves() {
       const categorias = [...new Set(pendentesNovas.map(item => tipoOperacaoNovaChave(item)).filter(Boolean))].sort();
       filtroTipo.innerHTML = '<option value="">Todas as formas de recebimento</option>'
         + categorias.map(categoria => `<option value="${escapeAttr(categoria)}">${escapeHtml(categoria)}</option>`).join('');
+    } else if (provisoes) {
+      filtroTipo.innerHTML = '<option value="">Todos os tipos</option><option value="PROVISAO">Provisão (débito e crédito)</option>';
     } else {
       const pendentesNovas = novasChavesTemp.filter(item => !obterCodigoContaParaDominio(codigosTemp[item.chave] || ''));
       const tiposPresentes = new Set(pendentesNovas.map(item => categoriaFiltroTipoNovaChave(item)).filter(Boolean));
@@ -6625,14 +6956,18 @@ function configurarTelaNovasChaves() {
   }
   if (cabecalho) cabecalho.innerHTML = recebimentos
     ? '<th><input type="checkbox" id="check-todas-lote" onchange="alternarTodasVisiveis(this.checked)"></th><th>Empresa do banco</th><th>Empresa do recebimento</th><th>Forma de recebimento</th><th>Origem / plano</th><th>Data / Grupo</th><th>Regra</th><th>Conta do cliente (Domínio)</th>'
-    : '<th><input type="checkbox" id="check-todas-lote" onchange="alternarTodasVisiveis(this.checked)"></th><th>Empresa do banco</th><th>Unidade da despesa</th><th>Fornecedor</th><th>Plano de Contas</th><th>Histórico</th><th>Tipo</th><th>Número</th><th>Documento</th><th>Código Domínio</th>';
-  if (concluir) concluir.textContent = recebimentos ? 'Concluir regras de recebimentos' : 'Concluir e gerar lançamentos';
+    : provisoes
+      ? '<th><input type="checkbox" id="check-todas-lote" onchange="alternarTodasVisiveis(this.checked)"></th><th>Empresa do banco</th><th>Unidade da despesa</th><th>Fornecedor</th><th>Plano de Contas</th><th>Histórico</th><th>Tipo</th><th>Tipo de Documento</th><th>Débito / Crédito</th><th>Código Domínio</th>'
+      : '<th><input type="checkbox" id="check-todas-lote" onchange="alternarTodasVisiveis(this.checked)"></th><th>Empresa do banco</th><th>Unidade da despesa</th><th>Fornecedor</th><th>Plano de Contas</th><th>Histórico</th><th>Tipo</th><th>Número</th><th>Documento</th><th>Código Domínio</th>';
+  if (concluir) concluir.textContent = recebimentos ? 'Concluir regras de recebimentos' : provisoes ? 'Salvar regras e voltar' : 'Concluir e gerar lançamentos';
 }
 
 function renderNovasChaves() {
   configurarTelaNovasChaves();
   const resumoRegras = resumoRegrasNovasChaves();
-  document.getElementById('tag-qtd-novas').textContent = grupoUsaNumerariosParcelas()
+  document.getElementById('tag-qtd-novas').textContent = origemNovasChaves === 'provisao_parcelas'
+    ? `${resumoRegras.pendentes} regra${resumoRegras.pendentes !== 1 ? 's' : ''} faltando · ${resumoRegras.ok} ok`
+    : grupoUsaNumerariosParcelas()
     ? `${resumoRegras.pendentes} regra${resumoRegras.pendentes !== 1 ? 's' : ''} faltando · ${resumoRegras.ok} ok`
     : `${resumoRegras.pendentes} pendente${resumoRegras.pendentes !== 1 ? 's' : ''}`;
   // Só coleta da tela se não estiver re-renderizando após lote
@@ -6644,7 +6979,9 @@ function renderNovasChaves() {
     atualizarStatusLote(visiveis);
     return;
   }
-  const linhasVisiveis = montarLinhasNovasChavesVisiveis(visiveis);
+  const todasLinhasVisiveis = montarLinhasNovasChavesVisiveis(visiveis);
+  const limiteRenderizacao = origemNovasChaves === 'provisao_parcelas' ? 150 : todasLinhasVisiveis.length;
+  const linhasVisiveis = todasLinhasVisiveis.slice(0, limiteRenderizacao);
   tbody.innerHTML = linhasVisiveis.map(linha => {
     if (linha.tipo === 'ajuste-par') return renderLinhaAjustePar(linha);
     const { chave, fornecedor, plano, tipoDoc, historico, trechoHistorico, numero, empresa, centroCusto, empresaOrigem, rateio, parcelasNumerarios, pontaNumerario, naturezaNumerario } = linha.item;
@@ -6701,7 +7038,9 @@ function renderNovasChaves() {
         ${dicaCodigo ? `<div class="cell-subtle" style="margin-top:4px">${escapeHtml(dicaCodigo)}</div>` : ''}
       </td>
     </tr>`;
-  }).join('');
+  }).join('') + (todasLinhasVisiveis.length > linhasVisiveis.length
+    ? `<tr><td colspan="10" style="text-align:center;padding:18px;color:var(--text2);background:var(--bg-soft)">Mostrando as primeiras ${linhasVisiveis.length} de ${todasLinhasVisiveis.length} regras encontradas. Use os filtros para localizar as demais.</td></tr>`
+    : '');
   restaurarInputsFiltrosNovasChaves();
   atualizarStatusLote(visiveis);
 }
@@ -6741,6 +7080,7 @@ function textoBuscaNovaChave(item) {
     item.fornecedor,
     item.plano,
     item.tipoDoc,
+    item.tipoDocumentoOrigem,
     textoTipoOperacaoNovaChave(item),
     item.historico,
     item.trechoHistorico,
@@ -6750,6 +7090,7 @@ function textoBuscaNovaChave(item) {
 }
 
 function tipoOperacaoNovaChave(item) {
+  if (origemNovasChaves === 'provisao_parcelas') return 'PROVISAO';
   if (origemNovasChaves === 'recebimentos' && item?.tipoOperacaoRecebimento) return item.tipoOperacaoRecebimento;
   const tipoRateio = tipoRateioItem(item);
   const tipoDocumento = normalizarTexto(item?.tipoDoc || '');
@@ -6761,6 +7102,7 @@ function tipoOperacaoNovaChave(item) {
 }
 
 function categoriaFiltroTipoNovaChave(item) {
+  if (origemNovasChaves === 'provisao_parcelas') return 'PROVISAO';
   const tipoDocumento = normalizarTexto(item?.tipoDoc || '');
   if (tipoDocumento.includes('desconto')) return 'DESCONTO';
   if (tipoDocumento.includes('acrescimo') || tipoDocumento.includes('acréscimo')) return 'ACRESCIMO';
@@ -6775,6 +7117,7 @@ function categoriaFiltroTipoNovaChave(item) {
 }
 
 function textoTipoOperacaoNovaChave(item) {
+  if (origemNovasChaves === 'provisao_parcelas') return 'PROVISAO PROVISÃO DEBITO DÉBITO CREDITO CRÉDITO';
   const tipoRateio = tipoOperacaoNovaChave(item);
   const tipoDocumento = normalizarTexto(item?.tipoDoc || '');
   if (tipoDocumento.includes('desconto')) return 'DESCONTO DESCONTOS';
@@ -6794,10 +7137,10 @@ function palavrasHistorico(historico) {
   return limparTextoECD(historico).split(/\s+/).filter(Boolean);
 }
 
-function renderPalavrasHistorico(chave, historico) {
+function renderPalavrasHistorico(chave, historico, trechoHistorico = '', itemConhecido = null) {
   const palavras = palavrasHistorico(historico);
   if (palavras.length === 0) return '';
-  const item = novasChavesTemp.find(n => n.chave === chave);
+  const item = itemConhecido || novasChavesTemp.find(n => n.chave === chave);
   const selecionadas = new Set(item?.trechoHistoricoIndices || []);
   return `<div class="historico-palavras">${palavras.map((palavra, idx) => {
     const ativa = selecionadas.has(idx);
@@ -6882,7 +7225,7 @@ function valorFiltroNovaChave(item, campo) {
     plano: item.plano || '',
     historico: [infoDoc.historico, item.trechoHistorico].join(' '),
     tipoRateio: textoTipoOperacaoNovaChave(item),
-    numero: tipoUsaNumero(item.tipoDoc) ? infoDoc.numero : '',
+    numero: origemNovasChaves === 'provisao_parcelas' ? (item.tipoDocumentoOrigem || '') : (tipoUsaNumero(item.tipoDoc) ? infoDoc.numero : ''),
     tipoDoc: item.tipoDoc || '',
     codigo: codigosTemp[item.chave] || ''
   };
@@ -6953,8 +7296,11 @@ function atualizarStatusLote(visiveis = obterNovasChavesVisiveis()) {
   if (!status) return;
   const selecionadasVisiveis = visiveis.filter(item => selecionadasLote.has(item.chave)).length;
   const resumoRegras = resumoRegrasNovasChaves();
-  const textoVisiveis = visiveis.length === 1 ? '1 visível' : `${visiveis.length} visíveis`;
-  status.textContent = grupoUsaNumerariosParcelas()
+  const quantidadeVisivel = origemNovasChaves === 'provisao_parcelas' ? montarLinhasNovasChavesVisiveis(visiveis).length : visiveis.length;
+  const textoVisiveis = quantidadeVisivel === 1 ? '1 visível' : `${quantidadeVisivel} visíveis`;
+  status.textContent = origemNovasChaves === 'provisao_parcelas'
+    ? `${resumoRegras.pendentes} regra${resumoRegras.pendentes !== 1 ? 's' : ''} faltando · ${resumoRegras.ok} ok de ${resumoRegras.total}. ${textoVisiveis} na busca. ${selecionadasVisiveis} conta${selecionadasVisiveis !== 1 ? 's' : ''} selecionada${selecionadasVisiveis !== 1 ? 's' : ''}.`
+    : grupoUsaNumerariosParcelas()
     ? `${resumoRegras.pendentes} regra${resumoRegras.pendentes !== 1 ? 's' : ''} faltando · ${resumoRegras.ok} ok de ${resumoRegras.total}. ${textoVisiveis} na busca. ${selecionadasVisiveis} selecionada${selecionadasVisiveis !== 1 ? 's' : ''}.`
     : `${resumoRegras.pendentes} pendente${resumoRegras.pendentes !== 1 ? 's' : ''}. ${textoVisiveis} na busca. ${selecionadasVisiveis} selecionada${selecionadasVisiveis !== 1 ? 's' : ''}.`;
   const checkTodas = document.getElementById('check-todas-lote');
@@ -7004,7 +7350,22 @@ function aplicarCodigoEmLote() {
   if (selecionadasLote.size === 0) { alert('Selecione pelo menos uma combinação.'); return; }
   inputLote.value = codigo;
   // Aplica no codigosTemp para todas selecionadas
-  selecionadasLote.forEach(chave => { codigosTemp[chave] = codigo; });
+  if (origemNovasChaves === 'provisao_parcelas') {
+    const ponta = document.getElementById('ponta-lote-provisao')?.value || 'debito';
+    const itensPorChave = new Map(novasChavesTemp.map(item => [item.chave, item]));
+    selecionadasLote.forEach(chave => {
+      const item = itensPorChave.get(chave);
+      if (item?.pontaProvisao === ponta) codigosTemp[chave] = codigo;
+    });
+  } else {
+    selecionadasLote.forEach(chave => { codigosTemp[chave] = codigo; });
+  }
+  if (origemNovasChaves === 'provisao_parcelas') {
+    salvarCodigosPreenchidosNoGrupo(false);
+    selecionadasLote.clear();
+    renderNovasChaves();
+    return;
+  }
   if (origemNovasChaves === 'recebimentos') {
     salvarCodigosPreenchidosNoGrupo(false);
     selecionadasLote.clear();
@@ -7030,6 +7391,15 @@ function salvarNovasChavesEGerar() {
     inp.value = codigosTemp[inp.dataset.chave];
   });
   salvarCodigosPreenchidosNoGrupo();
+  if (origemNovasChaves === 'provisao_parcelas') {
+    renderProvisaoParcelas();
+    mostrarTela('tela-provisao-parcelas', false);
+    const restantes = regrasPendentesProvisaoParcelas().length;
+    mostrarMsgProvisaoParcelas(restantes
+      ? `Regras preenchidas salvas. Ainda existem ${restantes} regra${restantes !== 1 ? 's' : ''} sem débito e/ou crédito; a exportação continua liberada.`
+      : 'Todas as regras das provisões foram salvas. Tudo pronto para exportar.', restantes ? 'warn' : 'ok');
+    return;
+  }
   if (origemNovasChaves === 'recebimentos') {
     renderRecebimentosSeparados();
     mostrarTela('tela-recebimentos', false);
@@ -7046,7 +7416,8 @@ function salvarNovasChavesEGerar() {
 }
 
 function cancelarNovasChaves() {
-  if (origemNovasChaves === 'recebimentos') mostrarTela('tela-recebimentos', false);
+  if (origemNovasChaves === 'provisao_parcelas') mostrarTela('tela-provisao-parcelas', false);
+  else if (origemNovasChaves === 'recebimentos') mostrarTela('tela-recebimentos', false);
   else mostrarTela('tela-home');
 }
 
