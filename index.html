@@ -2017,7 +2017,7 @@ function encontrarRegraProvisaoParcelas(forn, plano, tipoDoc, historico, escopo 
   return achada ? regras[achada] : null;
 }
 
-function linhaProvisaoParcelas(r, periodo, arquivoOrigem = '') {
+function linhaProvisaoParcelas(r, periodo, arquivoOrigem = '', permitirValorZerado = false) {
   const forn = limparTextoECD(r[COLS.FORNECEDOR]);
   const plano = limparTextoECD(r[COLS.PLANO]);
   const tipoDoc = limparTextoECD(r[COLS.TIPO_DOC]);
@@ -2026,7 +2026,7 @@ function linhaProvisaoParcelas(r, periodo, arquivoOrigem = '') {
   const numero = infoDoc.numero;
   const parcela = limparTextoECD(r[COLS.PARCELA]);
   const valor = Math.abs(arredondarMoeda(r[COLS.VALOR_LIQ] || r[COLS.VALOR_BRUTO]));
-  if (!valor) return null;
+  if (!valor && !permitirValorZerado) return null;
   const escopo = escopoRegraLinha(r);
   const chave = montarChave(forn, plano, tipoDoc, historico, escopo);
   const regraSalva = encontrarRegraProvisaoParcelas(forn, plano, tipoDoc, historico, escopo);
@@ -2088,6 +2088,10 @@ function configuracaoPadraoProvisaoParcelas(nome = grupoAtivo) {
       'TAR. PG. SALÁRIO',
       'TARIFAS BANCÁRIAS'
     ] : [],
+    considerarCompetenciaEmissao: true,
+    desconsiderarValorZerado: true,
+    aceitarSemVencimento: true,
+    incluirNotaDebitoEspecialEmProvisoes: true,
     excluirVencimentoAteEmissao: false,
     excluirLiquidacaoMesmoMes: cpSimone,
     fornecedoresBoticario: ['BOTICARIO', 'INTERBELLE - OBF - BOTICARIO PRODUTOS DE BELEZA LTDA'],
@@ -2098,15 +2102,18 @@ function configuracaoPadraoProvisaoParcelas(nome = grupoAtivo) {
 function configuracaoProvisaoParcelasGrupo(nome = grupoAtivo) {
   const padrao = configuracaoPadraoProvisaoParcelas(nome);
   const salva = configGrupos[nome]?.provisoesParcelas || {};
-  const cpSimone = normalizarTexto(nome).includes('cp simone');
   const fornecedoresSalvos = Array.isArray(salva.fornecedoresExcluidos) ? salva.fornecedoresExcluidos : padrao.fornecedoresExcluidos;
-  const fornecedoresExcluidos = cpSimone
-    ? [...new Set([...padrao.fornecedoresExcluidos, ...fornecedoresSalvos])]
-    : fornecedoresSalvos;
+  const fornecedoresExcluidos = salva.versaoFiltrosEditaveis === 1
+    ? fornecedoresSalvos
+    : [...new Set([...padrao.fornecedoresExcluidos, ...fornecedoresSalvos])];
   return {
     tiposIncluidos: Array.isArray(salva.tiposIncluidos) ? salva.tiposIncluidos : padrao.tiposIncluidos,
     fornecedoresExcluidos,
-    excluirVencimentoAteEmissao: cpSimone ? false : (salva.excluirVencimentoAteEmissao === undefined ? padrao.excluirVencimentoAteEmissao : !!salva.excluirVencimentoAteEmissao),
+    considerarCompetenciaEmissao: salva.considerarCompetenciaEmissao === undefined ? padrao.considerarCompetenciaEmissao : !!salva.considerarCompetenciaEmissao,
+    desconsiderarValorZerado: salva.desconsiderarValorZerado === undefined ? padrao.desconsiderarValorZerado : !!salva.desconsiderarValorZerado,
+    aceitarSemVencimento: salva.aceitarSemVencimento === undefined ? padrao.aceitarSemVencimento : !!salva.aceitarSemVencimento,
+    incluirNotaDebitoEspecialEmProvisoes: salva.incluirNotaDebitoEspecialEmProvisoes === undefined ? padrao.incluirNotaDebitoEspecialEmProvisoes : !!salva.incluirNotaDebitoEspecialEmProvisoes,
+    excluirVencimentoAteEmissao: salva.excluirVencimentoAteEmissao === undefined ? padrao.excluirVencimentoAteEmissao : !!salva.excluirVencimentoAteEmissao,
     excluirLiquidacaoMesmoMes: salva.excluirLiquidacaoMesmoMes === undefined ? padrao.excluirLiquidacaoMesmoMes : !!salva.excluirLiquidacaoMesmoMes,
     fornecedoresBoticario: Array.isArray(salva.fornecedoresBoticario) ? salva.fornecedoresBoticario : padrao.fornecedoresBoticario,
     fornecedoresNotaDebitoEspecial: Array.isArray(salva.fornecedoresNotaDebitoEspecial) ? salva.fornecedoresNotaDebitoEspecial : padrao.fornecedoresNotaDebitoEspecial
@@ -2157,8 +2164,9 @@ function filtrarLinhasProvisaoParcelas(dados, periodo, configuracao = configurac
       return;
     }
     if (!mesEmissao) { desconsiderar(r, 'Sem data de emissão válida', 'semData'); return; }
-    if (mesEmissao < periodo.mesInicio || mesEmissao > periodo.mesFim) { desconsiderar(r, 'Emissão fora da competência', 'foraCompetencia'); return; }
-    if (!Math.abs(arredondarMoeda(r[COLS.VALOR_LIQ] || r[COLS.VALOR_BRUTO]))) { desconsiderar(r, 'Valor zerado', 'valorZerado'); return; }
+    if (configuracao.considerarCompetenciaEmissao && (mesEmissao < periodo.mesInicio || mesEmissao > periodo.mesFim)) { desconsiderar(r, 'Emissão fora da competência', 'foraCompetencia'); return; }
+    if (configuracao.desconsiderarValorZerado && !Math.abs(arredondarMoeda(r[COLS.VALOR_LIQ] || r[COLS.VALOR_BRUTO]))) { desconsiderar(r, 'Valor zerado', 'valorZerado'); return; }
+    if (!configuracao.aceitarSemVencimento && !mesVencimento) { desconsiderar(r, 'Sem data de vencimento válida', 'semData'); return; }
     if (configuracao.excluirVencimentoAteEmissao && mesVencimento && mesVencimento <= mesEmissao) { desconsiderar(r, 'Vencimento no mesmo mês ou anterior à emissão', 'vencimentoMesmoMes'); return; }
     if (configuracao.excluirLiquidacaoMesmoMes && mesLiquidacao && mesLiquidacao === mesEmissao) { desconsiderar(r, 'Liquidação no mesmo mês da emissão', 'liquidacaoMesmoMes'); return; }
     if (permitidos.size && !permitidos.has(tipoDocumento)) { desconsiderar(r, 'Tipo de documento não incluído na regra do grupo', 'tipoExcluido'); return; }
@@ -2169,7 +2177,8 @@ function filtrarLinhasProvisaoParcelas(dados, periodo, configuracao = configurac
 }
 
 function montarResultadoProvisaoParcelas(dados, periodo, arquivo, cabecalhos = []) {
-  const filtrado = filtrarLinhasProvisaoParcelas(dados, periodo);
+  const configuracao = configuracaoProvisaoParcelasGrupo();
+  const filtrado = filtrarLinhasProvisaoParcelas(dados, periodo, configuracao);
   const categorias = [
     filtrado.linhas.map(r => ({ r, categoria: 'Provisões' })),
     filtrado.boticarioNotaFiscalServico.map(item => ({ r: item.r, categoria: 'NFS Boticário' })),
@@ -2185,13 +2194,15 @@ function montarResultadoProvisaoParcelas(dados, periodo, arquivo, cabecalhos = [
   }
   const linhasProvisoes = [
     ...filtrado.linhas,
-    ...filtrado.boticarioNotaDebito.map(item => item.r)
-  ].map(r => linhaProvisaoParcelas(r, periodo, arquivo)).filter(Boolean);
+    ...(configuracao.incluirNotaDebitoEspecialEmProvisoes ? filtrado.boticarioNotaDebito.map(item => item.r) : [])
+  ].map(r => linhaProvisaoParcelas(r, periodo, arquivo, !configuracao.desconsiderarValorZerado)).filter(Boolean);
   return {
     arquivo,
     periodo,
     dados,
     cabecalhos,
+    desconsiderarValorZerado: configuracao.desconsiderarValorZerado,
+    incluirNotaDebitoEspecialEmProvisoes: configuracao.incluirNotaDebitoEspecialEmProvisoes,
     contadores: filtrado.contadores,
     linhas: linhasProvisoes,
     desconsideradas: filtrado.desconsideradas,
@@ -2221,6 +2232,10 @@ function preencherFormularioConfiguracaoProvisaoParcelas(configuracao) {
   modal.querySelector('[data-fornecedores-excluidos]').value = (configuracao.fornecedoresExcluidos || []).join('\n');
   modal.querySelector('[data-fornecedores-boticario]').value = (configuracao.fornecedoresBoticario || []).join('\n');
   modal.querySelector('[data-fornecedores-nota-debito]').value = (configuracao.fornecedoresNotaDebitoEspecial || []).join('\n');
+  modal.querySelector('[data-considerar-competencia]').checked = !!configuracao.considerarCompetenciaEmissao;
+  modal.querySelector('[data-desconsiderar-zero]').checked = !!configuracao.desconsiderarValorZerado;
+  modal.querySelector('[data-aceitar-sem-vencimento]').checked = !!configuracao.aceitarSemVencimento;
+  modal.querySelector('[data-incluir-nota-debito-provisoes]').checked = !!configuracao.incluirNotaDebitoEspecialEmProvisoes;
   modal.querySelector('[data-excluir-vencimento]').checked = !!configuracao.excluirVencimentoAteEmissao;
   modal.querySelector('[data-excluir-liquidacao]').checked = !!configuracao.excluirLiquidacaoMesmoMes;
 }
@@ -2248,22 +2263,23 @@ function abrirConfiguracaoProvisaoParcelas() {
         <label class="filtro-lote-field"><span>Fornecedores de NFS Boticário</span><textarea data-fornecedores-boticario rows="6" placeholder="Um fornecedor ou termo por linha"></textarea><small class="conciliacao-note">Somente as Notas Fiscais de Serviço destes fornecedores irão para a aba do Boticário.</small></label>
         <label class="filtro-lote-field"><span>Fornecedores da aba Nota de Débito</span><textarea data-fornecedores-nota-debito rows="6" placeholder="Um fornecedor ou termo por linha"></textarea><small class="conciliacao-note">Notas de Débito destes fornecedores irão para a aba GB TECH/Boticário. Este cadastro não altera as Notas Fiscais de Serviço.</small></label>
       </div>
-      <div style="display:grid;gap:10px">
+      <div><div class="metric-label" style="margin-bottom:8px">Regras gerais aplicadas às Provisões</div><div style="display:grid;gap:10px;padding:12px;border:1px solid var(--border);border-radius:6px;background:var(--bg)">
+        <label style="display:flex;align-items:flex-start;gap:8px"><input type="checkbox" data-considerar-competencia> <span>Considerar somente emissões dentro da competência informada no arquivo</span></label>
+        <label style="display:flex;align-items:flex-start;gap:8px"><input type="checkbox" data-desconsiderar-zero> <span>Desconsiderar lançamentos com valor zerado</span></label>
+        <label style="display:flex;align-items:flex-start;gap:8px"><input type="checkbox" data-aceitar-sem-vencimento> <span>Aceitar lançamentos sem vencimento, usando a emissão como referência</span></label>
         <label style="display:flex;align-items:center;gap:8px"><input type="checkbox" data-excluir-vencimento> Desconsiderar quando o vencimento estiver no mesmo mês ou antes da emissão</label>
         <label style="display:flex;align-items:center;gap:8px"><input type="checkbox" data-excluir-liquidacao> Desconsiderar quando emissão e liquidação estiverem no mesmo mês</label>
-      </div>
+        <label style="display:flex;align-items:flex-start;gap:8px"><input type="checkbox" data-incluir-nota-debito-provisoes> <span>Incluir em Provisões as Notas de Débito dos fornecedores da aba especial</span></label>
+        <small class="conciliacao-note">A emissão precisa ser válida para gerar a data do lançamento. Desmarque ou marque as demais regras conforme a orientação da empresa.</small>
+      </div></div>
     </div>
     <div style="padding:14px 20px;border-top:1px solid var(--border);display:flex;justify-content:space-between;gap:10px;flex-wrap:wrap">
-      <button class="btn" onclick="restaurarPadraoConfiguracaoProvisaoParcelas()">Restaurar padrão deste grupo</button>
+      <div><button class="btn" onclick="pedirSenha(restaurarPadraoConfiguracaoProvisaoParcelas)">Restaurar padrão deste grupo</button><div class="conciliacao-note" style="margin-top:5px">Exige senha administrativa.</div></div>
       <div style="display:flex;gap:10px"><button class="btn" onclick="fecharConfiguracaoProvisaoParcelas()">Cancelar</button><button class="btn btn-primary" onclick="salvarConfiguracaoProvisaoParcelas()">Salvar filtros</button></div>
     </div>
   </div>`;
   modal.addEventListener('click', event => { if (event.target === modal) fecharConfiguracaoProvisaoParcelas(); });
   document.body.appendChild(modal);
-  if (normalizarTexto(grupoAtivo).includes('cp simone')) {
-    const campoVencimento = modal.querySelector('[data-excluir-vencimento]')?.closest('label');
-    if (campoVencimento) campoVencimento.style.display = 'none';
-  }
   preencherFormularioConfiguracaoProvisaoParcelas(configuracaoProvisaoParcelasGrupo());
 }
 
@@ -2278,11 +2294,16 @@ function salvarConfiguracaoProvisaoParcelas() {
   const lista = atributo => String(modal.querySelector(atributo)?.value || '').split(/[;\n]+/).map(limparTextoECD).filter(Boolean);
   configGrupos[grupoAtivo] = configGrupos[grupoAtivo] || {};
   configGrupos[grupoAtivo].provisoesParcelas = {
+    versaoFiltrosEditaveis: 1,
     tiposIncluidos,
     fornecedoresExcluidos: lista('[data-fornecedores-excluidos]'),
     fornecedoresBoticario: lista('[data-fornecedores-boticario]'),
     fornecedoresNotaDebitoEspecial: lista('[data-fornecedores-nota-debito]'),
-    excluirVencimentoAteEmissao: normalizarTexto(grupoAtivo).includes('cp simone') ? false : !!modal.querySelector('[data-excluir-vencimento]')?.checked,
+    considerarCompetenciaEmissao: !!modal.querySelector('[data-considerar-competencia]')?.checked,
+    desconsiderarValorZerado: !!modal.querySelector('[data-desconsiderar-zero]')?.checked,
+    aceitarSemVencimento: !!modal.querySelector('[data-aceitar-sem-vencimento]')?.checked,
+    incluirNotaDebitoEspecialEmProvisoes: !!modal.querySelector('[data-incluir-nota-debito-provisoes]')?.checked,
+    excluirVencimentoAteEmissao: !!modal.querySelector('[data-excluir-vencimento]')?.checked,
     excluirLiquidacaoMesmoMes: !!modal.querySelector('[data-excluir-liquidacao]')?.checked
   };
   salvarStorage();
@@ -2377,13 +2398,14 @@ function renderProvisaoParcelas() {
     Object.keys(r.contadores || {}).forEach(chave => { acc[chave] = (acc[chave] || 0) + r.contadores[chave]; });
     return acc;
   }, {});
+  const notasDebitoIncluidasEmProvisoes = (infoProvisaoParcelasTemp?.resultados || []).reduce((totalResultado, resultado) => totalResultado + (resultado.incluirNotaDebitoEspecialEmProvisoes ? (resultado.boticarioNotaDebito || []).length : 0), 0);
   resumo.innerHTML = `<div class="conciliacao-grid">
     <div class="metric"><div class="metric-label">Lançamentos selecionados</div><div class="metric-value">${provisaoParcelasTemp.length}</div></div>
     <div class="metric"><div class="metric-label">Total provisionado</div><div class="metric-value" style="font-size:18px">R$ ${fmtValor(total)}</div></div>
     <div class="metric"><div class="metric-label">Empresas / unidades</div><div class="metric-value" style="font-size:18px">${empresas.size}</div></div>
     <div class="metric"><div class="metric-label">Sem débito/crédito</div><div class="metric-value ${semCodigo ? 'warn' : 'ok'}">${semCodigo}</div></div>
   </div>
-  <div class="alert alert-ok" style="margin-bottom:14px"><strong>Filtro deste grupo:</strong> ${(contadores.selecionadas || 0) + (contadores.boticarioNotaDebito || 0)} em Provisões, ${(contadores.total || 0) - (contadores.selecionadas || 0) - (contadores.boticarioNotaFiscalServico || 0) - (contadores.boticarioNotaDebito || 0) - (contadores.notaFiscalServicoPrestado || 0)} desconsideradas, ${contadores.boticarioNotaFiscalServico || 0} NFS Boticário, ${contadores.boticarioNotaDebito || 0} Notas de Débito GB TECH/Boticário também incluídas em Provisões e ${contadores.notaFiscalServicoPrestado || 0} Notas de Serviços Prestados.</div>
+  <div class="alert alert-ok" style="margin-bottom:14px"><strong>Filtro deste grupo:</strong> ${provisaoParcelasTemp.length} em Provisões, ${(contadores.total || 0) - (contadores.selecionadas || 0) - (contadores.boticarioNotaFiscalServico || 0) - (contadores.boticarioNotaDebito || 0) - (contadores.notaFiscalServicoPrestado || 0)} desconsideradas, ${contadores.boticarioNotaFiscalServico || 0} NFS Boticário, ${contadores.boticarioNotaDebito || 0} Notas de Débito GB TECH/Boticário${notasDebitoIncluidasEmProvisoes ? ` (${notasDebitoIncluidasEmProvisoes} também incluídas em Provisões)` : ' somente na aba separada'} e ${contadores.notaFiscalServicoPrestado || 0} Notas de Serviços Prestados.</div>
   <div class="conciliacao-note" style="margin-bottom:14px">Arquivos: ${escapeHtml((infoProvisaoParcelasTemp?.arquivos || []).join(', '))}${provisaoParcelasTemp.length > 150 ? ' · Mostrando as primeiras 150 linhas na tela; a exportação inclui todas.' : ''}</div>`;
   acoes.style.display = 'flex';
   preview.style.display = '';
@@ -2626,7 +2648,7 @@ function linhaOperacionalProvisao(item) {
 }
 
 function linhasDominioCategoriaProvisao(campo) {
-  return (infoProvisaoParcelasTemp?.resultados || []).flatMap(resultado => (resultado[campo] || []).map(item => linhaProvisaoParcelas(item.r, resultado.periodo, resultado.arquivo)).filter(Boolean).map(linhaOperacionalProvisao));
+  return (infoProvisaoParcelasTemp?.resultados || []).flatMap(resultado => (resultado[campo] || []).map(item => linhaProvisaoParcelas(item.r, resultado.periodo, resultado.arquivo, !resultado.desconsiderarValorZerado)).filter(Boolean).map(linhaOperacionalProvisao));
 }
 
 function adicionarAbaOperacionalProvisao(wb, nome, linhas) {
@@ -6107,7 +6129,7 @@ const SENHA_ADMIN = '66833';
 
 function pedirSenha(callback) {
   const modal = document.createElement('div');
-  modal.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.5);display:flex;align-items:center;justify-content:center;z-index:9999';
+  modal.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.5);display:flex;align-items:center;justify-content:center;z-index:20000';
   modal.innerHTML = `
     <div style="background:var(--bg);border-radius:var(--radius);padding:28px 32px;min-width:320px;box-shadow:0 8px 32px rgba(0,0,0,0.2)">
       <h3 style="margin-bottom:6px;font-size:15px">🔒 Ação protegida</h3>
