@@ -619,6 +619,7 @@ let origemNovasChaves = 'pagamentos';
 let selecionadasLote = new Set();
 let filtrosNovasChaves = { empresa: '', centroCusto: '', fornecedor: '', plano: '', historico: '', tipoRateio: '', numero: '', tipoDoc: '', codigo: '' };
 let lancamentosGerados = [];
+let lancamentosDesconsideradosExportacao = [];
 let editandoRegras = false;
 let editTemp = {};
 let regrasSelecionadasEdicao = new Set();
@@ -2744,6 +2745,7 @@ function prepararPagamentosImportados(dados, abrirTelaPendencias = true) {
     if (obterCodigoContaParaDominio(temCodigo || '')) resumoRegras.okSalvas += 1;
   };
   dados.forEach(r => {
+    if (linhaEhAjusteFechamentoCaixa(r)) return;
     const forn = limparTextoECD(r[COLS.FORNECEDOR]);
     const plano = limparTextoECD(r[COLS.PLANO]);
     const tipoDoc = limparTextoECD(r[COLS.TIPO_DOC]);
@@ -3013,6 +3015,7 @@ function htmlResumoConferenciaBancaria() {
         <span>Extrato: <strong>R$ ${fmtValor(totalSaidasPagamentos)}</strong></span>
         <span>Diferença: <strong>R$ ${fmtValor(Math.abs(diferencaConferencia))}</strong></span>
       </div>
+      ${htmlAvisoAjustesFechamentoCaixaConciliacao()}
       ${detalheDiferenca}
     </div>`;
 }
@@ -4293,8 +4296,57 @@ function movimentoEhTransferenciaEntreContas(m) {
   return normalizarTexto(m?.tipoConciliacao).includes('transferencia entre contas');
 }
 
+function grupoIgnoraAjusteFechamentoCaixaNaConciliacao() {
+  return normalizarTexto(grupoAtivo).includes('cp simone');
+}
+
+function linhaEhAjusteFechamentoCaixa(row) {
+  if (!grupoIgnoraAjusteFechamentoCaixaNaConciliacao() || !row) return false;
+  const conta = normalizarTexto(row[COLS.CONTA]);
+  const fornecedor = normalizarTexto(row[COLS.FORNECEDOR]);
+  const plano = normalizarTexto(row[COLS.PLANO]);
+  const historico = normalizarTexto(row[COLS.HISTORICO]);
+  return conta.includes('caixa loja')
+    && fornecedor.includes('vendas dinheiro')
+    && plano.includes('falta de caixa')
+    && historico.includes('ajuste do fechamento de caixa');
+}
+
+function movimentoEhAjusteFechamentoCaixa(m) {
+  if (!grupoIgnoraAjusteFechamentoCaixaNaConciliacao() || !m || m.valor >= 0) return false;
+  const conta = normalizarTexto(m.conta);
+  const tipo = normalizarTexto(m.tipoConciliacao);
+  const descricao = normalizarTexto([m.historico, m.complemento].filter(Boolean).join(' '));
+  return conta.includes('caixa loja')
+    && tipo.includes('parcelas de titulos')
+    && descricao.includes('vendas dinheiro');
+}
+
+function resumoAjustesFechamentoCaixaConciliacao() {
+  const pagamentos = (linhasImportadas || []).filter(linhaEhAjusteFechamentoCaixa);
+  const movimentos = (extratoBancarioTemp || []).filter(movimentoEhAjusteFechamentoCaixa);
+  return {
+    qtdPagamentos: pagamentos.length,
+    valorPagamentos: arredondarMoeda(pagamentos.reduce((s, row) => s + Math.abs(arredondarMoeda(row[COLS.VALOR_LIQ])), 0)),
+    qtdMovimentos: movimentos.length,
+    valorMovimentos: arredondarMoeda(movimentos.reduce((s, mov) => s + Math.abs(arredondarMoeda(mov.valor)), 0))
+  };
+}
+
+function htmlAvisoAjustesFechamentoCaixaConciliacao() {
+  const resumo = resumoAjustesFechamentoCaixaConciliacao();
+  if (!resumo.qtdPagamentos && !resumo.qtdMovimentos) return '';
+  return `<div class="alert alert-info" style="margin:10px 0">
+    <strong>Ajustes de fechamento fora do confronto:</strong>
+    ${resumo.qtdPagamentos} título${resumo.qtdPagamentos !== 1 ? 's' : ''} de FALTA DE CAIXA (R$ ${fmtValor(resumo.valorPagamentos)})
+    ${resumo.qtdMovimentos ? ` e ${resumo.qtdMovimentos} movimento${resumo.qtdMovimentos !== 1 ? 's' : ''} correspondente${resumo.qtdMovimentos !== 1 ? 's' : ''} no extrato (R$ ${fmtValor(resumo.valorMovimentos)})` : ''}.
+    Eles também ficam fora do arquivo importável e são listados na aba Desconsiderados da exportação.
+  </div>`;
+}
+
 function movimentoEhSaidaConciliavelPagamento(m) {
   if (!m || m.valor >= 0) return false;
+  if (movimentoEhAjusteFechamentoCaixa(m)) return false;
   const tipo = normalizarTexto(m.tipoConciliacao);
   if (tipo.includes('parcelas de titulos')) return true;
   return tipo.includes('conciliacao mista');
@@ -4302,12 +4354,14 @@ function movimentoEhSaidaConciliavelPagamento(m) {
 
 function movimentoEhSaidaPendenteExportavel(m) {
   if (!m || m.valor >= 0) return false;
+  if (movimentoEhAjusteFechamentoCaixa(m)) return false;
   const tipo = normalizarTexto(m.tipoConciliacao);
   return tipo.includes('parcelas de titulos') || tipo.includes('conciliacao mista');
 }
 
 function movimentoEhSaidaConferenciaPagamento(m, pagamentos = []) {
   if (!m || m.valor >= 0) return false;
+  if (movimentoEhAjusteFechamentoCaixa(m)) return false;
   const tipo = normalizarTexto(m.tipoConciliacao);
   if (tipo.includes('parcelas de titulos')) return true;
   return tipo.includes('conciliacao mista')
@@ -4403,6 +4457,7 @@ function pagamentoConciliacao(row, idx) {
     plano,
     tipoDoc,
     historico,
+    ajusteFechamentoCaixa: linhaEhAjusteFechamentoCaixa(row),
     escopoRegra,
     chave: montarChave(fornecedor, plano, tipoDoc, historico, escopoRegra)
   };
@@ -4412,11 +4467,14 @@ function pagamentosImportadosConciliacao(contasBanco = new Set()) {
   if (linhasImportadasModo !== 'rateio') {
     return linhasImportadas
       .map((row, idx) => pagamentoConciliacao(row, idx))
-      .filter(p => (contasBanco.size === 0 || contasBanco.has(normalizarTexto(p.conta))) && p.valor > 0);
+      .filter(p => !p.ajusteFechamentoCaixa
+        && (contasBanco.size === 0 || contasBanco.has(normalizarTexto(p.conta)))
+        && p.valor > 0);
   }
   const gruposRateio = new Map();
   linhasImportadas.forEach((row, idx) => {
     const pag = pagamentoConciliacao(row, idx);
+    if (pag.ajusteFechamentoCaixa) return;
     if (contasBanco.size > 0 && !contasBanco.has(normalizarTexto(pag.conta))) return;
     const chave = [
       pag.dataKey,
@@ -5122,6 +5180,7 @@ function renderSugestoesConciliacao(sugestoes, qtdPagamentos, qtdMovimentos, ent
       <div class="metric ${saidasExtrasPendentes.length > 0 ? 'metric-focus-warn' : 'metric-muted'}"><div class="metric-label">Saídas pendentes</div><div class="metric-value ${saidasExtrasPendentes.length > 0 ? 'warn' : 'ok'}">${saidasExtrasPendentes.length}</div><div class="metric-sub">${saidasExtrasPreenchidas.length} preenchida${saidasExtrasPreenchidas.length !== 1 ? 's' : ''}</div></div>
       ${itensRecebimentoRateio.length ? `<div class="metric metric-muted"><div class="metric-label">Recebimentos rateio</div><div class="metric-value metric-text">${itensRecebimentoRateio.length}</div><div class="metric-sub">${numerariosPendentes.length} numerário${numerariosPendentes.length !== 1 ? 's' : ''} pendente${numerariosPendentes.length !== 1 ? 's' : ''}</div></div>` : ''}
     </div>
+    ${htmlAvisoAjustesFechamentoCaixaConciliacao()}
     <p class="conciliacao-note" style="margin-bottom:10px">Pagamentos são validados contra as saídas do extrato. As pendências devem ser conciliadas manualmente quando não houver sugestão automática.</p>
     <div class="conciliation-actions">
       ${qtdParaResolver > 0 ? '<button class="btn btn-primary" onclick="abrirModalPendenciasConciliacaoBancaria()">Preencher pendências</button>' : ''}
@@ -6077,6 +6136,7 @@ function limparSessaoImportacao() {
   resumoRegrasImportacaoTemp = { total: 0, okSalvas: 0 };
   selecionadasLote.clear();
   lancamentosGerados = [];
+  lancamentosDesconsideradosExportacao = [];
   editandoRegras = false;
   editTemp = {};
   regrasSelecionadasEdicao.clear();
@@ -7541,6 +7601,7 @@ function arredondarMoeda(v) {
 
 function gerarLancamentos(dados, regras) {
   lancamentosGerados = [];
+  lancamentosDesconsideradosExportacao = [];
   let totalLiquido = 0;
   let totalBruto = 0;
   let totalDesconto = 0;
@@ -7610,6 +7671,23 @@ function gerarLancamentos(dados, regras) {
     const complemento = montarComplementoHistoricoPagamento(forn, tipoDoc, num, parcela, plano, historico);
     const complementoIntercompany = complemento;
     const tipoRateioAtual = tipoRateioLinha(r);
+    if (linhaEhAjusteFechamentoCaixa(r)) {
+      lancamentosDesconsideradosExportacao.push({
+        motivo: 'Ajuste automático de fechamento de caixa',
+        data: dataLiq,
+        empresa,
+        conta: banco,
+        fornecedor: forn,
+        plano,
+        tipoDoc,
+        numero: num,
+        parcela,
+        historico,
+        complemento,
+        valor: Math.abs(valorLiq)
+      });
+      return;
+    }
 
     totalLiquido += valorLiq;
     totalBruto += valorBruto;
@@ -7829,24 +7907,42 @@ function adicionarAbaDominio(wb, nome, linhas, usados) {
   XLSX.utils.book_append_sheet(wb, ws, nomeAbaExcelSeguro(nome, usados));
 }
 
+function adicionarAbaDesconsideradosExportacao(wb, usados) {
+  if (!lancamentosDesconsideradosExportacao.length) return;
+  const cabecalho = ['Motivo', 'Data', 'Empresa', 'Conta', 'Fornecedor', 'Plano de Contas', 'Tipo de Documento', 'Número', 'Parcela', 'Histórico', 'Valor'];
+  const linhas = lancamentosDesconsideradosExportacao.map(item => [
+    item.motivo, item.data, item.empresa, item.conta, item.fornecedor, item.plano,
+    item.tipoDoc, item.numero, item.parcela, item.historico, item.valor
+  ]);
+  const total = arredondarMoeda(lancamentosDesconsideradosExportacao.reduce((s, item) => s + Math.abs(item.valor || 0), 0));
+  linhas.push(['TOTAL DESCONSIDERADO', '', '', '', '', '', '', '', '', '', total]);
+  const ws = XLSX.utils.aoa_to_sheet([cabecalho, ...linhas]);
+  ws['!cols'] = [
+    { wch: 38 }, { wch: 12 }, { wch: 24 }, { wch: 26 }, { wch: 30 }, { wch: 24 },
+    { wch: 20 }, { wch: 14 }, { wch: 10 }, { wch: 48 }, { wch: 14 }
+  ];
+  XLSX.utils.book_append_sheet(wb, ws, nomeAbaExcelSeguro('Desconsiderados', usados));
+}
+
 function adicionarAbasDominioExportacao(wb, linhas, separarPorEmpresa = false) {
   const usados = new Set();
   adicionarAbaDominio(wb, separarPorEmpresa ? 'Consolidado' : 'Lançamentos Domínio', linhas, usados);
-  if (!separarPorEmpresa) return;
+  if (separarPorEmpresa) {
+    const porEmpresa = new Map();
+    linhas.forEach(linha => {
+      const empresa = limparTextoExportacaoDominio(linha[7] || 'Sem empresa') || 'Sem empresa';
+      if (!porEmpresa.has(empresa)) porEmpresa.set(empresa, []);
+      const copia = linha.slice();
+      copia[6] = '';
+      porEmpresa.get(empresa).push(copia);
+    });
 
-  const porEmpresa = new Map();
-  linhas.forEach(linha => {
-    const empresa = limparTextoExportacaoDominio(linha[7] || 'Sem empresa') || 'Sem empresa';
-    if (!porEmpresa.has(empresa)) porEmpresa.set(empresa, []);
-    const copia = linha.slice();
-    copia[6] = '';
-    porEmpresa.get(empresa).push(copia);
-  });
-
-  porEmpresa.forEach((linhasEmpresa, empresa) => {
-    if (linhasEmpresa.length > 0) linhasEmpresa[0][6] = 1;
-    adicionarAbaDominio(wb, empresa, linhasEmpresa, usados);
-  });
+    porEmpresa.forEach((linhasEmpresa, empresa) => {
+      if (linhasEmpresa.length > 0) linhasEmpresa[0][6] = 1;
+      adicionarAbaDominio(wb, empresa, linhasEmpresa, usados);
+    });
+  }
+  adicionarAbaDesconsideradosExportacao(wb, usados);
 }
 
 function exportarDominioPagamentos() {
