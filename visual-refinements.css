@@ -2527,11 +2527,10 @@ body {
   height: 42px !important;
 }
 
-#tela-novas-chaves .bulk-action-panel .btn-save-fill {
+#tela-novas-chaves .manual-save-action .btn-save-fill {
   width: 100% !important;
-  min-height: 42px !important;
-  height: 42px !important;
-  margin-top: 10px !important;
+  min-height: 44px !important;
+  height: 44px !important;
 }
 
 #tela-novas-chaves .bulk-selection-actions {
@@ -2549,9 +2548,18 @@ body {
 }
 
 #tela-novas-chaves .novas-statusbar {
+  display: grid !important;
+  grid-template-columns: minmax(0, 1fr) minmax(260px, 340px) !important;
+  align-items: center !important;
+  gap: 18px !important;
   margin-top: 0 !important;
   padding: 0 28px 18px !important;
   border-top: 0 !important;
+}
+
+#tela-novas-chaves .manual-save-action {
+  width: 100% !important;
+  justify-self: end !important;
 }
 
 #tela-novas-chaves .bulk-tool-status {
@@ -2569,7 +2577,10 @@ body {
 
 @media (max-width: 760px) {
   #tela-novas-chaves .bulk-tool-top { padding: 16px !important; }
-  #tela-novas-chaves .novas-statusbar { padding: 0 16px 16px !important; }
+  #tela-novas-chaves .novas-statusbar {
+    grid-template-columns: 1fr !important;
+    padding: 0 16px 16px !important;
+  }
 }
 
 #tela-novas-chaves .historico-palavra {

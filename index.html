@@ -410,7 +410,6 @@
           <div class="filtro-lote-field" id="campo-ponta-lote-provisao" style="display:none"><span>Aplicar em</span><select id="ponta-lote-provisao"><option value="debito">Débito</option><option value="credito">Crédito</option></select></div>
           <div class="filtro-lote-field campo-conta-lote"><span>Conta para lote</span><input type="text" id="codigo-lote" class="conta-autocomplete" placeholder="Conta para aplicar nos selecionados" oninput="criarAutocompleteConta(this)"></div>
           <button class="btn btn-primary" onclick="aplicarCodigoEmLote()">▣ &nbsp; Aplicar conta</button>
-          <button class="btn btn-blue btn-save-fill" onclick="salvarTudoPreenchido()">Salvar preenchimentos</button>
         </div>
         <div class="bulk-selection-actions">
           <button class="btn btn-soft-blue" onclick="selecionarFiltradasEmLote()">☑ &nbsp; Selecionar filtradas</button>
@@ -420,6 +419,9 @@
       </div>
       <div class="novas-statusbar">
         <div class="bulk-tool-status" id="status-lote">Use a busca para localizar itens e preencher vários de uma vez.</div>
+        <div class="manual-save-action">
+          <button class="btn btn-blue btn-save-fill" onclick="salvarTudoPreenchido()">Salvar preenchimentos manuais</button>
+        </div>
       </div>
     </div>
     <div class="table-wrap table-scroll table-novas-wrap" style="margin-bottom:16px">
@@ -7049,6 +7051,20 @@ function resumoRegrasNovasChaves() {
   };
 }
 
+function pendenciasDisponiveisParaFiltro(campoIgnorado = '') {
+  const filtroGeral = normalizarTexto(document.getElementById('filtro-lote')?.value || '');
+  return novasChavesTemp.filter(item => {
+    if (obterCodigoContaParaDominio(codigosTemp[item.chave] || '')) return false;
+    if (filtroGeral && !textoBuscaNovaChave(item).includes(filtroGeral)) return false;
+    return Object.entries(filtrosNovasChaves || {}).every(([campo, valor]) => {
+      if (campo === campoIgnorado) return true;
+      const filtro = normalizarTexto(valor || '');
+      if (!filtro) return true;
+      return valorFiltroNovaChave(item, campo).includes(filtro);
+    });
+  });
+}
+
 function configurarTelaNovasChaves() {
   const recebimentos = origemNovasChaves === 'recebimentos';
   const provisoes = origemNovasChaves === 'provisao_parcelas';
@@ -7078,7 +7094,7 @@ function configurarTelaNovasChaves() {
     filtroFornecedor.style.display = '';
     const rotuloFornecedor = campoFornecedor?.querySelector('span');
     if (rotuloFornecedor) rotuloFornecedor.textContent = recebimentos ? 'Cliente' : 'Fornecedor';
-    const pendentesNovas = novasChavesTemp.filter(item => !obterCodigoContaParaDominio(codigosTemp[item.chave] || ''));
+    const pendentesNovas = pendenciasDisponiveisParaFiltro('fornecedor');
     const fornecedores = [...new Set(pendentesNovas.map(item => limparTextoECD(item.fornecedor || '')).filter(Boolean))]
       .sort((a, b) => normalizarTexto(a).localeCompare(normalizarTexto(b), 'pt-BR'));
     filtroFornecedor.innerHTML = `<option value="">Todos os ${recebimentos ? 'clientes' : 'fornecedores'}</option>`
@@ -7090,7 +7106,7 @@ function configurarTelaNovasChaves() {
     const campoPlano = filtroPlano.closest('.filtro-lote-field');
     if (campoPlano) campoPlano.style.display = '';
     filtroPlano.style.display = '';
-    const pendentesNovas = novasChavesTemp.filter(item => !obterCodigoContaParaDominio(codigosTemp[item.chave] || ''));
+    const pendentesNovas = pendenciasDisponiveisParaFiltro('plano');
     const planos = [...new Set(pendentesNovas.map(item => limparTextoECD(item.plano || '')).filter(Boolean))]
       .sort((a, b) => normalizarTexto(a).localeCompare(normalizarTexto(b), 'pt-BR'));
     filtroPlano.innerHTML = '<option value="">Todos os planos</option>'
@@ -7103,14 +7119,14 @@ function configurarTelaNovasChaves() {
     filtroTipo.style.display = '';
     const valorAtual = filtrosNovasChaves.tipoRateio || '';
     if (recebimentos) {
-      const pendentesNovas = novasChavesTemp.filter(item => !obterCodigoContaParaDominio(codigosTemp[item.chave] || ''));
+      const pendentesNovas = pendenciasDisponiveisParaFiltro('tipoRateio');
       const categorias = [...new Set(pendentesNovas.map(item => tipoOperacaoNovaChave(item)).filter(Boolean))].sort();
       filtroTipo.innerHTML = '<option value="">Todas as formas de recebimento</option>'
         + categorias.map(categoria => `<option value="${escapeAttr(categoria)}">${escapeHtml(categoria)}</option>`).join('');
     } else if (provisoes) {
       filtroTipo.innerHTML = '<option value="">Todos os tipos</option><option value="PROVISAO">Provisão (débito e crédito)</option>';
     } else {
-      const pendentesNovas = novasChavesTemp.filter(item => !obterCodigoContaParaDominio(codigosTemp[item.chave] || ''));
+      const pendentesNovas = pendenciasDisponiveisParaFiltro('tipoRateio');
       const tiposPresentes = new Set(pendentesNovas.map(item => categoriaFiltroTipoNovaChave(item)).filter(Boolean));
       const tiposPossiveis = [
         ['DESPESA', 'Despesa/Fornecedor'],
