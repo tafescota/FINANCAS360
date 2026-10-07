@@ -2527,6 +2527,13 @@ body {
   height: 42px !important;
 }
 
+#tela-novas-chaves .bulk-action-panel .btn-save-fill {
+  width: 100% !important;
+  min-height: 42px !important;
+  height: 42px !important;
+  margin-top: 10px !important;
+}
+
 #tela-novas-chaves .bulk-selection-actions {
   gap: 18px !important;
   margin-top: 18px !important;

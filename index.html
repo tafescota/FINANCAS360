@@ -410,6 +410,7 @@
           <div class="filtro-lote-field" id="campo-ponta-lote-provisao" style="display:none"><span>Aplicar em</span><select id="ponta-lote-provisao"><option value="debito">Débito</option><option value="credito">Crédito</option></select></div>
           <div class="filtro-lote-field campo-conta-lote"><span>Conta para lote</span><input type="text" id="codigo-lote" class="conta-autocomplete" placeholder="Conta para aplicar nos selecionados" oninput="criarAutocompleteConta(this)"></div>
           <button class="btn btn-primary" onclick="aplicarCodigoEmLote()">▣ &nbsp; Aplicar conta</button>
+          <button class="btn btn-blue btn-save-fill" onclick="salvarTudoPreenchido()">Salvar preenchimentos</button>
         </div>
         <div class="bulk-selection-actions">
           <button class="btn btn-soft-blue" onclick="selecionarFiltradasEmLote()">☑ &nbsp; Selecionar filtradas</button>
@@ -7344,6 +7345,23 @@ function coletarCodigosNovasChaves() {
     codigosTemp[inp.dataset.chave] = obterCodigoContaParaDominio(inp.value);
     inp.value = codigosTemp[inp.dataset.chave];
   });
+}
+
+function salvarTudoPreenchido() {
+  coletarCodigosNovasChaves();
+  const preenchidas = novasChavesTemp.filter(item => obterCodigoContaParaDominio(codigosTemp[item.chave] || '')).length;
+  salvarCodigosPreenchidosNoGrupo(false);
+  renderNovasChaves();
+
+  const el = document.getElementById('msg-novas-chaves');
+  if (!el) return preenchidas;
+  const tipo = preenchidas > 0 ? 'ok' : 'warn';
+  const texto = preenchidas > 0
+    ? `✓ ${preenchidas} preenchimento${preenchidas !== 1 ? 's' : ''} salvo${preenchidas !== 1 ? 's' : ''}. As pendências concluídas foram retiradas da lista.`
+    : 'Nenhum campo preenchido para salvar.';
+  el.innerHTML = `<div class="alert alert-${tipo}" style="margin-bottom:16px">${texto} <button onclick="this.parentElement.remove()" style="background:none;border:none;cursor:pointer;float:right;font-size:16px">×</button></div>`;
+  setTimeout(() => { if (el) el.innerHTML = ''; }, 4000);
+  return preenchidas;
 }
 
 function atualizarCodigoNovaChave(inp) {
