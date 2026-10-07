@@ -555,9 +555,11 @@
       <button class="btn btn-sm" id="btn-exportar-arquivo-regras" onclick="exportarArquivoRegras()">Backup JSON</button>
       <button class="btn btn-sm btn-blue" id="btn-exportar-excel-regras" onclick="exportarRegrasExcel()">Exportar Excel</button>
       <button class="btn btn-sm" id="btn-importar-arquivo-regras" onclick="document.getElementById('regras-input').click()">Importar regras</button>
+      <button class="btn btn-sm" id="btn-importar-regras-legadas" onclick="document.getElementById('regras-legadas-input').click()">Importar de-para antigo</button>
       <button class="btn btn-sm btn-blue" id="btn-importar-regras" onclick="mostrarTela('tela-importar')">Importar planilha</button>
       <button class="btn btn-sm" onclick="mostrarTela('tela-home')">Grupos</button>
       <input type="file" id="regras-input" accept=".json" style="display:none" onchange="importarArquivoRegras(event)">
+      <input type="file" id="regras-legadas-input" accept=".xlsx,.xlsm,.xls" style="display:none" onchange="importarPlanilhaRegrasLegadas(event)">
     </div>
     <div style="display:flex;gap:8px;margin-bottom:12px;flex-wrap:wrap">
       <button class="btn btn-sm btn-primary" id="btn-regras-pagamentos" onclick="alterarTipoRegras('pagamentos')">Pagamentos</button>
@@ -1082,7 +1084,14 @@ function encontrarCodigoRegra(regras, forn, plano, tipoDoc, historico, escopo = 
     const termos = normalizarTexto(trecho).split(/\s+/).filter(Boolean);
     return termos.length > 0 && termos.every(termo => historicoNormalizado.includes(termo));
   });
-  return achada ? regras[achada] : '';
+  if (achada) return regras[achada];
+
+  // Compatibilidade com o de-para antigo: Fornecedor | Plano de Contas.
+  // A regra completa e as palavras-chave continuam tendo prioridade.
+  const tipoNormalizado = normalizarTexto(tipoDoc);
+  if (tipoNormalizado.startsWith('desconto') || tipoNormalizado.startsWith('acrescimo')) return '';
+  const chaveLegada = limparTextoECD(forn) + ' | ' + limparTextoECD(plano);
+  return regras[chaveLegada] || '';
 }
 
 function encontrarCodigoRegraAjuste(regras, forn, plano, tipoAjuste, ponta, historico, escopo = '') {
@@ -4512,10 +4521,22 @@ function fornecedorBatePagamentoMovimento(pag, movTexto) {
   return termos.some(t => movTexto.includes(t)) || movTexto.includes(pag.fornecedorNorm);
 }
 
+function valorConciliacaoEmCentavos(valor) {
+  return Math.round(Math.abs(Number(valor) || 0) * 100);
+}
+
+function diferencaValorConciliacaoEmCentavos(valorA, valorB) {
+  return Math.abs(valorConciliacaoEmCentavos(valorA) - valorConciliacaoEmCentavos(valorB));
+}
+
+function valoresConciliacaoIguais(valorA, valorB) {
+  return diferencaValorConciliacaoEmCentavos(valorA, valorB) === 0;
+}
+
 function movimentoEhCandidatoClaroPagamento(pag, mov) {
   if (!pag || !mov) return false;
   return pag.dataKey === dataKey(mov.data)
-    && Math.abs(pag.valor - Math.abs(mov.valor)) < 0.01
+    && valoresConciliacaoIguais(pag.valor, mov.valor)
     && fornecedorBatePagamentoMovimento(pag, movimentoTextoConciliacao(mov));
 }
 
@@ -4836,7 +4857,7 @@ function gerarSugestoesConciliacao(opcoes = {}) {
           && doc
           && pag.numero === doc
           && pag.dataKey === dataKey(mov.data)
-          && Math.abs(pag.valor - Math.abs(mov.valor)) < 0.01;
+          && valoresConciliacaoIguais(pag.valor, mov.valor);
       });
     if (candidatos.length === 1) {
       usadosMov.add(candidatos[0].idxMov);
@@ -4850,14 +4871,14 @@ function gerarSugestoesConciliacao(opcoes = {}) {
       .map((mov, idxMov) => ({ mov, idxMov, movTexto: movimentoTextoConciliacao(mov) }))
       .filter(({ mov, idxMov, movTexto }) => {
         const doc = String(mov.documento || '').trim();
-        const diferencaCentavos = Math.abs(arredondarMoeda(pag.valor - Math.abs(mov.valor)));
+        const diferencaCentavos = diferencaValorConciliacaoEmCentavos(pag.valor, mov.valor);
         return !usadosMov.has(idxMov)
           && mesmaContaConciliacao(pag, mov)
           && doc
           && pag.numero === doc
           && pag.dataKey === dataKey(mov.data)
-          && diferencaCentavos >= 0.01
-          && diferencaCentavos <= 0.10
+          && diferencaCentavos >= 1
+          && diferencaCentavos <= 10
           && fornecedorBatePagamentoMovimento(pag, movTexto);
       });
     if (candidatos.length === 1) {
@@ -4875,6 +4896,7 @@ function gerarSugestoesConciliacao(opcoes = {}) {
   });
 
   autoConciliarGruposDuplicadosClaros(pagamentos, movimentos, usadosMov, sugestoesPorPagamento);
+  autoConciliarLotesComDiferencaDeCentavo(pagamentos, movimentos, usadosMov, sugestoesPorPagamento);
 
   pagamentos.filter(p => !sugestoesPorPagamento.has(p.idx)).forEach(pag => {
     const candidatos = movimentos
@@ -4893,7 +4915,7 @@ function gerarSugestoesConciliacao(opcoes = {}) {
       .map((mov, idxMov) => ({ mov, idxMov, movTexto: movimentoTextoConciliacao(mov) }))
       .filter(({ mov, idxMov, movTexto }) => !usadosMov.has(idxMov)
         && mesmaContaConciliacao(pag, mov)
-        && Math.abs(pag.valor - Math.abs(mov.valor)) < 0.01
+        && valoresConciliacaoIguais(pag.valor, mov.valor)
         && fornecedorBatePagamentoMovimento(pag, movTexto));
     if (candidatos.length > 0) {
       const escolhido = candidatos[0];
@@ -4909,7 +4931,7 @@ function gerarSugestoesConciliacao(opcoes = {}) {
         && mesmaContaConciliacao(pag, mov)
         && pag.dataKey === dataKey(mov.data)
         && fornecedorBatePagamentoMovimento(pag, movTexto)
-        && Math.abs(mov.valor) <= pag.valor + 0.01)
+        && valorConciliacaoEmCentavos(mov.valor) <= valorConciliacaoEmCentavos(pag.valor) + 1)
       .sort((a, b) => Math.abs(b.mov.valor) - Math.abs(a.mov.valor));
     const combinacao = encontrarCombinacaoPorValor(candidatos, pag.valor);
     if (combinacao) {
@@ -4935,7 +4957,7 @@ function gerarSugestoesConciliacao(opcoes = {}) {
       && p.dataKey === dataKey(mov.data)
       && fornecedorBatePagamentoMovimento(p, movTexto));
     const soma = arredondarMoeda(candidatos.reduce((s, p) => s + p.valor, 0));
-    if (candidatos.length > 1 && Math.abs(soma - Math.abs(mov.valor)) < 0.01) {
+    if (candidatos.length > 1 && valoresConciliacaoIguais(soma, mov.valor)) {
       usadosMov.add(idxMov);
       candidatos.forEach(pag => {
         sugestoesPorPagamento.set(pag.idx, { pag, mov, idxMov, status: 'agrupado', regra: 'Pagamento dentro de saída acumulada', diferenca: 0 });
@@ -5389,13 +5411,13 @@ function abrirModalPendenciasConciliacao() {
     const saidasDisponiveis = item.movimento === 'pagamento-pendente'
       ? saidasDisponiveisParaPagamentoConciliacao(item, saidasPendentes)
       : saidasPendentes;
-    const mesmasSaidas = saidasDisponiveis.filter(saida => Math.abs(saida.total - item.total) < 0.01);
+    const mesmasSaidas = saidasDisponiveis.filter(saida => valoresConciliacaoIguais(saida.total, item.total));
     const saidasCentavos = item.movimento === 'pagamento-pendente'
       ? saidasDisponiveis
         .filter(saida => {
-          const diferenca = Math.abs(saida.total - item.total);
-          return diferenca >= 0.01
-            && diferenca <= 0.10
+          const diferenca = diferencaValorConciliacaoEmCentavos(saida.total, item.total);
+          return diferenca >= 1
+            && diferenca <= 10
             && item.data === saida.data
             && (!item.historico || movimentoTextoConciliacao(saida).includes(normalizarTexto(item.historico)));
         })
@@ -5403,7 +5425,7 @@ function abrirModalPendenciasConciliacao() {
       : [];
     const idsCentavos = new Set(saidasCentavos.map(saida => String(saida.idxOriginal)));
     const outrasSaidas = saidasDisponiveis
-      .filter(saida => Math.abs(saida.total - item.total) >= 0.01 && !idsCentavos.has(String(saida.idxOriginal)))
+      .filter(saida => !valoresConciliacaoIguais(saida.total, item.total) && !idsCentavos.has(String(saida.idxOriginal)))
       .slice(0, 20);
     const ehNumerarioPendencia = item.movimento === 'numerario-rateio';
     const ehRecebimentoPendencia = item.movimento === 'recebimento';
@@ -5453,7 +5475,7 @@ function abrirModalPendenciasConciliacao() {
             .join('')}
           </optgroup>
         </select>
-        <div class="conciliacao-note" style="margin-top:4px">${mesmasSaidas.length} opção${mesmasSaidas.length !== 1 ? 'ões' : ''} com o mesmo valor de R$ ${fmtValor(item.total)}${saidasCentavos.length ? ` · ${saidasCentavos.length} provável${saidasCentavos.length !== 1 ? 'is' : ''} com diferença de centavos` : ''}</div>`
+        <div class="conciliacao-note" style="margin-top:4px">${mesmasSaidas.length} ${mesmasSaidas.length === 1 ? 'opção' : 'opções'} com o mesmo valor de R$ ${fmtValor(item.total)}${saidasCentavos.length ? ` · ${saidasCentavos.length} provável${saidasCentavos.length !== 1 ? 'is' : ''} com diferença de centavos` : ''}</div>`
       : ehSaidaPendente
         ? `<input type="text" class="conta-autocomplete" data-conciliacao-modal-id="${escapeAttr(item.id)}" value="${escapeAttr(valor)}" placeholder="${escapeAttr(placeholderConta)}" oninput="atualizarCodigoConciliacaoModal(this); criarAutocompleteConta(this)" style="width:100%">
           <button type="button" class="btn btn-sm" style="margin-top:6px;width:100%" onclick="revisarSaidaExtratoSemExportar('${escapeAttr(item.id)}')">Prosseguir sem exportar esta saída</button>`
@@ -5523,8 +5545,8 @@ function abrirModalPendenciasConciliacao() {
   const qtdPontasTransferenciaNoModal = itensModal.filter(item => item.transferenciaContas).length;
   const partesAjudaModal = [];
   if (qtdPontasTransferenciaNoModal) partesAjudaModal.push(`${qtdPontasTransferenciaNoModal} ponta${qtdPontasTransferenciaNoModal !== 1 ? 's' : ''} de transferência entre contas precisa${qtdPontasTransferenciaNoModal !== 1 ? 'm' : ''} da conta de numerários.`);
-  if (qtdPagamentosNoModal) partesAjudaModal.push(`${qtdPagamentosNoModal} pagamento${qtdPagamentosNoModal !== 1 ? 's' : ''} não encontrou${qtdPagamentosNoModal !== 1 ? 'ram' : ''} saída no extrato; selecione a saída ou prossiga sem movimento.`);
-  if (qtdSaidasNoModal) partesAjudaModal.push(`${qtdSaidasNoModal} saída${qtdSaidasNoModal !== 1 ? 's' : ''} do extrato sobrou${qtdSaidasNoModal !== 1 ? 'ram' : ''}; preencha a conta de débito para exportar pelo extrato.`);
+  if (qtdPagamentosNoModal) partesAjudaModal.push(`${qtdPagamentosNoModal} ${qtdPagamentosNoModal === 1 ? 'pagamento não encontrou' : 'pagamentos não encontraram'} saída no extrato; selecione a saída ou prossiga sem movimento.`);
+  if (qtdSaidasNoModal) partesAjudaModal.push(`${qtdSaidasNoModal} ${qtdSaidasNoModal === 1 ? 'saída do extrato sobrou' : 'saídas do extrato sobraram'}; preencha a conta de débito para exportar pelo extrato.`);
   const textoAjudaModal = partesAjudaModal.join(' ');
   const tituloModal = fluxoRecebimentos ? 'Novas regras de recebimentos' : 'Preencher pendências da conciliação';
   const subtituloModal = fluxoRecebimentos
@@ -8109,7 +8131,7 @@ function exportarRegrasExcel() {
       regra.plano || '',
       regra.tipoDoc || '',
       regra.historico || '',
-      regra.parcial ? 'Histórico contém' : 'Exata',
+      regra.legada ? 'Fornecedor + Plano (legada)' : regra.parcial ? 'Histórico contém' : 'Exata',
       codigo,
       conta?.nome || '',
       conta ? naturezaContabilPorClassificacao(classificacao) : 'Não identificada',
@@ -8181,11 +8203,165 @@ function importarArquivoRegras(event) {
   reader.readAsText(file);
 }
 
+function localizarDeParaLegadoNoWorkbook(wb) {
+  for (const nomePlanilha of wb.SheetNames || []) {
+    const ws = wb.Sheets[nomePlanilha];
+    const raw = XLSX.utils.sheet_to_json(ws, { header: 1, defval: null });
+    for (let i = 0; i < Math.min(raw.length, 40); i++) {
+      const headers = raw[i] || [];
+      const colFornecedor = indiceColunaPorNomes(headers, ['fornecedor', 'cliente / fornecedor', 'cliente fornecedor']);
+      const colPlano = indiceColunaPorNomes(headers, ['plano de contas', 'plano de conta', 'plano']);
+      const colCodigo = indiceColunaPorNomes(headers, ['codigo dominio', 'código domínio', 'codigo da conta contabil', 'código da conta contábil']);
+      if (colFornecedor >= 0 && colPlano >= 0 && colCodigo >= 0) {
+        return { nomePlanilha, raw, headerIdx: i, colFornecedor, colPlano, colCodigo };
+      }
+    }
+  }
+  return null;
+}
+
+async function importarPlanilhaRegrasLegadas(event) {
+  const file = event.target.files[0];
+  event.target.value = '';
+  if (!file) return;
+  if (!grupoAtivo) {
+    alert('Selecione o grupo que receberá o de-para antigo.');
+    return;
+  }
+  if (tipoRegrasAtivo !== 'pagamentos') {
+    alert('Abra a lista de Pagamentos antes de importar o de-para antigo.');
+    return;
+  }
+  if (editandoRegras) {
+    alert('Salve ou cancele a edição atual antes de importar o de-para antigo.');
+    return;
+  }
+
+  try {
+    const wb = XLSX.read(await file.arrayBuffer(), { type: 'array', cellDates: true });
+    const origem = localizarDeParaLegadoNoWorkbook(wb);
+    if (!origem) {
+      throw new Error('Não encontrei as colunas Fornecedor, Plano de Contas e Código Domínio.');
+    }
+
+    const regrasLegadas = {};
+    const chavesConflitantes = new Set();
+    let semCodigo = 0;
+    let linhasInvalidas = 0;
+    let duplicadasIguais = 0;
+
+    origem.raw.slice(origem.headerIdx + 1).forEach(row => {
+      const fornecedor = limparTextoECD(row?.[origem.colFornecedor]);
+      const plano = limparTextoECD(row?.[origem.colPlano]);
+      const codigo = obterCodigoContaParaDominio(row?.[origem.colCodigo]);
+      if (!fornecedor && !plano && !codigo) return;
+      if (!fornecedor || !plano) {
+        linhasInvalidas += 1;
+        return;
+      }
+      if (!codigo) {
+        semCodigo += 1;
+        return;
+      }
+
+      const chave = `${fornecedor} | ${plano}`;
+      if (chavesConflitantes.has(chave)) return;
+      if (regrasLegadas[chave] && regrasLegadas[chave] !== codigo) {
+        delete regrasLegadas[chave];
+        chavesConflitantes.add(chave);
+        return;
+      }
+      if (regrasLegadas[chave] === codigo) duplicadasIguais += 1;
+      regrasLegadas[chave] = codigo;
+    });
+
+    const quantidade = Object.keys(regrasLegadas).length;
+    if (quantidade === 0) {
+      throw new Error('Nenhuma regra válida com código Domínio foi encontrada.');
+    }
+
+    const observacoes = [
+      semCodigo ? `${semCodigo} sem código serão ignoradas` : '',
+      linhasInvalidas ? `${linhasInvalidas} com fornecedor ou plano vazio serão ignoradas` : '',
+      chavesConflitantes.size ? `${chavesConflitantes.size} chaves com códigos conflitantes serão ignoradas` : '',
+      duplicadasIguais ? `${duplicadasIguais} duplicadas idênticas serão consolidadas` : ''
+    ].filter(Boolean);
+    const complemento = observacoes.length ? `\n\nConferência: ${observacoes.join('; ')}.` : '';
+    const confirmar = confirm(
+      `Importar ${quantidade} regras antigas para Pagamentos do grupo "${grupoAtivo}"?\n\n` +
+      `Formato: Fornecedor | Plano de Contas.\n` +
+      `As regras serão mescladas; nenhuma regra atual será apagada.${complemento}`
+    );
+    if (!confirmar) return;
+
+    depara[grupoAtivo] = Object.assign({}, depara[grupoAtivo] || {}, regrasLegadas);
+    salvarStorage();
+    regrasSelecionadasEdicao.clear();
+    renderRegras();
+    const detalhes = observacoes.length ? ` ${observacoes.join('; ')}.` : '';
+    document.getElementById('container-regras').insertAdjacentHTML(
+      'afterbegin',
+      `<div class="alert alert-ok">${quantidade} regras antigas importadas e mescladas em Pagamentos do grupo ${escapeHtml(grupoAtivo)}.${escapeHtml(detalhes)}</div>`
+    );
+  } catch (err) {
+    alert('Erro ao importar o de-para antigo: ' + err.message);
+  }
+}
+
 function coletarInputsEdicaoRegras() {
   if (!editandoRegras) return;
   document.querySelectorAll('#container-regras input[data-chave]').forEach(inp => {
     editTemp[inp.dataset.chave] = obterCodigoContaParaDominio(inp.value);
     inp.value = editTemp[inp.dataset.chave];
+  });
+}
+
+function autoConciliarLotesComDiferencaDeCentavo(pagamentos, movimentos, usadosMov, sugestoesPorPagamento) {
+  const grupos = new Map();
+  pagamentos
+    .filter(pag => !sugestoesPorPagamento.has(pag.idx) && limparTextoECD(pag.conta))
+    .forEach(pag => {
+      const chave = [pag.dataKey, normalizarTexto(pag.conta), pag.fornecedorNorm || textoConciliacao(pag.fornecedor)].join('|');
+      if (!grupos.has(chave)) grupos.set(chave, []);
+      grupos.get(chave).push(pag);
+    });
+
+  grupos.forEach(grupoPagamentos => {
+    if (grupoPagamentos.length < 2) return;
+    const referencia = grupoPagamentos[0];
+    const valoresPagamentos = grupoPagamentos.map(pag => valorConciliacaoEmCentavos(pag.valor));
+    const menorValor = Math.min(...valoresPagamentos) - 1;
+    const maiorValor = Math.max(...valoresPagamentos) + 1;
+    const candidatas = movimentos
+      .map((mov, idxMov) => ({ mov, idxMov }))
+      .filter(({ mov, idxMov }) => {
+        const valorMovimento = valorConciliacaoEmCentavos(mov.valor);
+        return !usadosMov.has(idxMov)
+          && normalizarTexto(referencia.conta) === normalizarTexto(mov.conta)
+          && referencia.dataKey === dataKey(mov.data)
+          && fornecedorBatePagamentoMovimento(referencia, movimentoTextoConciliacao(mov))
+          && valorMovimento >= menorValor
+          && valorMovimento <= maiorValor;
+      });
+    if (candidatas.length !== grupoPagamentos.length) return;
+
+    const pagamentosOrdenados = [...grupoPagamentos].sort((a, b) => valorConciliacaoEmCentavos(a.valor) - valorConciliacaoEmCentavos(b.valor) || String(a.idx).localeCompare(String(b.idx)));
+    const saidasOrdenadas = [...candidatas].sort((a, b) => valorConciliacaoEmCentavos(a.mov.valor) - valorConciliacaoEmCentavos(b.mov.valor) || a.idxMov - b.idxMov);
+    if (pagamentosOrdenados.some((pag, i) => diferencaValorConciliacaoEmCentavos(pag.valor, saidasOrdenadas[i].mov.valor) > 1)) return;
+
+    pagamentosOrdenados.forEach((pag, i) => {
+      const saida = saidasOrdenadas[i];
+      const diferenca = arredondarMoeda(pag.valor - Math.abs(saida.mov.valor));
+      usadosMov.add(saida.idxMov);
+      sugestoesPorPagamento.set(pag.idx, {
+        pag,
+        mov: saida.mov,
+        idxMov: saida.idxMov,
+        status: diferenca === 0 ? 'conciliado' : 'provável',
+        regra: diferenca === 0 ? 'Lote equivalente: conta + fornecedor + data + valor' : 'Lote equivalente com diferença de 1 centavo',
+        diferenca
+      });
+    });
   });
 }
 
@@ -8252,6 +8428,16 @@ function parseRegraParaTela(chave) {
       parcial: regraParcialRateio
     };
   }
+  if (partes.length === 2) {
+    return {
+      fornecedor: partes[0] || '',
+      plano: partes[1] || '',
+      tipoDoc: 'Fornecedor + Plano',
+      historico: '',
+      parcial: false,
+      legada: true
+    };
+  }
   const regraParcial = partes[2] === 'HISTORICO_CONTEM';
   return {
     fornecedor: partes[0] || '',
@@ -8280,10 +8466,12 @@ function renderRegras() {
   const btnSalvar = document.getElementById('btn-salvar-regras');
   const btnLimpar = document.getElementById('btn-limpar-regras');
   const btnImportar = document.getElementById('btn-importar-regras');
+  const btnImportarLegadas = document.getElementById('btn-importar-regras-legadas');
   if (btnEditar) btnEditar.textContent = `✏️ Editar ${ehRecebimentos ? 'recebimentos' : 'pagamentos'}`;
   if (btnSalvar) btnSalvar.textContent = `Salvar ${ehRecebimentos ? 'recebimentos' : 'pagamentos'}`;
   if (btnLimpar) btnLimpar.textContent = `🗑 Limpar só ${ehRecebimentos ? 'recebimentos' : 'pagamentos'}`;
   if (btnImportar) btnImportar.style.display = ehRecebimentos ? 'none' : '';
+  if (btnImportarLegadas) btnImportarLegadas.style.display = ehRecebimentos ? 'none' : '';
   const baseAtiva = obterBaseRegrasAtiva();
   const regrasSalvas = baseAtiva[grupoAtivo] || {};
   const dados = editandoRegras ? editTemp : regrasSalvas;
