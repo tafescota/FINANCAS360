@@ -736,6 +736,11 @@ function tipoAjustePonta(tipoAjuste, ponta) {
   return `${tipoAjuste} - ${ponta}`;
 }
 
+function pontasConfiguraveisAjustePagamento(tipoAjuste, multiploAutomatico = true) {
+  if (!multiploAutomatico) return ['DÉBITO', 'CRÉDITO'];
+  return tipoAjuste === 'DESCONTO' ? ['CRÉDITO'] : ['DÉBITO'];
+}
+
 function tipoAjusteRateioPlano(plano, valor) {
   const planoNorm = normalizarTexto(plano);
   if (valor < 0 && (planoNorm.includes('descontos sobre despesas') || planoNorm.includes('desconto sobre despesas'))) return 'DESCONTO';
@@ -2914,6 +2919,7 @@ function prepararPagamentosImportados(dados, abrirTelaPendencias = true) {
     const escopoRegra = escopoRegraLinha(r);
     const linhaDoFormatoNumerarios = linhaEhParcelasNumerarios(r);
     const linhaIntercompanyParcelasNumerarios = parcelasNumerariosLinha(r);
+    const intercompanyRateio = rateioIntercompanyLinha(r);
     const layoutF360Original = !!r.__layoutF360Original;
     const valorRateio = arredondarMoeda(r[COLS.VALOR_LIQ]);
     const tipoAjusteRateio = r.__rateio ? tipoAjusteRateioPlano(plano, valorRateio) : '';
@@ -3009,16 +3015,19 @@ function prepararPagamentosImportados(dados, abrirTelaPendencias = true) {
     const acrescimoDesconto = arredondarMoeda(r[COLS.ACRESCIMO]);
     if (acrescimoDesconto !== 0) {
       const tipoAjuste = acrescimoDesconto < 0 ? 'DESCONTO' : 'ACRÉSCIMO';
-      ['DÉBITO', 'CRÉDITO'].forEach(ponta => {
+      const ajusteMultiploAutomatico = !intercompanyRateio && !linhaIntercompanyParcelasNumerarios;
+      pontasConfiguraveisAjustePagamento(tipoAjuste, ajusteMultiploAutomatico).forEach(ponta => {
         const tipoPonta = tipoAjustePonta(tipoAjuste, ponta);
         const chaveAjuste = montarChave(forn, plano, tipoPonta, historico, escopoRegra);
-        const codigoAjuste = obterCodigoContaParaDominio(
+        let codigoAjuste = obterCodigoContaParaDominio(
           encontrarCodigoRegraAjuste(regrasSalvas, forn, plano, tipoAjuste, ponta, historico, escopoRegra)
         );
+        const codigoBancoLinha = obterCodigoContaParaDominio(codigoContaSemConciliacao(r[COLS.CONTA]));
+        if (ajusteMultiploAutomatico && codigoAjuste && codigoAjuste === codigoBancoLinha) codigoAjuste = '';
         registrarResumoRegra(chaveAjuste, codigoAjuste);
         if (!codigoAjuste && !vistas.has(chaveAjuste)) {
           vistas.add(chaveAjuste);
-          novas.push({ chave: chaveAjuste, fornecedor: forn, plano, tipoDoc: tipoPonta, historico, trechoHistoricoIndices: [], trechoHistorico: '', numero, empresa: empresaOrigem, empresaOrigem, centroCusto, empresaLancamento: empresaLancamentoLinha(r), rateio: !!r.__rateio, parcelasNumerarios: linhaDoFormatoNumerarios, parcelasNumerariosIntercompany: linhaIntercompanyParcelasNumerarios, layoutF360Original, escopoRegra });
+          novas.push({ chave: chaveAjuste, fornecedor: forn, plano, tipoDoc: tipoPonta, historico, trechoHistoricoIndices: [], trechoHistorico: '', numero, empresa: empresaOrigem, empresaOrigem, centroCusto, empresaLancamento: empresaLancamentoLinha(r), rateio: !!r.__rateio, parcelasNumerarios: linhaDoFormatoNumerarios, parcelasNumerariosIntercompany: linhaIntercompanyParcelasNumerarios, layoutF360Original, escopoRegra, ajusteMultiploAutomatico });
         }
       });
     }
@@ -7167,6 +7176,17 @@ function renderLinhaAjustePar(linha) {
     baseItem.escopoRegra || ''
   ));
   const inputAjuste = (item, rotuloPonta, pontaRegra, placeholder) => {
+    const pontaAutomatica = !!baseItem.ajusteMultiploAutomatico && (
+      (linha.ajuste === 'DESCONTO' && pontaRegra === 'DÉBITO') ||
+      (linha.ajuste === 'ACRÉSCIMO' && pontaRegra === 'CRÉDITO')
+    );
+    if (!item && pontaAutomatica) {
+      const valorAutomatico = linha.ajuste === 'DESCONTO' ? 'Conta principal' : 'Banco da empresa';
+      return `<label class="ajuste-par-field ajuste-par-field-resolvido" title="${escapeAttr(valorAutomatico)} definida automaticamente em cada lançamento">
+        <span>${escapeHtml(rotuloPonta)}</span>
+        <input type="text" aria-label="${escapeAttr(valorAutomatico)}" value="${escapeAttr(valorAutomatico)}" readonly>
+      </label>`;
+    }
     const codigoResolvido = item ? '' : codigoPontaResolvida(pontaRegra);
     return item
       ? `<label class="ajuste-par-field">
@@ -7913,7 +7933,7 @@ function gerarLancamentos(dados, regras) {
   const pendentes = new Set();
   const ajustes = [];
 
-  function gerarLancamentoAjuste({ idx, dataLiq, forn, plano, tipoDoc, historico, escopoRegra, complemento, empresa, acrescimoDesconto, valorLiq, tipoRateioAtual }) {
+  function gerarLancamentoAjuste({ idx, dataLiq, forn, plano, tipoDoc, historico, escopoRegra, complemento, empresa, acrescimoDesconto, valorLiq, tipoRateioAtual, multiploAutomatico = false, codPrincipal = '', codBanco = '', loteMultiploId = '' }) {
     if (acrescimoDesconto === 0) return;
     ajustes.push({ empresa, fornecedor: forn, plano, historico, acrescimoDesconto, valorLiq });
     const tipoAjuste = acrescimoDesconto < 0 ? 'DESCONTO' : 'ACRÉSCIMO';
@@ -7921,10 +7941,14 @@ function gerarLancamentos(dados, regras) {
     const complementoAjuste = `${tipoAjuste} - ${complemento}`;
     const chaveDebitoAjuste = montarChave(forn, plano, tipoAjustePonta(tipoAjuste, 'DÉBITO'), historico, escopoRegra);
     const chaveCreditoAjuste = montarChave(forn, plano, tipoAjustePonta(tipoAjuste, 'CRÉDITO'), historico, escopoRegra);
-    const codDebitoAjuste = obterCodigoContaParaDominio(encontrarCodigoRegraAjuste(regras, forn, plano, tipoAjuste, 'DÉBITO', historico, escopoRegra));
-    const codCreditoAjuste = obterCodigoContaParaDominio(encontrarCodigoRegraAjuste(regras, forn, plano, tipoAjuste, 'CRÉDITO', historico, escopoRegra));
-    if (!codDebitoAjuste) pendentes.add(chaveDebitoAjuste);
-    if (!codCreditoAjuste) pendentes.add(chaveCreditoAjuste);
+    let codDebitoRegra = obterCodigoContaParaDominio(encontrarCodigoRegraAjuste(regras, forn, plano, tipoAjuste, 'DÉBITO', historico, escopoRegra));
+    let codCreditoRegra = obterCodigoContaParaDominio(encontrarCodigoRegraAjuste(regras, forn, plano, tipoAjuste, 'CRÉDITO', historico, escopoRegra));
+    if (multiploAutomatico && tipoAjuste === 'DESCONTO' && codCreditoRegra === codBanco) codCreditoRegra = '';
+    if (multiploAutomatico && tipoAjuste === 'ACRÉSCIMO' && codDebitoRegra === codBanco) codDebitoRegra = '';
+    const codDebitoAjuste = multiploAutomatico && tipoAjuste === 'DESCONTO' ? codPrincipal : codDebitoRegra;
+    const codCreditoAjuste = multiploAutomatico && tipoAjuste === 'ACRÉSCIMO' ? codBanco : codCreditoRegra;
+    if (!codDebitoAjuste && !(multiploAutomatico && tipoAjuste === 'DESCONTO')) pendentes.add(chaveDebitoAjuste);
+    if (!codCreditoAjuste && !(multiploAutomatico && tipoAjuste === 'ACRÉSCIMO')) pendentes.add(chaveCreditoAjuste);
     lancamentosGerados.push({
       idx,
       data: dataLiq,
@@ -7938,7 +7962,8 @@ function gerarLancamentos(dados, regras) {
       acrescimoDesconto,
       tipoAjuste,
       semCodigo: !codDebitoAjuste || !codCreditoAjuste,
-      tipoRateio: tipoRateioAtual
+      tipoRateio: tipoRateioAtual,
+      loteMultiploId
     });
   }
 
@@ -8082,8 +8107,13 @@ function gerarLancamentos(dados, regras) {
       codDebito = codCredito;
       codCredito = debitoOriginal;
     }
-    lancamentosGerados.push({ idx, data: dataLiq, codDebito, codCredito, valorLiq: valorLancamento, valorFmt: fmtValor(valorLancamento), complemento, empresa, plano, acrescimoDesconto, semCodigo: !codDebito || !codCredito, rateioNegativo: linhaRateioNegativa, tipoRateio: tipoRateioAtual });
-    gerarLancamentoAjuste({ idx, dataLiq, forn, plano, tipoDoc, historico, escopoRegra, complemento, empresa, acrescimoDesconto, valorLiq, tipoRateioAtual });
+    const ajusteMultiploAutomatico = acrescimoDesconto !== 0;
+    const loteMultiploId = ajusteMultiploAutomatico ? `AJUSTE-${idx}` : '';
+    const valorPrincipal = acrescimoDesconto > 0
+      ? Math.abs(arredondarMoeda(valorLiq - acrescimoDesconto))
+      : valorLancamento;
+    lancamentosGerados.push({ idx, data: dataLiq, codDebito, codCredito, valorLiq: valorPrincipal, valorFmt: fmtValor(valorPrincipal), complemento, empresa, plano, acrescimoDesconto, semCodigo: !codDebito || !codCredito, rateioNegativo: linhaRateioNegativa, tipoRateio: tipoRateioAtual, loteMultiploId, iniciaLoteMultiplo: ajusteMultiploAutomatico });
+    gerarLancamentoAjuste({ idx, dataLiq, forn, plano, tipoDoc, historico, escopoRegra, complemento, empresa, acrescimoDesconto, valorLiq, tipoRateioAtual, multiploAutomatico: ajusteMultiploAutomatico, codPrincipal: codDebito, codBanco: codCredito, loteMultiploId });
   });
 
   // Métricas
@@ -8153,7 +8183,7 @@ function gerarLancamentos(dados, regras) {
           <span class="alert-pendentes-icon">⚠️</span>
           <div>
             <span class="alert-pendentes-title">${ajustes.length} linha${ajustes.length > 1 ? 's' : ''} extra${ajustes.length > 1 ? 's' : ''} de acréscimo/desconto</span>
-            <span class="alert-pendentes-sub">geradas sem passar pelo banco: desconto credita a conta do de-para; acréscimo debita a conta do de-para.</span>
+            <span class="alert-pendentes-sub">geradas em lançamento múltiplo: o banco vem automaticamente da empresa e a conta do desconto/acréscimo vem do de-para.</span>
           </div>
         </div>
         <button class="btn btn-sm" onclick="alternarListaPendentes(this)">Expandir</button>
@@ -8185,7 +8215,7 @@ function montarLinhasDominioPagamentos() {
   const lancamentosPagamentos = lancamentosGerados.filter(l => !l.origemConciliacao);
   return lancamentosPagamentos.map(l => [
     l.data, codigoContaExportacaoDominio(l.codDebito), codigoContaExportacaoDominio(l.codCredito), l.valorLiq, '', limparComplementoHistoricoExportacao(l.complemento),
-    '', limparTextoExportacaoDominio(l.empresa), '', '', tipoRateioDominioPagamento(l)
+    l.iniciaLoteMultiplo ? 1 : '', limparTextoExportacaoDominio(l.empresa), '', '', tipoRateioDominioPagamento(l)
   ]);
 }
 
@@ -8237,7 +8267,6 @@ function adicionarAbasDominioExportacao(wb, linhas, separarPorEmpresa = false) {
       const empresa = limparTextoExportacaoDominio(linha[7] || 'Sem empresa') || 'Sem empresa';
       if (!porEmpresa.has(empresa)) porEmpresa.set(empresa, []);
       const copia = linha.slice();
-      copia[6] = '';
       porEmpresa.get(empresa).push(copia);
     });
 
@@ -8281,7 +8310,6 @@ function exportarDominioFinal(ignorarContasBancarias = false) {
   const linhasRecebimentosImportados = montarLinhasRecebimentosImportadosParaFinal();
 
   const linhas = [...linhasPagamentos, ...linhasConciliacao, ...linhasRecebimentosImportados];
-  linhas.forEach(l => { l[6] = ''; });
   if (linhas.length > 0) linhas[0][6] = 1;
 
   const wb = XLSX.utils.book_new();
