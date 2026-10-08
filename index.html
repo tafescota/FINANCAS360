@@ -1179,6 +1179,19 @@ function encontrarCodigoRegra(regras, forn, plano, tipoDoc, historico, escopo = 
   if (tipoNormalizado.startsWith('desconto') || tipoNormalizado.startsWith('acrescimo')) return '';
   const chaveLegada = limparTextoECD(forn) + ' | ' + limparTextoECD(plano);
   if (regras[chaveLegada]) return regras[chaveLegada];
+
+  // Quando o usuário definiu palavras para esta combinação, a ausência
+  // dessas palavras precisa continuar pendente. Regras gerais explícitas
+  // acima continuam válidas; apenas as inferências automáticas são barradas.
+  if (!escopo) {
+    const prefixoParcialNovo = forn + ' | ' + plano + ' | ' + tipoDoc + ' | HISTORICO_CONTEM | ';
+    const prefixoParcialLegado = forn + ' | ' + plano + ' | HISTORICO_CONTEM | ';
+    const existeRegraParcialDaCombinacao = Object.keys(regras || {}).some(chave => {
+      const chaveSemEscopo = chaveRegraSemEscopoDeUnidade(chave);
+      return chaveSemEscopo.startsWith(prefixoParcialNovo) || chaveSemEscopo.startsWith(prefixoParcialLegado);
+    });
+    if (existeRegraParcialDaCombinacao) return '';
+  }
   const codigoFornecedorPlano = codigoUnicoRegraFornecedorPlano(regras, forn, plano);
   if (codigoFornecedorPlano) return codigoFornecedorPlano;
   const codigoPlanoDocumento = codigoUnicoRegraPlanoDocumento(regras, plano, tipoDoc);
@@ -1415,7 +1428,39 @@ function salvarCodigosPreenchidosNoGrupo(coletarDaTela = true) {
     if (codigo) regrasSalvas[obterChaveRegraNova(item)] = codigo;
   });
   depara[grupoAtivo] = regrasSalvas;
+  reaplicarRegrasSalvasNasPendenciasPagamento(regrasSalvas);
+  const removidas = removerPendenciasResolvidasPagamento();
   salvarStorage();
+  return removidas;
+}
+
+function reaplicarRegrasSalvasNasPendenciasPagamento(regrasSalvas = depara[grupoAtivo] || {}) {
+  let aplicadas = 0;
+  novasChavesTemp.forEach(item => {
+    if (obterCodigoContaParaDominio(codigosTemp[item.chave] || '') || item.pontaNumerario) return;
+    const ajuste = infoAjusteComPonta(item.tipoDoc);
+    const codigo = ajuste
+      ? encontrarCodigoRegraAjuste(regrasSalvas, item.fornecedor, item.plano, ajuste.tipo, ajuste.ponta, item.historico, item.escopoRegra || '')
+      : encontrarCodigoRegra(regrasSalvas, item.fornecedor, item.plano, item.tipoDoc, item.historico, item.escopoRegra || '');
+    const codigoDominio = obterCodigoContaParaDominio(codigo);
+    if (!codigoDominio) return;
+    codigosTemp[item.chave] = codigoDominio;
+    aplicadas++;
+  });
+  return aplicadas;
+}
+
+function removerPendenciasResolvidasPagamento() {
+  const resolvidas = novasChavesTemp.filter(item => obterCodigoContaParaDominio(codigosTemp[item.chave] || ''));
+  if (!resolvidas.length) return 0;
+  const chavesResolvidas = new Set(resolvidas.map(item => item.chave));
+  novasChavesTemp = novasChavesTemp.filter(item => !chavesResolvidas.has(item.chave));
+  chavesResolvidas.forEach(chave => selecionadasLote.delete(chave));
+  if (grupoUsaNumerariosParcelas()) {
+    const total = resumoRegrasImportacaoTemp.total || 0;
+    resumoRegrasImportacaoTemp.okSalvas = Math.min(total, (resumoRegrasImportacaoTemp.okSalvas || 0) + resolvidas.length);
+  }
+  return resolvidas.length;
 }
 
 function mostrarTela(id, registrarHistorico = true) {
@@ -7554,8 +7599,9 @@ function coletarCodigosNovasChaves() {
 
 function salvarTudoPreenchido() {
   coletarCodigosNovasChaves();
-  const preenchidas = novasChavesTemp.filter(item => obterCodigoContaParaDominio(codigosTemp[item.chave] || '')).length;
-  salvarCodigosPreenchidosNoGrupo(false);
+  const preenchidasInformadas = novasChavesTemp.filter(item => obterCodigoContaParaDominio(codigosTemp[item.chave] || '')).length;
+  const removidas = salvarCodigosPreenchidosNoGrupo(false);
+  const preenchidas = Number.isFinite(removidas) ? removidas : preenchidasInformadas;
   renderNovasChaves();
 
   const el = document.getElementById('msg-novas-chaves');
@@ -7766,14 +7812,8 @@ function aplicarCodigoEmLote() {
     renderNovasChaves();
     return;
   }
-  // Salva imediatamente no depara do grupo ativo
-  const regrasSalvas = Object.assign({}, depara[grupoAtivo] || {});
-  selecionadasLote.forEach(chave => {
-    const item = novasChavesTemp.find(n => n.chave === chave);
-    regrasSalvas[item ? obterChaveRegraNova(item) : chave] = codigo;
-  });
-  depara[grupoAtivo] = regrasSalvas;
-  salvarStorage();
+  // Salva e reaplica as novas regras nas demais pendências abertas.
+  salvarCodigosPreenchidosNoGrupo(false);
   selecionadasLote.clear();
   renderNovasChaves();
 }
