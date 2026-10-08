@@ -806,14 +806,9 @@ function empresaDonaBancoPorConta(conta, empresaFallback = '') {
   return limparTextoECD(empresaFallback);
 }
 
-function grupoCompartilhaRegrasPagamentoEntreUnidades(nome = grupoAtivo) {
-  return normalizarTexto(nome).includes('cp simone');
-}
-
 function escopoRegraPagamento(empresaOrigem, centroCusto, rateio = false, parcelasNumerarios = false) {
-  if (grupoCompartilhaRegrasPagamentoEntreUnidades()) return '';
-  if (parcelasNumerarios) return `PARCELAS NUMERARIOS: ${limparTextoECD(empresaOrigem)} / ${limparTextoECD(centroCusto)}`;
-  if (rateio) return `RATEIO: ${limparTextoECD(empresaOrigem)} / ${limparTextoECD(centroCusto)}`;
+  // As regras comuns pertencem ao grupo e valem para todas as suas unidades.
+  // As contas de numerários continuam separadas nas chaves específicas abaixo.
   return '';
 }
 
@@ -1088,7 +1083,6 @@ function chaveRegraSemEscopoDeUnidade(chave) {
 }
 
 function codigoRegraCompartilhadaLegada(regras, corresponde) {
-  if (!grupoCompartilhaRegrasPagamentoEntreUnidades()) return '';
   const codigos = new Map();
   Object.entries(regras || {}).forEach(([chave, codigo]) => {
     const chaveSemEscopo = chaveRegraSemEscopoDeUnidade(chave);
