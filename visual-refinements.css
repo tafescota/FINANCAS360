@@ -2876,6 +2876,18 @@ body {
   padding-right: 7px;
 }
 
+#tela-novas-chaves .ajuste-par-field-resolvido input.conta-autocomplete[readonly] {
+  background: #eef8f1;
+  border-color: #b7d8c1;
+  color: #25603a;
+  cursor: default;
+}
+
+#tela-novas-chaves .ajuste-par-field-resolvido input.conta-autocomplete[readonly]:focus {
+  border-color: #b7d8c1;
+  box-shadow: none;
+}
+
 #tela-novas-chaves .ajuste-par-separador {
   color: #94a3b8;
   font-weight: 800;

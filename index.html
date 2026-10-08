@@ -7092,12 +7092,28 @@ function renderLinhaAjustePar(linha) {
   const chavesPar = [linha.debito?.chave, linha.credito?.chave].filter(Boolean);
   const chavesParEncoded = encodeURIComponent(JSON.stringify(chavesPar));
   const selecionado = chavesPar.length > 0 && chavesPar.every(k => selecionadasLote.has(k));
-  const inputAjuste = (item, ponta, placeholder) => item
-    ? `<label class="ajuste-par-field">
-        <span>${escapeHtml(ponta)}</span>
-        <input type="text" class="conta-autocomplete" placeholder="${escapeAttr(placeholder)}" value="${escapeAttr(codigosTemp[item.chave] || '')}" data-chave="${escapeAttr(item.chave)}" oninput="atualizarCodigoNovaChave(this); criarAutocompleteConta(this)">
+  const regrasSalvas = depara[grupoAtivo] || {};
+  const codigoPontaResolvida = ponta => obterCodigoContaParaDominio(encontrarCodigoRegraAjuste(
+    regrasSalvas,
+    fornecedor,
+    plano,
+    linha.ajuste,
+    ponta,
+    historico,
+    baseItem.escopoRegra || ''
+  ));
+  const inputAjuste = (item, rotuloPonta, pontaRegra, placeholder) => {
+    const codigoResolvido = item ? '' : codigoPontaResolvida(pontaRegra);
+    return item
+      ? `<label class="ajuste-par-field">
+        <span>${escapeHtml(rotuloPonta)}</span>
+        <input type="text" class="conta-autocomplete" aria-label="Conta de ${escapeAttr(placeholder)}" placeholder="${escapeAttr(placeholder)}" value="${escapeAttr(codigosTemp[item.chave] || '')}" data-chave="${escapeAttr(item.chave)}" oninput="atualizarCodigoNovaChave(this); criarAutocompleteConta(this)">
       </label>`
-    : '';
+      : `<label class="ajuste-par-field ajuste-par-field-resolvido" title="Regra de ${escapeAttr(placeholder)} já preenchida">
+        <span>${escapeHtml(rotuloPonta)}</span>
+        <input type="text" class="conta-autocomplete" aria-label="Conta de ${escapeAttr(placeholder)} já preenchida" value="${escapeAttr(codigoResolvido)}" placeholder="Salvo" readonly>
+      </label>`;
+  };
   return `<tr class="ajuste-par-row">
     <td><input type="checkbox" ${selecionado ? 'checked' : ''} onchange="alternarSelecionadasLoteEncoded('${escapeAttr(chavesParEncoded)}', this.checked)"></td>
     <td title="${escapeAttr(empresa || '')}"><div class="cell-main">${escapeHtml(empresa || '')}</div></td>
@@ -7113,9 +7129,9 @@ function renderLinhaAjustePar(linha) {
     <td title="${escapeAttr(origemNovasChaves === 'provisao_parcelas' ? 'Débito / Crédito' : linha.ajuste + ' - débito/crédito')}" style="color:var(--text2)"><span class="tipo-ajuste-badge tipo-ajuste-dc">D/C</span></td>
     <td>
       <div class="ajuste-par-inputs">
-        ${inputAjuste(linha.debito, 'D', 'Débito')}
+        ${inputAjuste(linha.debito, 'D', 'DÉBITO', 'Débito')}
         <span class="ajuste-par-separador">/</span>
-        ${inputAjuste(linha.credito, 'C', 'Crédito')}
+        ${inputAjuste(linha.credito, 'C', 'CRÉDITO', 'Crédito')}
       </div>
     </td>
   </tr>`;
