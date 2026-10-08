@@ -637,6 +637,8 @@ let pilhaTelas = [];
 let confirmandoComEnter = false;
 let ultimaSyncLocal = 0;
 let salvandoBaseCompartilhada = false;
+let timerSalvarBaseCompartilhada = null;
+let baseCompartilhadaPendente = false;
 let filtroLoteTimer = null;
 let extratoBancarioTemp = [];
 let infoExtratoBancarioTemp = null;
@@ -1344,7 +1346,29 @@ function salvarStorage() {
   localStorage.setItem(STORAGE_CONTAS_SEM_CONCILIACAO, JSON.stringify(contasSemConciliacao));
   localStorage.setItem(STORAGE_CONFIG_GRUPOS, JSON.stringify(configGrupos));
   localStorage.setItem(STORAGE_DEPARA_SAIDAS_EXTRATO, JSON.stringify(deparaSaidasExtrato));
-  salvarBaseCompartilhada();
+  agendarSalvarBaseCompartilhada();
+}
+
+function salvarStorageRegrasConciliacao() {
+  localStorage.setItem(STORAGE_DEPARA, JSON.stringify(depara));
+  localStorage.setItem(STORAGE_DEPARA_RECEBIMENTOS, JSON.stringify(deparaRecebimentos));
+  localStorage.setItem(STORAGE_DEPARA_SAIDAS_EXTRATO, JSON.stringify(deparaSaidasExtrato));
+  agendarSalvarBaseCompartilhada();
+}
+
+function agendarSalvarBaseCompartilhada(atraso = 650) {
+  baseCompartilhadaPendente = true;
+  if (typeof setTimeout !== 'function') return;
+  if (typeof clearTimeout === 'function') clearTimeout(timerSalvarBaseCompartilhada);
+  timerSalvarBaseCompartilhada = setTimeout(() => {
+    const executar = async () => {
+      if (!baseCompartilhadaPendente) return;
+      baseCompartilhadaPendente = false;
+      await salvarBaseCompartilhada();
+    };
+    if (typeof requestIdleCallback === 'function') requestIdleCallback(executar, { timeout: 1500 });
+    else executar();
+  }, atraso);
 }
 
 function atualizarStatusBanco(texto, tipo = 'orange') {
@@ -1398,6 +1422,10 @@ async function carregarBaseCompartilhada(mostrarMensagem = false) {
 }
 
 async function salvarBaseCompartilhada(forcar = false) {
+  if (salvandoBaseCompartilhada) {
+    baseCompartilhadaPendente = true;
+    return;
+  }
   try {
     salvandoBaseCompartilhada = true;
     ultimaSyncLocal = Date.now();
@@ -1414,6 +1442,7 @@ async function salvarBaseCompartilhada(forcar = false) {
     atualizarStatusBanco('Não consegui salvar na base compartilhada agora. Mantive uma cópia local neste navegador.', 'warn');
   } finally {
     salvandoBaseCompartilhada = false;
+    if (baseCompartilhadaPendente) agendarSalvarBaseCompartilhada(900);
   }
 }
 
@@ -5056,6 +5085,13 @@ function codigoBancoConciliacao(conta) {
   return codigoContaSemConciliacao(contaLimpa) || contaLimpa;
 }
 
+function empresaInferidaPelaContaExtrato(conta) {
+  const contaLimpa = limparTextoECD(conta);
+  const contaNorm = normalizarTexto(contaLimpa);
+  if (![' - banco', ' - caixa loja', ' - aplicacao'].some(sufixo => contaNorm.endsWith(sufixo))) return '';
+  return contaLimpa.slice(0, contaLimpa.lastIndexOf(' - ')).trim();
+}
+
 function empresaBancoConciliacao(item = {}, movimento = {}) {
   const conta = movimento.conta || item.conta || infoExtratoBancarioTemp?.conta || '';
   if (modoImportacaoDoGrupo() === 'parcelas') {
@@ -5064,6 +5100,8 @@ function empresaBancoConciliacao(item = {}, movimento = {}) {
   }
   const porConta = empresaBancoRateioPorConta(conta, '');
   if (porConta) return porConta;
+  const inferidaPelaConta = empresaInferidaPelaContaExtrato(conta);
+  if (inferidaPelaConta) return inferidaPelaConta;
   const candidatos = [
     movimento.empresaBanco,
     item.empresaBanco,
@@ -5101,6 +5139,7 @@ function gerarSugestoesConciliacao(opcoes = {}) {
   };
   const indiceDocumentoDataValor = new Map();
   const indiceDocumentoData = new Map();
+  const indiceDocumentoValor = new Map();
   const indiceDataValor = new Map();
   const indiceValor = new Map();
   const indiceData = new Map();
@@ -5117,6 +5156,7 @@ function gerarSugestoesConciliacao(opcoes = {}) {
     indiceMovimentoPorObjeto.set(mov, idxMov);
     adicionarIndiceConciliacao(indiceDocumentoDataValor, `${item.documento}\u0001${item.data}\u0001${item.valor}`, item);
     adicionarIndiceConciliacao(indiceDocumentoData, `${item.documento}\u0001${item.data}`, item);
+    adicionarIndiceConciliacao(indiceDocumentoValor, `${item.documento}\u0001${item.valor}`, item);
     adicionarIndiceConciliacao(indiceDataValor, `${item.data}\u0001${item.valor}`, item);
     adicionarIndiceConciliacao(indiceValor, String(item.valor), item);
     adicionarIndiceConciliacao(indiceData, item.data, item);
@@ -5157,6 +5197,26 @@ function gerarSugestoesConciliacao(opcoes = {}) {
   });
 
   pagamentos.forEach(pag => {
+    if (sugestoesPorPagamento.has(pag.idx) || !pag.numero) return;
+    const chaveIndice = `${pag.numero}\u0001${valorConciliacaoEmCentavos(pag.valor)}`;
+    const candidatos = disponiveis(indiceDocumentoValor.get(chaveIndice))
+      .filter(({ mov, documento }) => mesmaContaConciliacao(pag, mov)
+        && documento
+        && pag.numero === documento);
+    if (candidatos.length === 1) {
+      usadosMov.add(candidatos[0].idxMov);
+      sugestoesPorPagamento.set(pag.idx, {
+        pag,
+        mov: candidatos[0].mov,
+        idxMov: candidatos[0].idxMov,
+        status: 'provável',
+        regra: 'Documento + valor (data bancária diferente)',
+        diferenca: 0
+      });
+    }
+  });
+
+  pagamentos.forEach(pag => {
     if (sugestoesPorPagamento.has(pag.idx)) return;
     const candidatos = disponiveis(indiceDocumentoData.get(`${pag.numero}\u0001${pag.dataKey}`))
       .filter(({ mov, documento: doc, movTexto }) => {
@@ -5193,6 +5253,23 @@ function gerarSugestoesConciliacao(opcoes = {}) {
     if (candidatos.length === 1) {
       usadosMov.add(candidatos[0].idxMov);
       sugestoesPorPagamento.set(pag.idx, { pag, mov: candidatos[0].mov, idxMov: candidatos[0].idxMov, status: 'provável', regra: 'Fornecedor + data + valor', diferenca: 0 });
+    }
+  });
+
+  pagamentos.filter(p => !sugestoesPorPagamento.has(p.idx)).forEach(pag => {
+    const candidatos = disponiveis(indiceValor.get(String(valorConciliacaoEmCentavos(pag.valor))))
+      .filter(({ mov, movTexto }) => mesmaContaConciliacao(pag, mov)
+        && fornecedorBatePagamentoMovimento(pag, movTexto));
+    if (candidatos.length === 1) {
+      usadosMov.add(candidatos[0].idxMov);
+      sugestoesPorPagamento.set(pag.idx, {
+        pag,
+        mov: candidatos[0].mov,
+        idxMov: candidatos[0].idxMov,
+        status: 'provável',
+        regra: 'Fornecedor + valor (data bancária diferente)',
+        diferenca: 0
+      });
     }
   });
 
@@ -5337,7 +5414,7 @@ function renderSugestoesConciliacao(sugestoes, qtdPagamentos, qtdMovimentos, ent
   const itensPagamentoPendente = sugestoes.filter(s => !s.mov).map(s => ({
     id: `pag-${s.pag.idx}`,
     movimento: 'pagamento-pendente',
-    tipo: 'Pagamento não encontrado',
+    tipo: 'Pagamento sem vínculo individual',
     historico: s.pag.fornecedor || 'Sem fornecedor',
     fornecedor: s.pag.fornecedor || '',
     fornecedorNorm: s.pag.fornecedorNorm || textoConciliacao(s.pag.fornecedor || ''),
@@ -5360,7 +5437,9 @@ function renderSugestoesConciliacao(sugestoes, qtdPagamentos, qtdMovimentos, ent
   conciliacaoItensTemp.forEach(item => {
     if (!(item.id in codigosConciliacaoTemp)) codigosConciliacaoTemp[item.id] = '';
     if (item.movimento === 'saida-pendente' && !codigosConciliacaoTemp[item.id]) {
-      codigosConciliacaoTemp[item.id] = obterCodigoContaParaDominio((deparaSaidasExtrato[grupoAtivo] || {})[item.chaveRegraSaida] || '');
+      const movimento = extratoBancarioTemp[item.idxOriginal] || item;
+      codigosConciliacaoTemp[item.id] = obterCodigoContaParaDominio((deparaSaidasExtrato[grupoAtivo] || {})[item.chaveRegraSaida] || '')
+        || codigoRegraPagamentoParaSaidaExtrato(movimento);
     }
     if (item.movimento === 'recebimento' && !codigosConciliacaoTemp[item.id]) {
       codigosConciliacaoTemp[item.id] = obterCodigoContaParaDominio(encontrarCodigoRegraRecebimentoConciliacao(regrasRecebimentos, item.tipo, item.historico, item.escopoRegra || ''));
@@ -5759,7 +5838,7 @@ function abrirModalPendenciasConciliacao() {
         <div class="conciliacao-note" style="margin-top:4px">${mesmasSaidas.length} ${mesmasSaidas.length === 1 ? 'opção' : 'opções'} com o mesmo valor de R$ ${fmtValor(item.total)}${saidasCentavos.length ? ` · ${saidasCentavos.length} provável${saidasCentavos.length !== 1 ? 'is' : ''} com diferença de centavos` : ''}</div>`
       : ehSaidaPendente
         ? `<input type="text" class="conta-autocomplete" data-conciliacao-modal-id="${escapeAttr(item.id)}" value="${escapeAttr(valor)}" placeholder="${escapeAttr(placeholderConta)}" oninput="atualizarCodigoConciliacaoModal(this); criarAutocompleteConta(this)" style="width:100%">
-          <button type="button" class="btn btn-sm" style="margin-top:6px;width:100%" onclick="revisarSaidaExtratoSemExportar('${escapeAttr(item.id)}')">Prosseguir sem exportar esta saída</button>`
+          <button type="button" class="btn btn-sm" style="margin-top:6px;width:100%" onclick="revisarSaidaExtratoSemExportar('${escapeAttr(item.id)}')">Marcar como já representada / não exportar</button>`
         : `<input type="text" class="conta-autocomplete" data-conciliacao-modal-id="${escapeAttr(item.id)}" value="${escapeAttr(valor)}" placeholder="${escapeAttr(placeholderConta)}" oninput="atualizarCodigoConciliacaoModal(this); criarAutocompleteConta(this)" style="width:100%">`;
     const empresaCol = item.empresaBanco || item.empresa || '';
     const centroCol = item.centroCusto || item.empresaLancamento || '';
@@ -5784,16 +5863,16 @@ function abrirModalPendenciasConciliacao() {
       : fluxoRecebimentos && ehRecebimentoPendencia
         ? 'Conta do recebimento'
         : ehSaidaPendente
-          ? 'Pagamento não encontrado'
+          ? 'Sem vínculo individual'
           : (item.plano || item.tipo || '');
     let orientacaoItem = ehNumerarioPendencia
       ? `Preencha ${contaAlvo}. Não é banco nem cliente.`
       : ehRecebimentoPendencia
         ? 'Preencha a conta do cliente/recebimento. O banco vem do extrato.'
       : ehSaidaPendente
-        ? 'Preencha a conta de débito. O crédito será o banco do extrato.'
+        ? 'Esta saída ainda não foi ligada a um pagamento. Informe a conta somente se ela realmente precisar virar um lançamento extra.'
         : ehPagamentoPendente
-          ? 'Preencha a conta do pagamento se precisar corrigir o de-para. Se não houver saída no extrato, pode prosseguir sem movimento.'
+          ? 'Este pagamento ainda não foi ligado a uma saída individual. Selecione a saída correspondente ou confirme que ele não possui movimento no extrato.'
         : '';
     if (item.transferenciaContas) {
       orientacaoItem = `Preencha ${contaAlvo} desta ponta. A outra ponta da transferência também deve ser preenchida.`;
@@ -5823,11 +5902,19 @@ function abrirModalPendenciasConciliacao() {
     </tr>`;  }).join('');
   const qtdSaidasNoModal = itensModal.filter(item => item.movimento === 'saida-pendente').length;
   const qtdPagamentosNoModal = itensModal.filter(item => item.movimento === 'pagamento-pendente').length;
+  const totalSaidasNoModal = arredondarMoeda(itensModal.filter(item => item.movimento === 'saida-pendente').reduce((s, item) => s + Number(item.total || 0), 0));
+  const totalPagamentosNoModal = arredondarMoeda(itensModal.filter(item => item.movimento === 'pagamento-pendente').reduce((s, item) => s + Number(item.total || 0), 0));
   const qtdPontasTransferenciaNoModal = itensModal.filter(item => item.transferenciaContas).length;
   const partesAjudaModal = [];
   if (qtdPontasTransferenciaNoModal) partesAjudaModal.push(`${qtdPontasTransferenciaNoModal} ponta${qtdPontasTransferenciaNoModal !== 1 ? 's' : ''} de transferência entre contas precisa${qtdPontasTransferenciaNoModal !== 1 ? 'm' : ''} da conta de numerários.`);
-  if (qtdPagamentosNoModal) partesAjudaModal.push(`${qtdPagamentosNoModal} ${qtdPagamentosNoModal === 1 ? 'pagamento não encontrou' : 'pagamentos não encontraram'} saída no extrato; selecione a saída ou prossiga sem movimento.`);
-  if (qtdSaidasNoModal) partesAjudaModal.push(`${qtdSaidasNoModal} ${qtdSaidasNoModal === 1 ? 'saída do extrato sobrou' : 'saídas do extrato sobraram'}; preencha a conta de débito para exportar pelo extrato.`);
+  if (qtdPagamentosNoModal) partesAjudaModal.push(`${qtdPagamentosNoModal} pagamento${qtdPagamentosNoModal !== 1 ? 's' : ''} sem vínculo individual (R$ ${fmtValor(totalPagamentosNoModal)}).`);
+  if (qtdSaidasNoModal) partesAjudaModal.push(`${qtdSaidasNoModal} saída${qtdSaidasNoModal !== 1 ? 's' : ''} do extrato sem vínculo individual (R$ ${fmtValor(totalSaidasNoModal)}).`);
+  if (qtdPagamentosNoModal && qtdSaidasNoModal) {
+    const diferencaPendencias = arredondarMoeda(totalPagamentosNoModal - totalSaidasNoModal);
+    partesAjudaModal.push(Math.abs(diferencaPendencias) < 0.01
+      ? 'Os totais pendentes fecham; revise agrupamentos, divisões e datas diferentes antes de criar lançamentos extras.'
+      : `Diferença líquida entre os itens sem vínculo: R$ ${fmtValor(Math.abs(diferencaPendencias))}. Isso não significa, sozinho, diferença no fechamento.`);
+  }
   const textoAjudaModal = partesAjudaModal.join(' ');
   const tituloModal = fluxoRecebimentos ? 'Novas regras de recebimentos' : 'Preencher pendências da conciliação';
   const subtituloModal = fluxoRecebimentos
@@ -5871,7 +5958,7 @@ function abrirModalPendenciasConciliacao() {
       <div style="padding:14px 22px;border-top:1px solid var(--border);display:flex;justify-content:flex-end;gap:10px">
         <button class="btn" onclick="fecharModalPendenciasConciliacao()">Cancelar</button>
         <button class="btn" onclick="atualizarModalPendenciasConciliacao()">Atualizar pendências</button>
-        <button class="btn btn-primary" onclick="salvarModalPendenciasConciliacao()">${textoSalvarModal}</button>
+        <button id="btn-salvar-pendencias-conciliacao" class="btn btn-primary" onclick="salvarModalPendenciasConciliacao()">${textoSalvarModal}</button>
       </div>
     </div>`;
   document.body.appendChild(modal);
@@ -6028,11 +6115,60 @@ function chaveRegraSaidaExtrato(movimento = {}) {
     .join(' | ');
 }
 
+function codigoRegraPagamentoParaSaidaExtrato(movimento = {}) {
+  const regras = depara[grupoAtivo] || {};
+  const textoMovimento = normalizarTexto([
+    descricaoMovimentoExtrato(movimento),
+    movimento.documento
+  ].filter(Boolean).join(' '));
+  if (!textoMovimento) return '';
+
+  const codigosPorFornecedor = new Map();
+  const codigosComHistorico = new Map();
+  const adicionar = (mapa, codigo) => {
+    const valor = obterCodigoContaParaDominio(codigo);
+    if (valor) mapa.set(normalizarTexto(valor), valor);
+  };
+
+  Object.entries(regras).forEach(([chave, codigo]) => {
+    const chaveBase = chaveRegraSemEscopoDeUnidade(chave);
+    const partes = chaveBase.split(' | ');
+    const fornecedor = normalizarTexto(partes[0] || '');
+    const tipo = normalizarTexto(partes[2] || '');
+    if (!fornecedor
+      || fornecedor === 'recebimento'
+      || fornecedor.startsWith('rateio numerarios')
+      || fornecedor.startsWith('parcelas numerarios')
+      || tipo.startsWith('desconto')
+      || tipo.startsWith('acrescimo')
+      || !textoMovimento.includes(fornecedor)) return;
+
+    adicionar(codigosPorFornecedor, codigo);
+    const posicaoParcial = partes.indexOf('HISTORICO_CONTEM');
+    if (posicaoParcial >= 0) {
+      const termos = normalizarTexto(partes.slice(posicaoParcial + 1).join(' | ')).split(/\s+/).filter(Boolean);
+      if (termos.length && termos.every(termo => textoMovimento.includes(termo))) adicionar(codigosComHistorico, codigo);
+      return;
+    }
+    const historicoRegra = normalizarTexto(partes.slice(3).join(' | '));
+    if (historicoRegra && textoMovimento.includes(historicoRegra)) adicionar(codigosComHistorico, codigo);
+  });
+
+  if (codigosComHistorico.size === 1) return [...codigosComHistorico.values()][0];
+  return codigosPorFornecedor.size === 1 ? [...codigosPorFornecedor.values()][0] : '';
+}
+
 function salvarRegrasRecebimentoConciliacao() {
   if (!grupoAtivo) return;
   const regras = Object.assign({}, deparaRecebimentos[grupoAtivo] || {});
   const regrasPagamentos = Object.assign({}, depara[grupoAtivo] || {});
   const regrasSaidas = Object.assign({}, deparaSaidasExtrato[grupoAtivo] || {});
+  const lancamentosPorIndice = new Map();
+  lancamentosGerados.forEach(lancamento => {
+    const chave = String(lancamento.idx);
+    if (!lancamentosPorIndice.has(chave)) lancamentosPorIndice.set(chave, []);
+    lancamentosPorIndice.get(chave).push(lancamento);
+  });
   conciliacaoItensTemp.forEach(item => {
     const codigo = obterCodigoContaParaDominio(codigosConciliacaoTemp[item.id]);
     if (!codigo) return;
@@ -6047,8 +6183,7 @@ function salvarRegrasRecebimentoConciliacao() {
       if (!vinculosPagamentoConciliacaoTemp[item.id]) {
         vinculosPagamentoConciliacaoTemp[item.id] = VINCULO_PAGAMENTO_SEM_EXTRATO;
       }
-      lancamentosGerados.forEach(lancamento => {
-        if (String(lancamento.idx) !== String(item.idxPagamento)) return;
+      (lancamentosPorIndice.get(String(item.idxPagamento)) || []).forEach(lancamento => {
         if (lancamento.tipoAjuste || lancamento.lancamentoNumerario) return;
         lancamento.codDebito = codigo;
         lancamento.semCodigo = !lancamento.codDebito || !lancamento.codCredito;
@@ -6064,16 +6199,23 @@ function salvarRegrasRecebimentoConciliacao() {
   deparaRecebimentos[grupoAtivo] = regras;
   depara[grupoAtivo] = regrasPagamentos;
   deparaSaidasExtrato[grupoAtivo] = regrasSaidas;
-  salvarStorage();
+  salvarStorageRegrasConciliacao();
 }
 
 function fecharModalPendenciasConciliacao() {
   document.getElementById('modal-pendencias-conciliacao')?.remove();
 }
 
-function salvarModalPendenciasConciliacao() {
+async function salvarModalPendenciasConciliacao() {
+  const botao = document.getElementById('btn-salvar-pendencias-conciliacao');
+  if (botao) {
+    botao.disabled = true;
+    botao.textContent = 'Salvando...';
+  }
+  await aguardarPinturaInterface();
   coletarCodigosConciliacao();
   salvarRegrasRecebimentoConciliacao();
+  await aguardarPinturaInterface();
   fecharModalPendenciasConciliacao();
   if (origemModalPendencias === 'recebimentos') {
     renderRecebimentosSeparados();
