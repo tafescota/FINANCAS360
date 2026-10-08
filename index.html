@@ -646,6 +646,7 @@ let vinculosPagamentoConciliacaoTemp = {};
 let saidasExtratoRevisadasConciliacaoTemp = {};
 let trechosRecebimentoConciliacaoTemp = {};
 let conciliacaoAplicadaTemp = false;
+let acaoExportacaoSemContasBancarias = null;
 let mostrarLancamentosConciliados = false;
 let mostrarPendenciasPreenchidas = false;
 let origemModalPendencias = 'conciliacao';
@@ -805,7 +806,12 @@ function empresaDonaBancoPorConta(conta, empresaFallback = '') {
   return limparTextoECD(empresaFallback);
 }
 
+function grupoCompartilhaRegrasPagamentoEntreUnidades(nome = grupoAtivo) {
+  return normalizarTexto(nome).includes('cp simone');
+}
+
 function escopoRegraPagamento(empresaOrigem, centroCusto, rateio = false, parcelasNumerarios = false) {
+  if (grupoCompartilhaRegrasPagamentoEntreUnidades()) return '';
   if (parcelasNumerarios) return `PARCELAS NUMERARIOS: ${limparTextoECD(empresaOrigem)} / ${limparTextoECD(centroCusto)}`;
   if (rateio) return `RATEIO: ${limparTextoECD(empresaOrigem)} / ${limparTextoECD(centroCusto)}`;
   return '';
@@ -1072,9 +1078,34 @@ function prepararLinhaParcelasNumerarios(row) {
   return row;
 }
 
+function chaveRegraSemEscopoDeUnidade(chave) {
+  const texto = String(chave || '');
+  const separador = texto.indexOf(' | ');
+  if (separador < 0) return texto;
+  const prefixo = normalizarTexto(texto.slice(0, separador));
+  if (!prefixo.startsWith('rateio:') && !prefixo.startsWith('parcelas numerarios:')) return texto;
+  return texto.slice(separador + 3);
+}
+
+function codigoRegraCompartilhadaLegada(regras, corresponde) {
+  if (!grupoCompartilhaRegrasPagamentoEntreUnidades()) return '';
+  const codigos = new Map();
+  Object.entries(regras || {}).forEach(([chave, codigo]) => {
+    const chaveSemEscopo = chaveRegraSemEscopoDeUnidade(chave);
+    if (chaveSemEscopo === chave || !corresponde(chaveSemEscopo)) return;
+    const valor = limparTextoECD(codigo);
+    if (valor) codigos.set(normalizarTexto(valor), valor);
+  });
+  return codigos.size === 1 ? [...codigos.values()][0] : '';
+}
+
 function encontrarCodigoRegra(regras, forn, plano, tipoDoc, historico, escopo = '') {
   const chaveExata = montarChave(forn, plano, tipoDoc, historico, escopo);
   if (regras[chaveExata]) return regras[chaveExata];
+  if (!escopo) {
+    const codigoCompartilhado = codigoRegraCompartilhadaLegada(regras, chave => chave === chaveExata);
+    if (codigoCompartilhado) return codigoCompartilhado;
+  }
 
   const prefixoEscopo = escopo ? limparTextoECD(escopo) + ' | ' : '';
   const prefixo = prefixoEscopo + forn + ' | ' + plano + ' | ' + tipoDoc + ' | HISTORICO_CONTEM | ';
@@ -1089,6 +1120,17 @@ function encontrarCodigoRegra(regras, forn, plano, tipoDoc, historico, escopo = 
     return termos.length > 0 && termos.every(termo => historicoNormalizado.includes(termo));
   });
   if (achada) return regras[achada];
+  if (!escopo) {
+    const codigoParcialCompartilhado = codigoRegraCompartilhadaLegada(regras, chave => {
+      const usaPrefixoNovo = chave.startsWith(prefixo);
+      const usaPrefixoLegado = chave.startsWith(prefixoLegado);
+      if (!usaPrefixoNovo && !usaPrefixoLegado) return false;
+      const trecho = chave.slice(usaPrefixoNovo ? prefixo.length : prefixoLegado.length);
+      const termos = normalizarTexto(trecho).split(/\s+/).filter(Boolean);
+      return termos.length > 0 && termos.every(termo => historicoNormalizado.includes(termo));
+    });
+    if (codigoParcialCompartilhado) return codigoParcialCompartilhado;
+  }
 
   // Compatibilidade com o de-para antigo: Fornecedor | Plano de Contas.
   // A regra completa e as palavras-chave continuam tendo prioridade.
@@ -4019,11 +4061,12 @@ function montarLinhasDominioRecebimentosSeparados({ validarPendencias = true } =
   return montarLinhasDominioConciliacao({ validarPendencias });
 }
 
-function exportarDominioRecebimentos() {
+function exportarDominioRecebimentos(ignorarContasBancarias = false) {
   if (recebimentosRateioTemp.length === 0) {
     alert('Importe os recebimentos antes de exportar.');
     return;
   }
+  if (!ignorarContasBancarias && bloquearExportacaoPorContasBancarias(() => exportarDominioRecebimentos(true))) return;
   if (bloquearExportacaoRecebimentosSemConciliacao()) return;
   origemModalPendencias = 'recebimentos';
   const linhas = montarLinhasDominioRecebimentosSeparados();
@@ -5980,7 +6023,8 @@ function montarLinhasDominioConciliacao({ validarPendencias = true } = {}) {
   });
   return linhas;
 }
-function exportarConciliacaoBancaria() {
+function exportarConciliacaoBancaria(ignorarContasBancarias = false) {
+  if (!ignorarContasBancarias && bloquearExportacaoPorContasBancarias(() => exportarConciliacaoBancaria(true))) return;
   const linhas = montarLinhasDominioConciliacao();
   if (linhas === null) return;
   if (linhas.length === 0) {
@@ -6671,6 +6715,14 @@ function contasBancariasPendentesExportacao() {
 
 function fecharModalContasBancarias() {
   document.getElementById('modal-contas-bancarias')?.remove();
+  acaoExportacaoSemContasBancarias = null;
+}
+
+function continuarExportacaoSemContasBancarias() {
+  const continuar = acaoExportacaoSemContasBancarias;
+  document.getElementById('modal-contas-bancarias')?.remove();
+  acaoExportacaoSemContasBancarias = null;
+  if (typeof continuar === 'function') continuar();
 }
 
 function salvarModalContasBancarias() {
@@ -6694,8 +6746,9 @@ function salvarModalContasBancarias() {
   alert('Contas bancárias salvas. Clique novamente em exportar para gerar o arquivo com os códigos.');
 }
 
-function abrirModalContasBancarias(contas) {
+function abrirModalContasBancarias(contas, acaoContinuar = null) {
   fecharModalContasBancarias();
+  acaoExportacaoSemContasBancarias = acaoContinuar;
   const modal = document.createElement('div');
   modal.id = 'modal-contas-bancarias';
   modal.style.cssText = 'position:fixed;inset:0;background:rgba(15,23,42,.58);display:flex;align-items:center;justify-content:center;z-index:10020;padding:14px';
@@ -6710,7 +6763,7 @@ function abrirModalContasBancarias(contas) {
   modal.innerHTML = `<div style="background:var(--bg);border-radius:var(--radius);box-shadow:0 16px 48px rgba(0,0,0,.28);width:min(980px,calc(100vw - 28px));max-height:90vh;display:flex;flex-direction:column">
     <div style="padding:18px 22px;border-bottom:1px solid var(--border)">
       <h3 style="margin-bottom:4px">Cadastrar contas bancárias</h3>
-      <div class="conciliacao-note">Informe uma vez o código contábil do Domínio para cada banco. O de-para ficará salvo para as próximas importações.</div>
+      <div class="conciliacao-note">Informe uma vez o código contábil do Domínio para cada banco. Você também pode exportar agora e preencher essas contas posteriormente no Excel.</div>
     </div>
     <div style="padding:16px 22px;overflow:auto"><div class="table-wrap table-scroll"><table>
       <thead><tr><th>Conta no Financeiro/Extrato</th><th>Empresa</th><th>Código no Domínio</th></tr></thead>
@@ -6718,6 +6771,7 @@ function abrirModalContasBancarias(contas) {
     </table></div></div>
     <div style="padding:14px 22px;border-top:1px solid var(--border);display:flex;justify-content:flex-end;gap:10px">
       <button class="btn" onclick="fecharModalContasBancarias()">Cancelar</button>
+      <button class="btn" onclick="continuarExportacaoSemContasBancarias()">Exportar mesmo assim</button>
       <button class="btn btn-primary" onclick="salvarModalContasBancarias()">Salvar contas bancárias</button>
     </div>
   </div>`;
@@ -6725,10 +6779,10 @@ function abrirModalContasBancarias(contas) {
   setTimeout(() => modal.querySelector('[data-banco-pendente]')?.focus(), 0);
 }
 
-function bloquearExportacaoPorContasBancarias() {
+function bloquearExportacaoPorContasBancarias(acaoContinuar = null) {
   const pendentes = contasBancariasPendentesExportacao();
   if (pendentes.length === 0) return false;
-  abrirModalContasBancarias(pendentes);
+  abrirModalContasBancarias(pendentes, acaoContinuar);
   return true;
 }
 
@@ -7176,8 +7230,6 @@ function configurarTelaNovasChaves() {
     } else if (provisoes) {
       filtroTipo.innerHTML = '<option value="">Todos os tipos</option><option value="PROVISAO">Provisão (débito e crédito)</option>';
     } else {
-      const pendentesNovas = pendenciasDisponiveisParaFiltro('tipoRateio');
-      const tiposPresentes = new Set(pendentesNovas.map(item => categoriaFiltroTipoNovaChave(item)).filter(Boolean));
       const tiposPossiveis = [
         ['DESPESA', 'Despesa/Fornecedor'],
         ['NUMERARIO ATIVO', 'Numerário ativo'],
@@ -7186,7 +7238,7 @@ function configurarTelaNovasChaves() {
         ['ACRESCIMO', 'Acréscimo']
       ];
       filtroTipo.innerHTML = '<option value="">Todos os tipos</option>'
-        + tiposPossiveis.filter(([valor]) => tiposPresentes.has(valor)).map(([valor, rotulo]) => `<option value="${valor}">${rotulo}</option>`).join('');
+        + tiposPossiveis.map(([valor, rotulo]) => `<option value="${valor}">${rotulo}</option>`).join('');
     }
     const opcoesTipo = [...filtroTipo.options].map(option => option.value);
     if (valorAtual && !opcoesTipo.includes(valorAtual)) filtrosNovasChaves.tipoRateio = '';
@@ -8076,7 +8128,8 @@ function adicionarAbasDominioExportacao(wb, linhas, separarPorEmpresa = false) {
   adicionarAbaDesconsideradosExportacao(wb, usados);
 }
 
-function exportarDominioPagamentos() {
+function exportarDominioPagamentos(ignorarContasBancarias = false) {
+  if (!ignorarContasBancarias && bloquearExportacaoPorContasBancarias(() => exportarDominioPagamentos(true))) return;
   const linhas = montarLinhasDominioPagamentos();
   if (linhas.length === 0) {
     alert('Gere os lançamentos antes de exportar.');
@@ -8089,7 +8142,8 @@ function exportarDominioPagamentos() {
   XLSX.writeFile(wb, `Dominio_Pagamentos_${grupoAtivo}_${data}.xlsx`);
 }
 
-function exportarDominioFinal() {
+function exportarDominioFinal(ignorarContasBancarias = false) {
+  if (!ignorarContasBancarias && bloquearExportacaoPorContasBancarias(() => exportarDominioFinal(true))) return;
   if (bloquearExportacaoRecebimentosSemConciliacao()) return;
   const linhasPagamentos = montarLinhasDominioPagamentos();
   if (linhasPagamentos.length === 0) {
