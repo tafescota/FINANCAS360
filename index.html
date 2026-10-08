@@ -623,6 +623,7 @@ let resumoRegrasImportacaoTemp = { total: 0, okSalvas: 0 };
 let origemNovasChaves = 'pagamentos';
 let selecionadasLote = new Set();
 let filtrosNovasChaves = { empresa: '', centroCusto: '', fornecedor: '', plano: '', historico: '', tipoRateio: '', numero: '', tipoDoc: '', codigo: '' };
+let ordenacaoNovasChaves = { campo: '', direcao: 'asc' };
 let lancamentosGerados = [];
 let lancamentosDesconsideradosExportacao = [];
 let editandoRegras = false;
@@ -4023,7 +4024,6 @@ function exportarDominioRecebimentos() {
     alert('Importe os recebimentos antes de exportar.');
     return;
   }
-  if (bloquearExportacaoPorContasBancarias()) return;
   if (bloquearExportacaoRecebimentosSemConciliacao()) return;
   origemModalPendencias = 'recebimentos';
   const linhas = montarLinhasDominioRecebimentosSeparados();
@@ -5981,7 +5981,6 @@ function montarLinhasDominioConciliacao({ validarPendencias = true } = {}) {
   return linhas;
 }
 function exportarConciliacaoBancaria() {
-  if (bloquearExportacaoPorContasBancarias()) return;
   const linhas = montarLinhasDominioConciliacao();
   if (linhas === null) return;
   if (linhas.length === 0) {
@@ -7065,6 +7064,57 @@ function pendenciasDisponiveisParaFiltro(campoIgnorado = '') {
   });
 }
 
+function cabecalhoOrdenavel(rotulo, campo) {
+  const ativa = ordenacaoNovasChaves.campo === campo;
+  const direcao = ativa ? ordenacaoNovasChaves.direcao : '';
+  const seta = !ativa ? '↕' : direcao === 'asc' ? '▲' : '▼';
+  const ariaSort = !ativa ? 'none' : direcao === 'asc' ? 'ascending' : 'descending';
+  return `<th class="sortable-column ${ativa ? 'sorted' : ''}" aria-sort="${ariaSort}"><button type="button" class="sort-header-button" onclick="alternarOrdenacaoNovasChaves('${campo}')"><span>${escapeHtml(rotulo)}</span><span class="sort-arrow" aria-hidden="true">${seta}</span></button></th>`;
+}
+
+function alternarOrdenacaoNovasChaves(campo) {
+  if (ordenacaoNovasChaves.campo === campo) {
+    ordenacaoNovasChaves.direcao = ordenacaoNovasChaves.direcao === 'asc' ? 'desc' : 'asc';
+  } else {
+    ordenacaoNovasChaves = { campo, direcao: 'asc' };
+  }
+  renderNovasChaves();
+}
+
+function valorOrdenacaoNovaChave(linha, campo) {
+  const item = linha?.item || {};
+  const infoDoc = separarNumeroDoHistorico(item.tipoDoc, item.numero, item.historico);
+  const valores = {
+    empresa: item.empresa || item.empresaOrigem || '',
+    centroCusto: item.centroCusto || item.empresaLancamento || '',
+    fornecedor: item.fornecedor || '',
+    plano: item.plano || '',
+    historico: infoDoc.historico || item.historico || '',
+    tipoRateio: textoTipoOperacaoNovaChave(item),
+    numero: origemNovasChaves === 'provisao_parcelas' ? (item.tipoDocumentoOrigem || '') : (infoDoc.numero || item.numero || ''),
+    tipoDoc: item.tipoDoc || '',
+    codigo: linha?.tipo === 'ajuste-par'
+      ? [codigosTemp[linha.debito?.chave] || '', codigosTemp[linha.credito?.chave] || ''].join(' ')
+      : codigosTemp[item.chave] || ''
+  };
+  return limparTextoECD(valores[campo] || '');
+}
+
+function ordenarLinhasNovasChaves(linhas) {
+  const campo = ordenacaoNovasChaves.campo;
+  if (!campo) return linhas;
+  const direcao = ordenacaoNovasChaves.direcao === 'desc' ? -1 : 1;
+  return linhas
+    .map((linha, indice) => ({ linha, indice }))
+    .sort((a, b) => {
+      const valorA = valorOrdenacaoNovaChave(a.linha, campo);
+      const valorB = valorOrdenacaoNovaChave(b.linha, campo);
+      const comparacao = valorA.localeCompare(valorB, 'pt-BR', { sensitivity: 'base', numeric: true });
+      return comparacao === 0 ? a.indice - b.indice : comparacao * direcao;
+    })
+    .map(item => item.linha);
+}
+
 function configurarTelaNovasChaves() {
   const recebimentos = origemNovasChaves === 'recebimentos';
   const provisoes = origemNovasChaves === 'provisao_parcelas';
@@ -7142,11 +7192,36 @@ function configurarTelaNovasChaves() {
     if (valorAtual && !opcoesTipo.includes(valorAtual)) filtrosNovasChaves.tipoRateio = '';
     filtroTipo.value = filtrosNovasChaves.tipoRateio || '';
   }
-  if (cabecalho) cabecalho.innerHTML = recebimentos
-    ? '<th><input type="checkbox" id="check-todas-lote" onchange="alternarTodasVisiveis(this.checked)"></th><th>Empresa do banco</th><th>Empresa do recebimento</th><th>Forma de recebimento</th><th>Origem / plano</th><th>Data / Grupo</th><th>Regra</th><th>Conta do cliente (Domínio)</th>'
-    : provisoes
-      ? '<th><input type="checkbox" id="check-todas-lote" onchange="alternarTodasVisiveis(this.checked)"></th><th>Empresa do banco</th><th>Unidade da despesa</th><th>Fornecedor</th><th>Plano de Contas</th><th>Histórico</th><th>Tipo</th><th>Tipo de Documento</th><th>Débito / Crédito</th><th>Código Domínio</th>'
-      : '<th><input type="checkbox" id="check-todas-lote" onchange="alternarTodasVisiveis(this.checked)"></th><th>Empresa do banco</th><th>Unidade da despesa</th><th>Fornecedor</th><th>Plano de Contas</th><th>Histórico</th><th>Tipo</th><th>Número</th><th>Documento</th><th>Código Domínio</th>';
+  if (cabecalho) {
+    const selecionarTodas = '<th><input type="checkbox" id="check-todas-lote" onchange="alternarTodasVisiveis(this.checked)"></th>';
+    cabecalho.innerHTML = selecionarTodas + (recebimentos
+      ? cabecalhoOrdenavel('Empresa do banco', 'empresa')
+        + cabecalhoOrdenavel('Empresa do recebimento', 'centroCusto')
+        + cabecalhoOrdenavel('Forma de recebimento', 'fornecedor')
+        + cabecalhoOrdenavel('Origem / plano', 'plano')
+        + cabecalhoOrdenavel('Data / Grupo', 'numero')
+        + cabecalhoOrdenavel('Regra', 'tipoDoc')
+        + cabecalhoOrdenavel('Conta do cliente (Domínio)', 'codigo')
+      : provisoes
+        ? cabecalhoOrdenavel('Empresa do banco', 'empresa')
+          + cabecalhoOrdenavel('Unidade da despesa', 'centroCusto')
+          + cabecalhoOrdenavel('Fornecedor', 'fornecedor')
+          + cabecalhoOrdenavel('Plano de Contas', 'plano')
+          + cabecalhoOrdenavel('Histórico', 'historico')
+          + cabecalhoOrdenavel('Tipo', 'tipoRateio')
+          + cabecalhoOrdenavel('Tipo de Documento', 'numero')
+          + cabecalhoOrdenavel('Débito / Crédito', 'tipoDoc')
+          + cabecalhoOrdenavel('Código Domínio', 'codigo')
+        : cabecalhoOrdenavel('Empresa do banco', 'empresa')
+          + cabecalhoOrdenavel('Unidade da despesa', 'centroCusto')
+          + cabecalhoOrdenavel('Fornecedor', 'fornecedor')
+          + cabecalhoOrdenavel('Plano de Contas', 'plano')
+          + cabecalhoOrdenavel('Histórico', 'historico')
+          + cabecalhoOrdenavel('Tipo', 'tipoRateio')
+          + cabecalhoOrdenavel('Número', 'numero')
+          + cabecalhoOrdenavel('Documento', 'tipoDoc')
+          + cabecalhoOrdenavel('Código Domínio', 'codigo'));
+  }
   if (concluir) concluir.textContent = recebimentos ? 'Concluir regras de recebimentos' : provisoes ? 'Salvar regras e voltar' : 'Concluir e gerar lançamentos';
 }
 
@@ -7167,7 +7242,7 @@ function renderNovasChaves() {
     atualizarStatusLote(visiveis);
     return;
   }
-  const todasLinhasVisiveis = montarLinhasNovasChavesVisiveis(visiveis);
+  const todasLinhasVisiveis = ordenarLinhasNovasChaves(montarLinhasNovasChavesVisiveis(visiveis));
   const limiteRenderizacao = origemNovasChaves === 'provisao_parcelas' ? 150 : todasLinhasVisiveis.length;
   const linhasVisiveis = todasLinhasVisiveis.slice(0, limiteRenderizacao);
   tbody.innerHTML = linhasVisiveis.map(linha => {
@@ -8002,7 +8077,6 @@ function adicionarAbasDominioExportacao(wb, linhas, separarPorEmpresa = false) {
 }
 
 function exportarDominioPagamentos() {
-  if (bloquearExportacaoPorContasBancarias()) return;
   const linhas = montarLinhasDominioPagamentos();
   if (linhas.length === 0) {
     alert('Gere os lançamentos antes de exportar.');
@@ -8016,7 +8090,6 @@ function exportarDominioPagamentos() {
 }
 
 function exportarDominioFinal() {
-  if (bloquearExportacaoPorContasBancarias()) return;
   if (bloquearExportacaoRecebimentosSemConciliacao()) return;
   const linhasPagamentos = montarLinhasDominioPagamentos();
   if (linhasPagamentos.length === 0) {

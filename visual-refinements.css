@@ -2663,6 +2663,53 @@ body {
   vertical-align: middle;
 }
 
+#tela-novas-chaves .table-novas thead th.sortable-column {
+  padding: 0;
+}
+
+#tela-novas-chaves .table-novas thead th.sortable-column.sorted {
+  background: #eaf3ff;
+  color: #174f91;
+}
+
+#tela-novas-chaves .sort-header-button {
+  width: 100%;
+  min-height: 44px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 4px;
+  padding: 10px 6px;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+  font: inherit;
+  font-weight: inherit;
+  letter-spacing: inherit;
+  line-height: inherit;
+  text-align: left;
+  text-transform: inherit;
+}
+
+#tela-novas-chaves .sort-header-button:hover,
+#tela-novas-chaves .sort-header-button:focus-visible {
+  background: #e4eef9;
+  color: #174f91;
+  outline: none;
+}
+
+#tela-novas-chaves .sort-arrow {
+  flex: 0 0 auto;
+  color: #6f8198;
+  font-size: 11px;
+  line-height: 1;
+}
+
+#tela-novas-chaves th.sorted .sort-arrow {
+  color: #1769d2;
+}
+
 #tela-novas-chaves .table-novas th:first-child,
 #tela-novas-chaves .table-novas td:first-child {
   text-align: center;
