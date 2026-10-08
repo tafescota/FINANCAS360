@@ -4882,6 +4882,53 @@ function autoConciliarGruposDuplicadosClaros(pagamentos, movimentos, usadosMov, 
   });
 }
 
+function autoConciliarAcumuladosPorFornecedor(pagamentos, movimentosIndexados, usadosMov, sugestoesPorPagamento, agruparPorMes = false) {
+  const grupos = new Map();
+  pagamentos
+    .filter(pag => !sugestoesPorPagamento.has(pag.idx))
+    .forEach(pag => {
+      const periodo = agruparPorMes ? String(pag.dataKey || '').slice(3) : pag.dataKey;
+      const chave = [normalizarTexto(pag.conta), pag.fornecedorNorm || textoConciliacao(pag.fornecedor), periodo].join('\u0001');
+      if (!grupos.has(chave)) grupos.set(chave, []);
+      grupos.get(chave).push(pag);
+    });
+
+  grupos.forEach(grupoPagamentos => {
+    if (!grupoPagamentos.length || grupoPagamentos.some(pag => sugestoesPorPagamento.has(pag.idx))) return;
+    const referencia = grupoPagamentos[0];
+    const periodoReferencia = agruparPorMes ? String(referencia.dataKey || '').slice(3) : referencia.dataKey;
+    const candidatas = movimentosIndexados.filter(({ mov, idxMov, data, movTexto }) => {
+      if (usadosMov.has(idxMov)) return false;
+      const periodoMovimento = agruparPorMes ? String(data || '').slice(3) : data;
+      if (periodoMovimento !== periodoReferencia) return false;
+      if (referencia.conta && mov.conta && normalizarTexto(referencia.conta) !== normalizarTexto(mov.conta)) return false;
+      return fornecedorBatePagamentoMovimento(referencia, movTexto);
+    });
+    if (!candidatas.length || (grupoPagamentos.length === 1 && candidatas.length === 1)) return;
+
+    const totalPagamentos = grupoPagamentos.reduce((s, pag) => s + valorConciliacaoEmCentavos(pag.valor), 0);
+    const totalSaidas = candidatas.reduce((s, item) => s + valorConciliacaoEmCentavos(item.mov.valor), 0);
+    if (!totalPagamentos || totalPagamentos !== totalSaidas) return;
+
+    candidatas.forEach(item => usadosMov.add(item.idxMov));
+    grupoPagamentos.forEach(pag => {
+      sugestoesPorPagamento.set(pag.idx, {
+        pag,
+        mov: candidatas[0].mov,
+        movs: candidatas.map(item => item.mov),
+        idxMov: candidatas[0].idxMov,
+        idxMovs: candidatas.map(item => item.idxMov),
+        status: 'agrupado',
+        regra: agruparPorMes ? 'Acumulado mensal por fornecedor' : 'Acumulado do dia por fornecedor',
+        diferenca: 0,
+        grupoAcumulado: true,
+        qtdPagamentosGrupo: grupoPagamentos.length,
+        totalGrupoAcumulado: totalPagamentos / 100
+      });
+    });
+  });
+}
+
 function pagamentoEhTarifaBancaria(pag) {
   const texto = textoConciliacao([pag.plano, pag.historico, pag.fornecedor].filter(Boolean).join(' '));
   return texto.includes('tarifas bancarias')
@@ -5319,6 +5366,9 @@ function gerarSugestoesConciliacao(opcoes = {}) {
     }
   });
 
+  autoConciliarAcumuladosPorFornecedor(pagamentos, movimentosIndexados, usadosMov, sugestoesPorPagamento, false);
+  autoConciliarAcumuladosPorFornecedor(pagamentos, movimentosIndexados, usadosMov, sugestoesPorPagamento, true);
+
   const pagamentosPorData = new Map();
   pagamentos.forEach(pag => adicionarIndiceConciliacao(pagamentosPorData, pag.dataKey, pag));
   movimentosIndexados.forEach(({ mov, idxMov, data, movTexto }) => {
@@ -5378,7 +5428,9 @@ function renderSugestoesConciliacao(sugestoes, qtdPagamentos, qtdMovimentos, ent
     const codigoRegraExistente = !temSugestao && !revisadoSemExtrato ? codigoRegraPagamentoConciliacao(s.pag) : '';
     const classeLinha = temSugestao ? 'conciliacao-row-ok' : revisadoSemExtrato || codigoRegraExistente ? 'conciliacao-row-filled' : 'conciliacao-row-warn';
     const classeStatus = temSugestao ? (s.status === 'conciliado' ? 'ok' : 'mid') : revisadoSemExtrato ? 'ok' : codigoRegraExistente ? 'mid' : 'warn';
-    const extratoTxt = s.movs?.length > 1
+    const extratoTxt = s.grupoAcumulado
+      ? `<strong>${s.qtdPagamentosGrupo} pagamentos x ${s.movs.length} saídas acumuladas</strong><br><span class="muted-line">Total do grupo: R$ ${fmtValor(s.totalGrupoAcumulado)}</span><br>${descTruncada(s.movs.map(descricaoMovimentoExtrato).join(' | '))}`
+      : s.movs?.length > 1
       ? `<strong>${s.movs.length} saídas no extrato</strong><br><span class="muted-line">${s.movs.map(m => `R$ ${fmtValor(Math.abs(m.valor))}`).join(' + ')} = R$ ${fmtValor(s.pag.valor)}</span><br>${descTruncada(s.movs.map(descricaoMovimentoExtrato).join(' | '))}`
       : s.mov
       ? `${descTruncada(descricaoMovimentoExtrato(s.mov))}<br><span class="muted-line">R$ ${fmtValor(Math.abs(s.mov.valor))} - Doc. ${escapeHtml(s.mov.documento || 's/n')}</span>`
