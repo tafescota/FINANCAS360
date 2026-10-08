@@ -255,6 +255,7 @@
       <select id="select-modo-grupo" style="margin-bottom:16px">
         <option value="parcelas" selected>Parcelas de Títulos (BOTICARIO)</option>
         <option value="parcelas_numerarios">Parcelas com Numerários (BOTICARIO)</option>
+        <option value="cp_simone">CP SIMONE</option>
         <option value="rateio">Rateio de Títulos (BOTICARIO)</option>
         <option value="aromas">Aromas</option>
         <option value="parcelas__f360_original">Parcelas de Títulos (FINANÇAS 360 - ORIGINAL)</option>
@@ -743,7 +744,8 @@ function tipoAjusteRateioPlano(plano, valor) {
 }
 
 function modoEhParcelasNumerarios(modo = modoImportacaoDoGrupo()) {
-  return modo === 'parcelas_numerarios';
+  const modoBase = normalizarModoImportacao(modo);
+  return modoBase === 'parcelas_numerarios' || modoBase === 'cp_simone';
 }
 
 function linhaEhParcelasNumerarios(r) {
@@ -844,7 +846,12 @@ function escopoRegraItem(item) {
 
 function modoImportacaoDoGrupo(nome = grupoAtivo) {
   const cfg = nome && configGrupos && configGrupos[nome] ? configGrupos[nome] : {};
-  return normalizarModoImportacao(cfg.modoImportacaoPagamentos || 'parcelas');
+  const modo = normalizarModoImportacao(cfg.modoImportacaoPagamentos || 'parcelas');
+  // Compatibilidade: grupos CP Simone anteriores ao formato exclusivo eram Parcelas comuns.
+  if (normalizarTexto(nome).includes('cp simone') && (modo === 'parcelas' || modo === 'parcelas_numerarios')) {
+    return 'cp_simone';
+  }
+  return modo;
 }
 
 function layoutImportacaoDoGrupo(nome = grupoAtivo) {
@@ -857,6 +864,7 @@ function layoutImportacaoDoGrupo(nome = grupoAtivo) {
 function nomeModoImportacao(modo, layout = 'boticario') {
   const modoBase = normalizarModoImportacao(modo);
   if (modoBase === 'aromas') return 'Aromas';
+  if (modoBase === 'cp_simone') return 'CP SIMONE';
   const nome = modoBase === 'parcelas_numerarios'
     ? 'Parcelas com Numerários'
     : modoBase === 'rateio'
@@ -867,6 +875,7 @@ function nomeModoImportacao(modo, layout = 'boticario') {
 
 function normalizarModoImportacao(modo) {
   const texto = normalizarTexto(modo);
+  if (texto.includes('cp simone') || texto === 'cp_simone') return 'cp_simone';
   if (texto.includes('aromas')) return 'aromas';
   if (texto.includes('rateio')) return 'rateio';
   if (modo === 'parcelas_numerarios' || texto.includes('numerario')) return 'parcelas_numerarios';
@@ -912,7 +921,7 @@ function grupoUsaNumerariosRateio() {
 }
 
 function grupoUsaNumerariosParcelas() {
-  return modoImportacaoDoGrupo() === 'parcelas_numerarios';
+  return modoEhParcelasNumerarios();
 }
 
 function empresaBancoRateioPorConta(conta, empresaFallback = '') {
@@ -1763,7 +1772,7 @@ function selecionarModoImportacaoPagamentos(modo, layout = layoutImportacaoDoGru
   const nota = document.getElementById('nota-modo-importacao');
   const sub = document.getElementById('drop-sub-importacao');
   const dropTitle = document.querySelector('#drop-area .drop-title');
-  if (btnParcelas) btnParcelas.className = 'btn btn-sm ' + (modoImportacaoPagamentos === 'parcelas' ? 'btn-primary' : '');
+  if (btnParcelas) btnParcelas.className = 'btn btn-sm ' + (!usaFluxoRateio ? 'btn-primary' : '');
   if (btnRateio) btnRateio.className = 'btn btn-sm ' + (usaFluxoRateio ? 'btn-primary' : '');
   if (status) status.textContent = nomeModoImportacao(modoImportacaoPagamentos, layoutImportacaoPagamentos);
   if (nota) {
@@ -1771,6 +1780,8 @@ function selecionarModoImportacaoPagamentos(modo, layout = layoutImportacaoDoGru
       ? 'Usa o fluxo Aromas para pagamentos, recebimentos e numerários por rateio. A Provisão fica disponível exclusivamente neste formato.'
       : modoImportacaoPagamentos === 'rateio'
         ? 'Usa Rateio de Títulos: selecione juntos pagamentos e recebimentos. A regra considera a unidade da coluna Empresa e a dona do banco pela coluna Conta.'
+      : modoImportacaoPagamentos === 'cp_simone'
+        ? 'Usa o formato exclusivo da CP Simone: lê Parcelas de Títulos, gera numerários quando a unidade da despesa for diferente da dona da conta bancária e aplica somente as exceções próprias deste formato.'
       : modoImportacaoPagamentos === 'parcelas_numerarios'
         ? 'Usa Parcelas de Títulos com numerários: quando a unidade da despesa for diferente da dona da conta bancária, gera uma ponta de numerário ativo e outra de numerário passivo. Recebimentos ficam fora deste módulo.'
         : layoutImportacaoPagamentos === 'f360_original'
@@ -1781,7 +1792,7 @@ function selecionarModoImportacaoPagamentos(modo, layout = layoutImportacaoDoGru
   if (sub) {
     sub.textContent = usaFluxoRateio
       ? 'Anexe aqui as planilhas de PAGAMENTOS e RECEBIMENTOS por rateio juntas (.xlsx ou .xlsm)'
-      : modoImportacaoPagamentos === 'parcelas_numerarios'
+      : modoEhParcelasNumerarios(modoImportacaoPagamentos)
         ? 'Arquivo de Parcelas de Títulos a Pagar para conciliar saídas e gerar numerários (.xlsx ou .xlsm)'
         : 'Arquivo de Parcelas de Títulos exportado do financeiro (.xlsx ou .xlsm)';
   }
@@ -2099,7 +2110,7 @@ function exportarProvisaoRateio() {
 
 function modoPermiteProvisaoParcelas(nome = grupoAtivo) {
   const modo = modoImportacaoDoGrupo(nome);
-  return modo === 'parcelas' || modo === 'parcelas_numerarios';
+  return modo === 'parcelas' || modoEhParcelasNumerarios(modo);
 }
 
 function partesDataProvisaoParcelas(valor) {
@@ -2481,7 +2492,7 @@ async function processarProvisaoParcelas(files) {
       const periodo = periodoCompetenciaPlanilha(wb);
       const leitura = linhasPlanilhaTitulos(wb, layout);
       registrarMapaEmpresasImportadas(leitura.dados);
-      const dados = modo === 'parcelas_numerarios' ? leitura.dados.map(prepararLinhaParcelasNumerarios) : leitura.dados;
+      const dados = modoEhParcelasNumerarios(modo) ? leitura.dados.map(prepararLinhaParcelasNumerarios) : leitura.dados;
       return montarResultadoProvisaoParcelas(dados, periodo, file.name, leitura.cabecalhos || []);
     }));
     provisaoParcelasTemp = resultados.flatMap(r => r.linhas);
@@ -2911,7 +2922,9 @@ function prepararPagamentosImportados(dados, abrirTelaPendencias = true) {
       ['DÉBITO', 'CRÉDITO'].forEach(ponta => {
         const tipoPonta = tipoAjustePonta(tipoAjusteRateio, ponta);
         const chaveAjuste = montarChave(forn, plano, tipoPonta, historico, escopoRegra);
-        const codigoAjuste = encontrarCodigoRegraAjuste(regrasSalvas, forn, plano, tipoAjusteRateio, ponta, historico, escopoRegra);
+        const codigoAjuste = obterCodigoContaParaDominio(
+          encontrarCodigoRegraAjuste(regrasSalvas, forn, plano, tipoAjusteRateio, ponta, historico, escopoRegra)
+        );
         registrarResumoRegra(chaveAjuste, codigoAjuste);
         if (!codigoAjuste && !vistas.has(chaveAjuste)) {
           vistas.add(chaveAjuste);
@@ -2921,7 +2934,9 @@ function prepararPagamentosImportados(dados, abrirTelaPendencias = true) {
       return;
     }
     const chave = montarChave(forn, plano, tipoDoc, historico, escopoRegra);
-    const codigoRegraPrincipal = encontrarCodigoRegra(regrasSalvas, forn, plano, tipoDoc, historico, escopoRegra);
+    const codigoRegraPrincipal = obterCodigoContaParaDominio(
+      encontrarCodigoRegra(regrasSalvas, forn, plano, tipoDoc, historico, escopoRegra)
+    );
     registrarResumoRegra(chave, codigoRegraPrincipal);
     if (!codigoRegraPrincipal && !vistas.has(chave)) {
       vistas.add(chave);
@@ -2997,7 +3012,9 @@ function prepararPagamentosImportados(dados, abrirTelaPendencias = true) {
       ['DÉBITO', 'CRÉDITO'].forEach(ponta => {
         const tipoPonta = tipoAjustePonta(tipoAjuste, ponta);
         const chaveAjuste = montarChave(forn, plano, tipoPonta, historico, escopoRegra);
-        const codigoAjuste = encontrarCodigoRegraAjuste(regrasSalvas, forn, plano, tipoAjuste, ponta, historico, escopoRegra);
+        const codigoAjuste = obterCodigoContaParaDominio(
+          encontrarCodigoRegraAjuste(regrasSalvas, forn, plano, tipoAjuste, ponta, historico, escopoRegra)
+        );
         registrarResumoRegra(chaveAjuste, codigoAjuste);
         if (!codigoAjuste && !vistas.has(chaveAjuste)) {
           vistas.add(chaveAjuste);
@@ -3184,15 +3201,16 @@ function renderConciliacaoBancaria() {
 
 function grupoPodeRecebimentosRateio() {
   const modo = modoImportacaoDoGrupo();
-  return modoUsaFluxoRateio(modo) || modo === 'parcelas_numerarios';
+  if (modo === 'cp_simone') return false;
+  return modoUsaFluxoRateio(modo) || modoEhParcelasNumerarios(modo);
 }
 
 function grupoPodeRecebimentosSeparados() {
-  return modoImportacaoDoGrupo() === 'parcelas_numerarios';
+  return modoImportacaoDoGrupo() !== 'cp_simone' && modoEhParcelasNumerarios();
 }
 
 function conciliacaoUsaRecebimentosDoExtrato() {
-  return !grupoUsaNumerariosParcelas();
+  return modoImportacaoDoGrupo() === 'cp_simone' || !grupoUsaNumerariosParcelas();
 }
 
 function normalizarCabecalhoRecebimentosNumerarios(valor) {
@@ -3323,14 +3341,10 @@ function valorNegativo(v) {
 }
 
 function categoriaCartaoConciliacao(valor) {
-  let texto = normalizarTexto(valor)
+  return normalizarTexto(valor)
     .replace(/visa\s+electron/g, 'visaelectron')
     .replace(/gift\s+card/g, 'giftcard')
-    .replace(/\s+/g, ' ')
-    .trim();
-  if (texto.includes('pix bancario')) return 'pix pixsistemapagamentoinstantaneo';
-  if (texto === 'getnet pix' || (texto.includes('getnet') && texto.endsWith(' pix'))) return 'getnet pixsistemapagamentoinstantaneo';
-  return texto;
+    .replace(/[^a-z0-9]+/g, '');
 }
 
 function linhasRateioTitulosReceber(wb, arquivoOrigem) {
@@ -4443,7 +4457,7 @@ function movimentoEhTransferenciaEntreContas(m) {
 }
 
 function grupoIgnoraAjusteFechamentoCaixaNaConciliacao() {
-  return normalizarTexto(grupoAtivo).includes('cp simone');
+  return modoImportacaoDoGrupo() === 'cp_simone';
 }
 
 function linhaEhAjusteFechamentoCaixa(row) {
@@ -6230,12 +6244,14 @@ function renderGrupos() {
         ${isAtivo ? `
           <button class="btn btn-sm" onclick="mostrarTela('tela-regras')">📋 Regras</button>
           <button class="btn btn-sm" onclick="mostrarTela('tela-plano-contas')">📑 Plano de Contas</button>
-          ${modoGrupo === 'parcelas_numerarios'
+          ${modoGrupo === 'cp_simone'
+            ? `<button class="btn btn-sm btn-pagamentos-numerarios" onclick="mostrarTela('tela-importar')">⬇ Pagamentos e extratos</button>`
+            : modoEhParcelasNumerarios(modoGrupo)
             ? `<button class="btn btn-sm btn-pagamentos-numerarios" onclick="mostrarTela('tela-importar')">⬇ Pagamentos</button>
                <button class="btn btn-sm btn-recebimentos-numerarios" onclick="mostrarTela('tela-recebimentos')">⬆ Recebimentos</button>`
             : `<button class="btn btn-sm btn-blue" onclick="mostrarTela('tela-importar')">⬆ Importar planilha</button>`}
           ${modoGrupo === 'aromas' ? `<button class="btn btn-sm" onclick="mostrarTela('tela-provisao-rateio')">Provisão</button>` : ''}
-          ${(modoGrupo === 'parcelas' || modoGrupo === 'parcelas_numerarios') ? `<button class="btn btn-sm" onclick="mostrarTela('tela-provisao-parcelas')">Provisões</button>` : ''}
+          ${(modoGrupo === 'parcelas' || modoEhParcelasNumerarios(modoGrupo)) ? `<button class="btn btn-sm" onclick="mostrarTela('tela-provisao-parcelas')">Provisões</button>` : ''}
         ` : ''}
         <button class="btn btn-sm btn-danger" onclick="excluirGrupo('${g}')">🗑</button>
       </div>
@@ -6255,7 +6271,7 @@ function editarGrupoCadastro(g) {
     if (!nomeLimpo) { showMsg('Nome do grupo não pode ficar em branco.', 'warn'); return; }
     if (nomeLimpo !== atual && grupos.includes(nomeLimpo)) { showMsg('Já existe um grupo com esse nome.', 'warn'); return; }
     const modoAtual = valorOpcaoFormatoGrupo(atual);
-    const novoModoRaw = prompt('Formato do grupo: use parcelas, parcelas_numerarios, rateio ou aromas. Para o layout original, acrescente __f360_original.', modoAtual);
+    const novoModoRaw = prompt('Formato do grupo: use parcelas, parcelas_numerarios, cp_simone, rateio ou aromas. Para o layout original, acrescente __f360_original.', modoAtual);
     if (novoModoRaw === null) return;
     const novoFormato = interpretarOpcaoFormatoPagamento(novoModoRaw);
     if (nomeLimpo !== atual) {
@@ -6764,7 +6780,10 @@ function obterCodigoContaParaDominio(valor) {
   const texto = String(valor || '').trim();
   if (!texto) return '';
   const conta = encontrarContaPorValor(texto);
-  return conta ? String(conta.codigo || '').trim() : texto;
+  if (conta) return String(conta.codigo || '').trim();
+  // Códigos Domínio avulsos são numéricos. Textos que não pertencem ao
+  // plano de contas não podem transformar uma pendência em regra resolvida.
+  return /^\d+$/.test(texto) ? texto : '';
 }
 
 function codigoContaSemConciliacao(conta) {
@@ -6783,7 +6802,7 @@ function codigoContaSemConciliacao(conta) {
 function codigoContaExportacaoDominio(valor) {
   const texto = limparTextoECD(valor);
   if (!texto) return '';
-  return limparTextoExportacaoDominio(codigoContaSemConciliacao(texto) || obterCodigoContaParaDominio(texto));
+  return limparTextoExportacaoDominio(codigoContaSemConciliacao(texto) || obterCodigoContaParaDominio(texto) || texto);
 }
 
 function contasBancariasUsadasSessao() {
