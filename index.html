@@ -1093,6 +1093,53 @@ function codigoRegraCompartilhadaLegada(regras, corresponde) {
   return codigos.size === 1 ? [...codigos.values()][0] : '';
 }
 
+function codigoUnicoRegraFornecedorPlano(regras, forn, plano) {
+  const fornecedorNorm = normalizarTexto(forn);
+  const planoNorm = normalizarTexto(plano);
+  if (!fornecedorNorm || !planoNorm) return '';
+  const codigos = new Map();
+  Object.entries(regras || {}).forEach(([chave, codigo]) => {
+    const partes = chaveRegraSemEscopoDeUnidade(chave).split(' | ');
+    if (normalizarTexto(partes[0]) !== fornecedorNorm || normalizarTexto(partes[1]) !== planoNorm) return;
+    const tipo = normalizarTexto(partes[2] || '');
+    if (tipo.startsWith('desconto') || tipo.startsWith('acrescimo')) return;
+    const valor = limparTextoECD(codigo);
+    if (valor) codigos.set(normalizarTexto(valor), valor);
+  });
+  return codigos.size === 1 ? [...codigos.values()][0] : '';
+}
+
+function codigoUnicoRegraPlanoDocumento(regras, plano, tipoDoc) {
+  const planoNorm = normalizarTexto(plano);
+  const tipoDocNorm = normalizarTexto(tipoDoc);
+  if (!planoNorm || !tipoDocNorm) return '';
+  const codigos = new Map();
+  Object.entries(regras || {}).forEach(([chave, codigo]) => {
+    const partes = chaveRegraSemEscopoDeUnidade(chave).split(' | ');
+    if (normalizarTexto(partes[1]) !== planoNorm || normalizarTexto(partes[2]) !== tipoDocNorm) return;
+    const tipo = normalizarTexto(partes[2] || '');
+    if (tipo.startsWith('desconto') || tipo.startsWith('acrescimo')) return;
+    const valor = limparTextoECD(codigo);
+    if (valor) codigos.set(normalizarTexto(valor), valor);
+  });
+  return codigos.size === 1 ? [...codigos.values()][0] : '';
+}
+
+function codigoUnicoRegraPlano(regras, plano) {
+  const planoNorm = normalizarTexto(plano);
+  if (!planoNorm) return '';
+  const codigos = new Map();
+  Object.entries(regras || {}).forEach(([chave, codigo]) => {
+    const partes = chaveRegraSemEscopoDeUnidade(chave).split(' | ');
+    if (normalizarTexto(partes[1]) !== planoNorm) return;
+    const tipo = normalizarTexto(partes[2] || '');
+    if (tipo.startsWith('desconto') || tipo.startsWith('acrescimo')) return;
+    const valor = limparTextoECD(codigo);
+    if (valor) codigos.set(normalizarTexto(valor), valor);
+  });
+  return codigos.size === 1 ? [...codigos.values()][0] : '';
+}
+
 function encontrarCodigoRegra(regras, forn, plano, tipoDoc, historico, escopo = '') {
   const chaveExata = montarChave(forn, plano, tipoDoc, historico, escopo);
   if (regras[chaveExata]) return regras[chaveExata];
@@ -1131,7 +1178,12 @@ function encontrarCodigoRegra(regras, forn, plano, tipoDoc, historico, escopo = 
   const tipoNormalizado = normalizarTexto(tipoDoc);
   if (tipoNormalizado.startsWith('desconto') || tipoNormalizado.startsWith('acrescimo')) return '';
   const chaveLegada = limparTextoECD(forn) + ' | ' + limparTextoECD(plano);
-  return regras[chaveLegada] || '';
+  if (regras[chaveLegada]) return regras[chaveLegada];
+  const codigoFornecedorPlano = codigoUnicoRegraFornecedorPlano(regras, forn, plano);
+  if (codigoFornecedorPlano) return codigoFornecedorPlano;
+  const codigoPlanoDocumento = codigoUnicoRegraPlanoDocumento(regras, plano, tipoDoc);
+  if (codigoPlanoDocumento) return codigoPlanoDocumento;
+  return codigoUnicoRegraPlano(regras, plano);
 }
 
 function encontrarCodigoRegraAjuste(regras, forn, plano, tipoAjuste, ponta, historico, escopo = '') {
