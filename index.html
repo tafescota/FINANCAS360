@@ -956,7 +956,7 @@ function rateioIntercompanyLinha(r) {
     && !!r?.__rateio
     && empresaBanco
     && empresaCentro
-    && normalizarTexto(empresaBanco) !== normalizarTexto(empresaCentro);
+    && !empresasSaoMesmaIdentidade(empresaBanco, empresaCentro);
 }
 
 function tipoRateioOperacao(empresaOrigem, centroCusto, rateio = false) {
@@ -964,7 +964,7 @@ function tipoRateioOperacao(empresaOrigem, centroCusto, rateio = false) {
   const origem = limparTextoECD(empresaOrigem);
   const centro = limparTextoECD(centroCusto || origem);
   if (!origem || !centro) return 'PROPRIO';
-  return normalizarTexto(origem) === normalizarTexto(centro) ? 'PROPRIO' : 'TRANSFERENCIA DE NUMERARIOS';
+  return empresasSaoMesmaIdentidade(origem, centro) ? 'PROPRIO' : 'TRANSFERENCIA DE NUMERARIOS';
 }
 
 function empresasComCodigosDiferentes(empresaOrigem, centroCusto) {
@@ -1017,9 +1017,7 @@ function empresasComCodigosOuNomesDiferentes(empresaOrigem, centroCusto) {
 function itemParcelasNumerariosIntercompany(item) {
   if (typeof item?.parcelasNumerariosIntercompany === 'boolean') return item.parcelasNumerariosIntercompany;
   return !!item?.parcelasNumerarios
-    && (item?.layoutF360Original
-      ? empresasComCodigosOuNomesDiferentes(item?.empresaOrigem || item?.empresa, item?.centroCusto)
-      : empresasComCodigosDiferentes(item?.empresaOrigem || item?.empresa, item?.centroCusto));
+    && empresasComCodigosOuNomesDiferentes(item?.empresaOrigem || item?.empresa, item?.centroCusto);
 }
 
 function tipoRateioItem(item) {
@@ -1105,9 +1103,7 @@ function codigoNumerarioParcelas(regras, empresaPagadora, centroCusto, lado, nat
 
 function parcelasNumerariosLinha(r) {
   if (!linhaEhParcelasNumerarios(r)) return false;
-  return r?.__layoutF360Original
-    ? empresasComCodigosOuNomesDiferentes(empresaOrigemLinha(r), centroCustoLinha(r))
-    : empresasComCodigosDiferentes(empresaOrigemLinha(r), centroCustoLinha(r));
+  return empresasComCodigosOuNomesDiferentes(empresaOrigemLinha(r), centroCustoLinha(r));
 }
 
 function prepararLinhaParcelasNumerarios(row) {
@@ -3430,6 +3426,8 @@ function linhaRecebimentoRateioBase({ data, valor, conta, empresaBanco, centroCu
   const centroLimpo = limparTextoECD(centroCusto || empresaBancoLimpa);
   const valorMoeda = arredondarMoeda(valor);
   if (!data || !valorMoeda || !centroLimpo) return null;
+  const intercompany = (grupoUsaNumerariosRateio() || grupoUsaNumerariosParcelas())
+    && !empresasSaoMesmaIdentidade(empresaBancoLimpa, centroLimpo);
   return {
     id: `rateio-rec-${recebimentosRateioTemp.length}-${Math.random().toString(36).slice(2)}`,
     data,
@@ -3449,8 +3447,8 @@ function linhaRecebimentoRateioBase({ data, valor, conta, empresaBanco, centroCu
     conciliacaoCategoria: limparTextoECD(conciliacaoCategoria || ''),
     movimento: 'recebimento-rateio',
     rateio: true,
-    intercompany: (grupoUsaNumerariosRateio() || grupoUsaNumerariosParcelas()) && normalizarTexto(empresaBancoLimpa) !== normalizarTexto(centroLimpo),
-    tipoRateio: (grupoUsaNumerariosRateio() || grupoUsaNumerariosParcelas()) && normalizarTexto(empresaBancoLimpa) !== normalizarTexto(centroLimpo) ? 'TRANSFERENCIA DE NUMERARIOS' : 'PROPRIO'
+    intercompany,
+    tipoRateio: intercompany ? 'TRANSFERENCIA DE NUMERARIOS' : 'PROPRIO'
   };
 }
 
@@ -6367,6 +6365,21 @@ function tipoRateioDominioPagamento(lancamento) {
     : '';
 }
 
+function lancamentosPagamentosComNumerariosDesatualizados() {
+  return lancamentosGerados.some(lancamento => {
+    if (!lancamento?.lancamentoNumerario || lancamento?.origemConciliacao) return false;
+    const linhaOrigem = linhasImportadas[lancamento.idx];
+    if (!linhaOrigem) return false;
+    return !rateioIntercompanyLinha(linhaOrigem) && !parcelasNumerariosLinha(linhaOrigem);
+  });
+}
+
+function atualizarClassificacaoPagamentosAntesExportacao() {
+  if (!lancamentosPagamentosComNumerariosDesatualizados() || linhasImportadas.length === 0) return false;
+  gerarLancamentos(linhasImportadas, depara[grupoAtivo] || {});
+  return true;
+}
+
 function codigoNumerarioRecebimento(regras, empresaBanco, centroCusto, lado, natureza = '') {
   return grupoUsaNumerariosParcelas()
     ? codigoNumerarioParcelas(regras, empresaBanco, centroCusto, lado, natureza)
@@ -7210,6 +7223,10 @@ function contasBancariasPendentesExportacao() {
   return contasBancariasUsadasSessao().filter(conta => !/^\d+$/.test(codigoContaSemConciliacao(conta)));
 }
 
+function grupoDispensaCadastroContasBancarias() {
+  return modoImportacaoDoGrupo() === 'cp_simone';
+}
+
 function fecharModalContasBancarias() {
   document.getElementById('modal-contas-bancarias')?.remove();
   acaoExportacaoSemContasBancarias = null;
@@ -7277,6 +7294,7 @@ function abrirModalContasBancarias(contas, acaoContinuar = null) {
 }
 
 function bloquearExportacaoPorContasBancarias(acaoContinuar = null) {
+  if (grupoDispensaCadastroContasBancarias()) return false;
   const pendentes = contasBancariasPendentesExportacao();
   if (pendentes.length === 0) return false;
   abrirModalContasBancarias(pendentes, acaoContinuar);
@@ -8592,6 +8610,7 @@ function gerarLancamentos(dados, regras) {
 }
 
 function montarLinhasDominioPagamentos() {
+  atualizarClassificacaoPagamentosAntesExportacao();
   const lancamentosPagamentos = lancamentosGerados.filter(l => !l.origemConciliacao);
   return lancamentosPagamentos.map(l => [
     l.data, codigoContaExportacaoDominio(l.codDebito), codigoContaExportacaoDominio(l.codCredito), l.valorLiq, '', limparComplementoHistoricoExportacao(l.complemento),
