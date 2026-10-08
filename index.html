@@ -1096,6 +1096,90 @@ function chaveRegraSemEscopoDeUnidade(chave) {
   return texto.slice(separador + 3);
 }
 
+const cacheIndicesRegras = new WeakMap();
+
+function adicionarCodigoUnicoIndice(mapa, chave, codigo) {
+  const valor = limparTextoECD(codigo);
+  if (!chave || !valor) return;
+  const atual = mapa.get(chave);
+  if (!atual) {
+    mapa.set(chave, { valor, normalizado: normalizarTexto(valor), conflito: false });
+    return;
+  }
+  if (atual.normalizado !== normalizarTexto(valor)) atual.conflito = true;
+}
+
+function codigoUnicoIndice(mapa, chave) {
+  const item = mapa.get(chave);
+  return item && !item.conflito ? item.valor : '';
+}
+
+function adicionarRegraParcialIndice(mapa, base, regra) {
+  if (!mapa.has(base)) mapa.set(base, []);
+  mapa.get(base).push(regra);
+}
+
+function obterIndiceRegras(regras) {
+  if (!regras || typeof regras !== 'object') return null;
+  const existente = cacheIndicesRegras.get(regras);
+  if (existente) return existente;
+  const indice = {
+    compartilhadasExatas: new Map(),
+    parciais: new Map(),
+    parciaisCompartilhadas: new Map(),
+    parciaisSemEscopo: new Map(),
+    fornecedorPlano: new Map(),
+    planoDocumento: new Map(),
+    plano: new Map()
+  };
+  Object.entries(regras).forEach(([chave, codigo], ordem) => {
+    const chaveSemEscopo = chaveRegraSemEscopoDeUnidade(chave);
+    if (chaveSemEscopo !== chave) adicionarCodigoUnicoIndice(indice.compartilhadasExatas, chaveSemEscopo, codigo);
+
+    const registrarParcial = (textoChave, mapa) => {
+      const partes = textoChave.split(' | ');
+      const posicao = partes.indexOf('HISTORICO_CONTEM');
+      if (posicao < 0) return false;
+      const trecho = partes.slice(posicao + 1).join(' | ');
+      const termos = normalizarTexto(trecho).split(/\s+/).filter(Boolean);
+      if (termos.length) adicionarRegraParcialIndice(mapa, partes.slice(0, posicao).join(' | '), { termos, codigo, ordem });
+      return true;
+    };
+    registrarParcial(chave, indice.parciais);
+    registrarParcial(chaveSemEscopo, indice.parciaisSemEscopo);
+    if (chaveSemEscopo !== chave) registrarParcial(chaveSemEscopo, indice.parciaisCompartilhadas);
+
+    const partes = chaveSemEscopo.split(' | ');
+    const fornecedor = normalizarTexto(partes[0] || '');
+    const plano = normalizarTexto(partes[1] || '');
+    const tipo = normalizarTexto(partes[2] || '');
+    if (!fornecedor || !plano || tipo.startsWith('desconto') || tipo.startsWith('acrescimo')) return;
+    adicionarCodigoUnicoIndice(indice.fornecedorPlano, `${fornecedor}\u0001${plano}`, codigo);
+    if (tipo) adicionarCodigoUnicoIndice(indice.planoDocumento, `${plano}\u0001${tipo}`, codigo);
+    adicionarCodigoUnicoIndice(indice.plano, plano, codigo);
+  });
+  cacheIndicesRegras.set(regras, indice);
+  return indice;
+}
+
+function codigoRegraParcialIndexada(indice, bases, historico, compartilhada = false) {
+  if (!indice) return '';
+  const mapa = compartilhada ? indice.parciaisCompartilhadas : indice.parciais;
+  const historicoNormalizado = normalizarTexto(historico);
+  const candidatas = bases.flatMap(base => mapa.get(base) || []).sort((a, b) => a.ordem - b.ordem);
+  if (!compartilhada) {
+    const achada = candidatas.find(item => item.termos.every(termo => historicoNormalizado.includes(termo)));
+    return achada ? achada.codigo : '';
+  }
+  const codigos = new Map();
+  candidatas.forEach(item => {
+    if (!item.termos.every(termo => historicoNormalizado.includes(termo))) return;
+    const valor = limparTextoECD(item.codigo);
+    if (valor) codigos.set(normalizarTexto(valor), valor);
+  });
+  return codigos.size === 1 ? [...codigos.values()][0] : '';
+}
+
 function codigoRegraCompartilhadaLegada(regras, corresponde) {
   const codigos = new Map();
   Object.entries(regras || {}).forEach(([chave, codigo]) => {
@@ -1171,35 +1255,21 @@ function encontrarCodigoRegra(regras, forn, plano, tipoDoc, historico, escopo = 
 }
 
 function encontrarCodigoRegraSemCache(regras, forn, plano, tipoDoc, historico, escopo = '') {
+  const indice = obterIndiceRegras(regras);
   const chaveExata = montarChave(forn, plano, tipoDoc, historico, escopo);
   if (regras[chaveExata]) return regras[chaveExata];
   if (!escopo) {
-    const codigoCompartilhado = codigoRegraCompartilhadaLegada(regras, chave => chave === chaveExata);
+    const codigoCompartilhado = codigoUnicoIndice(indice.compartilhadasExatas, chaveExata);
     if (codigoCompartilhado) return codigoCompartilhado;
   }
 
   const prefixoEscopo = escopo ? limparTextoECD(escopo) + ' | ' : '';
-  const prefixo = prefixoEscopo + forn + ' | ' + plano + ' | ' + tipoDoc + ' | HISTORICO_CONTEM | ';
-  const prefixoLegado = prefixoEscopo + forn + ' | ' + plano + ' | HISTORICO_CONTEM | ';
-  const historicoNormalizado = normalizarTexto(historico);
-  const achada = Object.keys(regras).find(chave => {
-    const usaPrefixoNovo = chave.startsWith(prefixo);
-    const usaPrefixoLegado = chave.startsWith(prefixoLegado);
-    if (!usaPrefixoNovo && !usaPrefixoLegado) return false;
-    const trecho = chave.slice(usaPrefixoNovo ? prefixo.length : prefixoLegado.length);
-    const termos = normalizarTexto(trecho).split(/\s+/).filter(Boolean);
-    return termos.length > 0 && termos.every(termo => historicoNormalizado.includes(termo));
-  });
-  if (achada) return regras[achada];
+  const baseParcialNova = prefixoEscopo + forn + ' | ' + plano + ' | ' + tipoDoc;
+  const baseParcialLegada = prefixoEscopo + forn + ' | ' + plano;
+  const codigoParcial = codigoRegraParcialIndexada(indice, [baseParcialNova, baseParcialLegada], historico);
+  if (codigoParcial) return codigoParcial;
   if (!escopo) {
-    const codigoParcialCompartilhado = codigoRegraCompartilhadaLegada(regras, chave => {
-      const usaPrefixoNovo = chave.startsWith(prefixo);
-      const usaPrefixoLegado = chave.startsWith(prefixoLegado);
-      if (!usaPrefixoNovo && !usaPrefixoLegado) return false;
-      const trecho = chave.slice(usaPrefixoNovo ? prefixo.length : prefixoLegado.length);
-      const termos = normalizarTexto(trecho).split(/\s+/).filter(Boolean);
-      return termos.length > 0 && termos.every(termo => historicoNormalizado.includes(termo));
-    });
+    const codigoParcialCompartilhado = codigoRegraParcialIndexada(indice, [baseParcialNova, baseParcialLegada], historico, true);
     if (codigoParcialCompartilhado) return codigoParcialCompartilhado;
   }
 
@@ -1214,19 +1284,17 @@ function encontrarCodigoRegraSemCache(regras, forn, plano, tipoDoc, historico, e
   // dessas palavras precisa continuar pendente. Regras gerais explícitas
   // acima continuam válidas; apenas as inferências automáticas são barradas.
   if (!escopo) {
-    const prefixoParcialNovo = forn + ' | ' + plano + ' | ' + tipoDoc + ' | HISTORICO_CONTEM | ';
-    const prefixoParcialLegado = forn + ' | ' + plano + ' | HISTORICO_CONTEM | ';
-    const existeRegraParcialDaCombinacao = Object.keys(regras || {}).some(chave => {
-      const chaveSemEscopo = chaveRegraSemEscopoDeUnidade(chave);
-      return chaveSemEscopo.startsWith(prefixoParcialNovo) || chaveSemEscopo.startsWith(prefixoParcialLegado);
-    });
+    const existeRegraParcialDaCombinacao = (indice.parciaisSemEscopo.get(forn + ' | ' + plano + ' | ' + tipoDoc) || []).length > 0
+      || (indice.parciaisSemEscopo.get(forn + ' | ' + plano) || []).length > 0;
     if (existeRegraParcialDaCombinacao) return '';
   }
-  const codigoFornecedorPlano = codigoUnicoRegraFornecedorPlano(regras, forn, plano);
+  const fornecedorNorm = normalizarTexto(forn);
+  const planoNorm = normalizarTexto(plano);
+  const codigoFornecedorPlano = codigoUnicoIndice(indice.fornecedorPlano, `${fornecedorNorm}\u0001${planoNorm}`);
   if (codigoFornecedorPlano) return codigoFornecedorPlano;
-  const codigoPlanoDocumento = codigoUnicoRegraPlanoDocumento(regras, plano, tipoDoc);
+  const codigoPlanoDocumento = codigoUnicoIndice(indice.planoDocumento, `${planoNorm}\u0001${normalizarTexto(tipoDoc)}`);
   if (codigoPlanoDocumento) return codigoPlanoDocumento;
-  return codigoUnicoRegraPlano(regras, plano);
+  return codigoUnicoIndice(indice.plano, planoNorm);
 }
 
 function encontrarCodigoRegraAjuste(regras, forn, plano, tipoAjuste, ponta, historico, escopo = '') {
@@ -1650,6 +1718,13 @@ function normalizarNomeColuna(valor) {
     .replace(/[^a-z0-9]+/g, ' ')
     .replace(/\s+/g, ' ')
     .trim();
+}
+
+function aguardarPinturaInterface() {
+  return new Promise(resolve => {
+    if (typeof requestAnimationFrame === 'function') requestAnimationFrame(() => setTimeout(resolve, 0));
+    else setTimeout(resolve, 0);
+  });
 }
 
 function distanciaEdicaoTexto(a, b) {
@@ -3175,7 +3250,13 @@ function htmlResumoConferenciaBancaria() {
   const transferenciasPareadas = indicesTransferenciasPareadas(extratoBancarioTemp);
   const contasBanco = new Set(contasExtrato(extratoBancarioTemp).map(normalizarTexto));
   const pagamentosConciliaveis = pagamentosImportadosConciliacao(contasBanco);
-  const saidasPagamentos = extratoBancarioTemp.filter(m => movimentoEhSaidaConferenciaPagamento(m, pagamentosConciliaveis));
+  const pagamentosPorDataValor = new Map();
+  pagamentosConciliaveis.forEach(pag => {
+    const chave = `${pag.dataKey}\u0001${valorConciliacaoEmCentavos(pag.valor)}`;
+    if (!pagamentosPorDataValor.has(chave)) pagamentosPorDataValor.set(chave, []);
+    pagamentosPorDataValor.get(chave).push(pag);
+  });
+  const saidasPagamentos = extratoBancarioTemp.filter(m => movimentoEhSaidaConferenciaPagamento(m, pagamentosConciliaveis, pagamentosPorDataValor));
   const totalPagamentos = arredondarMoeda(pagamentosConciliaveis.reduce((s, p) => s + p.valor, 0));
   const totalSaidasPagamentos = arredondarMoeda(Math.abs(saidasPagamentos.reduce((s, m) => s + m.valor, 0)));
   const diferencaConferencia = arredondarMoeda(totalPagamentos - totalSaidasPagamentos);
@@ -4332,6 +4413,8 @@ async function processarExtratosBancarios(files) {
       contas: contasExtrato(extratoBancarioTemp),
       planilha: [...new Set(resultados.map(r => r.planilha).filter(Boolean))].join(', ')
     };
+    atualizarProgressoImportacao(92, 'Conferindo contas e transferências...', infoExtratoBancarioTemp.arquivo);
+    await aguardarPinturaInterface();
     const paresTransferencia = contarTransferenciasPareadas(extratoBancarioTemp);
     const partesMsg = [
       `${novosMovimentos.length} movimento${novosMovimentos.length !== 1 ? 's' : ''} importado${novosMovimentos.length !== 1 ? 's' : ''}`,
@@ -4340,9 +4423,12 @@ async function processarExtratosBancarios(files) {
     if (duplicados > 0) partesMsg.push(`${duplicados} duplicado${duplicados !== 1 ? 's' : ''} ignorado${duplicados !== 1 ? 's' : ''}`);
     if (paresTransferencia > 0) partesMsg.push(`${paresTransferencia} transferência${paresTransferencia !== 1 ? 's' : ''} entre contas identificada${paresTransferencia !== 1 ? 's' : ''}`);
     mostrarMsgConciliacao(partesMsg.join('. ') + '.', 'ok');
+    atualizarProgressoImportacao(95, 'Montando resumo dos extratos...', infoExtratoBancarioTemp.arquivo);
     renderConciliacaoBancaria();
     if (telaAtual === 'tela-recebimentos') renderRecebimentosSeparados();
     if (linhasImportadas.length > 0) {
+      atualizarProgressoImportacao(97, 'Cruzando pagamentos e extratos...', infoExtratoBancarioTemp.arquivo);
+      await aguardarPinturaInterface();
       origemModalPendencias = 'conciliacao';
       const resultado = gerarSugestoesConciliacao();
       if (resultado?.qtdParaResolver > 0 && telaAtual !== 'tela-recebimentos') {
@@ -4544,13 +4630,15 @@ function movimentoEhSaidaPendenteExportavel(m) {
   return tipo.includes('parcelas de titulos') || tipo.includes('conciliacao mista');
 }
 
-function movimentoEhSaidaConferenciaPagamento(m, pagamentos = []) {
+function movimentoEhSaidaConferenciaPagamento(m, pagamentos = [], pagamentosPorDataValor = null) {
   if (!m || m.valor >= 0) return false;
   if (movimentoEhAjusteFechamentoCaixa(m)) return false;
   const tipo = normalizarTexto(m.tipoConciliacao);
   if (tipo.includes('parcelas de titulos')) return true;
-  return tipo.includes('conciliacao mista')
-    && pagamentos.some(pag => movimentoEhCandidatoClaroPagamento(pag, m));
+  if (!tipo.includes('conciliacao mista')) return false;
+  const chave = `${dataKey(m.data)}\u0001${valorConciliacaoEmCentavos(m.valor)}`;
+  const candidatos = pagamentosPorDataValor ? (pagamentosPorDataValor.get(chave) || []) : pagamentos;
+  return candidatos.some(pag => movimentoEhCandidatoClaroPagamento(pag, m));
 }
 
 function chaveTransferenciaExtrato(m) {
@@ -4730,7 +4818,7 @@ function chaveGrupoConciliacaoClara(pag) {
   ].join('|');
 }
 
-function autoConciliarGruposDuplicadosClaros(pagamentos, movimentos, usadosMov, sugestoesPorPagamento) {
+function autoConciliarGruposDuplicadosClaros(pagamentos, movimentos, usadosMov, sugestoesPorPagamento, indiceDataValor = null) {
   const grupos = new Map();
   pagamentos
     .filter(pag => !sugestoesPorPagamento.has(pag.idx))
@@ -4742,8 +4830,10 @@ function autoConciliarGruposDuplicadosClaros(pagamentos, movimentos, usadosMov, 
   grupos.forEach(grupoPagamentos => {
     if (grupoPagamentos.length < 2) return;
     const referencia = grupoPagamentos[0];
-    const candidatas = movimentos
-      .map((mov, idxMov) => ({ mov, idxMov }))
+    const candidatasBase = indiceDataValor
+      ? (indiceDataValor.get(`${referencia.dataKey}\u0001${valorConciliacaoEmCentavos(referencia.valor)}`) || [])
+      : movimentos.map((mov, idxMov) => ({ mov, idxMov }));
+    const candidatas = candidatasBase
       .filter(({ mov, idxMov }) => !usadosMov.has(idxMov)
         && mesmaContaConciliacao(referencia, mov)
         && movimentoEhCandidatoClaroPagamento(referencia, mov));
@@ -5005,6 +5095,34 @@ function gerarSugestoesConciliacao(opcoes = {}) {
   const movimentos = extratoBancarioTemp.filter((mov, idx) =>
     movimentoEhSaidaConciliavelPagamento(mov) && !transferenciasPareadas.has(idx)
   );
+  const adicionarIndiceConciliacao = (mapa, chave, item) => {
+    if (!mapa.has(chave)) mapa.set(chave, []);
+    mapa.get(chave).push(item);
+  };
+  const indiceDocumentoDataValor = new Map();
+  const indiceDocumentoData = new Map();
+  const indiceDataValor = new Map();
+  const indiceValor = new Map();
+  const indiceData = new Map();
+  const indiceMovimentoPorObjeto = new Map();
+  const movimentosIndexados = movimentos.map((mov, idxMov) => {
+    const item = {
+      mov,
+      idxMov,
+      data: dataKey(mov.data),
+      valor: valorConciliacaoEmCentavos(mov.valor),
+      documento: String(mov.documento || '').trim(),
+      movTexto: movimentoTextoConciliacao(mov)
+    };
+    indiceMovimentoPorObjeto.set(mov, idxMov);
+    adicionarIndiceConciliacao(indiceDocumentoDataValor, `${item.documento}\u0001${item.data}\u0001${item.valor}`, item);
+    adicionarIndiceConciliacao(indiceDocumentoData, `${item.documento}\u0001${item.data}`, item);
+    adicionarIndiceConciliacao(indiceDataValor, `${item.data}\u0001${item.valor}`, item);
+    adicionarIndiceConciliacao(indiceValor, String(item.valor), item);
+    adicionarIndiceConciliacao(indiceData, item.data, item);
+    return item;
+  });
+  const disponiveis = itens => (itens || []).filter(item => !usadosMov.has(item.idxMov));
   const entradas = conciliacaoUsaRecebimentosDoExtrato()
     ? extratoBancarioTemp.filter((m, idx) => m.valor > 0 && !transferenciasPareadas.has(idx))
     : [];
@@ -5021,7 +5139,7 @@ function gerarSugestoesConciliacao(opcoes = {}) {
     const idxOriginal = Number(vinculo);
     const mov = extratoBancarioTemp[idxOriginal];
     if (!mov || mov.valor >= 0) return;
-    const idxMov = movimentos.findIndex(m => m === mov);
+    const idxMov = indiceMovimentoPorObjeto.get(mov) ?? -1;
     if (idxMov >= 0 && usadosMov.has(idxMov)) return;
     if (idxMov >= 0) usadosMov.add(idxMov);
     sugestoesPorPagamento.set(pag.idx, { pag, mov, idxMov, status: 'conciliado', regra: 'Conciliado manualmente', diferenca: arredondarMoeda(pag.valor - Math.abs(mov.valor)) });
@@ -5029,17 +5147,9 @@ function gerarSugestoesConciliacao(opcoes = {}) {
 
   pagamentos.forEach(pag => {
     if (sugestoesPorPagamento.has(pag.idx)) return;
-    const candidatos = movimentos
-      .map((mov, idxMov) => ({ mov, idxMov }))
-      .filter(({ mov, idxMov }) => {
-        const doc = String(mov.documento || '').trim();
-        return !usadosMov.has(idxMov)
-          && mesmaContaConciliacao(pag, mov)
-          && doc
-          && pag.numero === doc
-          && pag.dataKey === dataKey(mov.data)
-          && valoresConciliacaoIguais(pag.valor, mov.valor);
-      });
+    const chaveIndice = `${pag.numero}\u0001${pag.dataKey}\u0001${valorConciliacaoEmCentavos(pag.valor)}`;
+    const candidatos = disponiveis(indiceDocumentoDataValor.get(chaveIndice))
+      .filter(({ mov, documento }) => mesmaContaConciliacao(pag, mov) && documento && pag.numero === documento);
     if (candidatos.length === 1) {
       usadosMov.add(candidatos[0].idxMov);
       sugestoesPorPagamento.set(pag.idx, { pag, mov: candidatos[0].mov, idxMov: candidatos[0].idxMov, status: 'conciliado', regra: 'Documento + data + valor', diferenca: 0 });
@@ -5048,13 +5158,10 @@ function gerarSugestoesConciliacao(opcoes = {}) {
 
   pagamentos.forEach(pag => {
     if (sugestoesPorPagamento.has(pag.idx)) return;
-    const candidatos = movimentos
-      .map((mov, idxMov) => ({ mov, idxMov, movTexto: movimentoTextoConciliacao(mov) }))
-      .filter(({ mov, idxMov, movTexto }) => {
-        const doc = String(mov.documento || '').trim();
+    const candidatos = disponiveis(indiceDocumentoData.get(`${pag.numero}\u0001${pag.dataKey}`))
+      .filter(({ mov, documento: doc, movTexto }) => {
         const diferencaCentavos = diferencaValorConciliacaoEmCentavos(pag.valor, mov.valor);
-        return !usadosMov.has(idxMov)
-          && mesmaContaConciliacao(pag, mov)
+        return mesmaContaConciliacao(pag, mov)
           && doc
           && pag.numero === doc
           && pag.dataKey === dataKey(mov.data)
@@ -5076,14 +5183,12 @@ function gerarSugestoesConciliacao(opcoes = {}) {
     }
   });
 
-  autoConciliarGruposDuplicadosClaros(pagamentos, movimentos, usadosMov, sugestoesPorPagamento);
-  autoConciliarLotesComDiferencaDeCentavo(pagamentos, movimentos, usadosMov, sugestoesPorPagamento);
+  autoConciliarGruposDuplicadosClaros(pagamentos, movimentos, usadosMov, sugestoesPorPagamento, indiceDataValor);
+  autoConciliarLotesComDiferencaDeCentavo(pagamentos, movimentos, usadosMov, sugestoesPorPagamento, indiceData);
 
   pagamentos.filter(p => !sugestoesPorPagamento.has(p.idx)).forEach(pag => {
-    const candidatos = movimentos
-      .map((mov, idxMov) => ({ mov, idxMov }))
-      .filter(({ mov, idxMov }) => !usadosMov.has(idxMov)
-        && mesmaContaConciliacao(pag, mov)
+    const candidatos = disponiveis(indiceDataValor.get(`${pag.dataKey}\u0001${valorConciliacaoEmCentavos(pag.valor)}`))
+      .filter(({ mov }) => mesmaContaConciliacao(pag, mov)
         && movimentoEhCandidatoClaroPagamento(pag, mov));
     if (candidatos.length === 1) {
       usadosMov.add(candidatos[0].idxMov);
@@ -5092,10 +5197,8 @@ function gerarSugestoesConciliacao(opcoes = {}) {
   });
 
   pagamentos.filter(p => !sugestoesPorPagamento.has(p.idx) && pagamentoEhTarifaBancaria(p)).forEach(pag => {
-    const candidatos = movimentos
-      .map((mov, idxMov) => ({ mov, idxMov, movTexto: movimentoTextoConciliacao(mov) }))
-      .filter(({ mov, idxMov, movTexto }) => !usadosMov.has(idxMov)
-        && mesmaContaConciliacao(pag, mov)
+    const candidatos = disponiveis(indiceValor.get(String(valorConciliacaoEmCentavos(pag.valor))))
+      .filter(({ mov, movTexto }) => mesmaContaConciliacao(pag, mov)
         && valoresConciliacaoIguais(pag.valor, mov.valor)
         && fornecedorBatePagamentoMovimento(pag, movTexto));
     if (candidatos.length > 0) {
@@ -5106,11 +5209,8 @@ function gerarSugestoesConciliacao(opcoes = {}) {
   });
 
   pagamentos.filter(p => !sugestoesPorPagamento.has(p.idx)).forEach(pag => {
-    const candidatos = movimentos
-      .map((mov, idxMov) => ({ mov, idxMov, movTexto: movimentoTextoConciliacao(mov) }))
-      .filter(({ mov, idxMov, movTexto }) => !usadosMov.has(idxMov)
-        && mesmaContaConciliacao(pag, mov)
-        && pag.dataKey === dataKey(mov.data)
+    const candidatos = disponiveis(indiceData.get(pag.dataKey))
+      .filter(({ mov, movTexto }) => mesmaContaConciliacao(pag, mov)
         && fornecedorBatePagamentoMovimento(pag, movTexto)
         && valorConciliacaoEmCentavos(mov.valor) <= valorConciliacaoEmCentavos(pag.valor) + 1)
       .sort((a, b) => Math.abs(b.mov.valor) - Math.abs(a.mov.valor));
@@ -5130,12 +5230,12 @@ function gerarSugestoesConciliacao(opcoes = {}) {
     }
   });
 
-  movimentos.forEach((mov, idxMov) => {
+  const pagamentosPorData = new Map();
+  pagamentos.forEach(pag => adicionarIndiceConciliacao(pagamentosPorData, pag.dataKey, pag));
+  movimentosIndexados.forEach(({ mov, idxMov, data, movTexto }) => {
     if (usadosMov.has(idxMov)) return;
-    const movTexto = movimentoTextoConciliacao(mov);
-    const candidatos = pagamentos.filter(p => !sugestoesPorPagamento.has(p.idx)
+    const candidatos = (pagamentosPorData.get(data) || []).filter(p => !sugestoesPorPagamento.has(p.idx)
       && mesmaContaConciliacao(p, mov)
-      && p.dataKey === dataKey(mov.data)
       && fornecedorBatePagamentoMovimento(p, movTexto));
     const soma = arredondarMoeda(candidatos.reduce((s, p) => s + p.valor, 0));
     if (candidatos.length > 1 && valoresConciliacaoIguais(soma, mov.valor)) {
@@ -7878,7 +7978,7 @@ function aplicarCodigoEmLote() {
   renderNovasChaves();
 }
 
-function salvarNovasChavesEGerar() {
+async function salvarNovasChavesEGerar() {
   // Coletar valores dos inputs
   document.querySelectorAll('#tbody-novas-chaves input[type=text][data-chave]').forEach(inp => {
     codigosTemp[inp.dataset.chave] = obterCodigoContaParaDominio(inp.value);
@@ -7906,7 +8006,11 @@ function salvarNovasChavesEGerar() {
     return;
   }
   const regrasSalvas = Object.assign({}, depara[grupoAtivo] || {});
+  iniciarProgressoImportacao('Gerando movimentos contábeis...');
+  atualizarProgressoImportacao(20, 'Aplicando regras aos pagamentos...', '');
+  await aguardarPinturaInterface();
   gerarLancamentos(linhasImportadas, regrasSalvas);
+  finalizarProgressoImportacao('Movimentos gerados.');
 }
 
 function cancelarNovasChaves() {
@@ -8645,7 +8749,7 @@ function coletarInputsEdicaoRegras() {
   });
 }
 
-function autoConciliarLotesComDiferencaDeCentavo(pagamentos, movimentos, usadosMov, sugestoesPorPagamento) {
+function autoConciliarLotesComDiferencaDeCentavo(pagamentos, movimentos, usadosMov, sugestoesPorPagamento, indiceData = null) {
   const grupos = new Map();
   pagamentos
     .filter(pag => !sugestoesPorPagamento.has(pag.idx) && limparTextoECD(pag.conta))
@@ -8661,8 +8765,10 @@ function autoConciliarLotesComDiferencaDeCentavo(pagamentos, movimentos, usadosM
     const valoresPagamentos = grupoPagamentos.map(pag => valorConciliacaoEmCentavos(pag.valor));
     const menorValor = Math.min(...valoresPagamentos) - 1;
     const maiorValor = Math.max(...valoresPagamentos) + 1;
-    const candidatas = movimentos
-      .map((mov, idxMov) => ({ mov, idxMov }))
+    const candidatasBase = indiceData
+      ? (indiceData.get(referencia.dataKey) || [])
+      : movimentos.map((mov, idxMov) => ({ mov, idxMov }));
+    const candidatas = candidatasBase
       .filter(({ mov, idxMov }) => {
         const valorMovimento = valorConciliacaoEmCentavos(mov.valor);
         return !usadosMov.has(idxMov)
