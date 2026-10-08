@@ -973,13 +973,45 @@ function empresasComCodigosDiferentes(empresaOrigem, centroCusto) {
   return !!codEmpresa && !!codCentro && codEmpresa !== codCentro;
 }
 
-function empresasComCodigosOuNomesDiferentes(empresaOrigem, centroCusto) {
-  const codEmpresa = extrairPrimeiroCodigoEmpresa(empresaOrigem);
-  const codCentro = extrairPrimeiroCodigoEmpresa(centroCusto);
-  if (codEmpresa && codCentro) return codEmpresa !== codCentro;
+function nomeBaseEmpresaComparacao(valor) {
+  return normalizarTexto(valor)
+    .replace(/\b\d{3,}\b/g, ' ')
+    .replace(/\bvd\b/g, ' ')
+    .replace(/[^a-z0-9]+/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+function empresasSaoMesmaIdentidade(empresaOrigem, centroCusto) {
   const empresaNorm = normalizarTexto(empresaOrigem);
   const centroNorm = normalizarTexto(centroCusto);
-  return !!empresaNorm && !!centroNorm && empresaNorm !== centroNorm;
+  if (!empresaNorm || !centroNorm) return false;
+  if (empresaNorm === centroNorm) return true;
+
+  const codEmpresa = extrairPrimeiroCodigoEmpresa(empresaOrigem);
+  const codCentro = extrairPrimeiroCodigoEmpresa(centroCusto);
+  if (codEmpresa && codCentro && codEmpresa === codCentro) return true;
+
+  const nomeEmpresa = nomeBaseEmpresaComparacao(empresaOrigem);
+  const nomeCentro = nomeBaseEmpresaComparacao(centroCusto);
+  return nomeEmpresa.length >= 3 && nomeEmpresa === nomeCentro;
+}
+
+function nomeBaseContaFinanceira(conta) {
+  return nomeBaseEmpresaComparacao(conta)
+    .replace(/\b(?:conta corrente|caixa loja|aplicacao|banco)\b/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+function contasPertencemMesmaEmpresa(contaOrigem, contaDestino) {
+  const origem = nomeBaseContaFinanceira(contaOrigem);
+  const destino = nomeBaseContaFinanceira(contaDestino);
+  return origem.length >= 2 && origem === destino;
+}
+
+function empresasComCodigosOuNomesDiferentes(empresaOrigem, centroCusto) {
+  return !empresasSaoMesmaIdentidade(empresaOrigem, centroCusto);
 }
 
 function itemParcelasNumerariosIntercompany(item) {
@@ -4739,7 +4771,6 @@ function contarTransferenciasPareadas(movimentos = extratoBancarioTemp) {
 }
 
 function mesmaContaConciliacao(pag, mov) {
-  if (grupoUsaNumerariosParcelas()) return true;
   if (!pag?.conta || !mov?.conta) return true;
   return normalizarTexto(pag.conta) === normalizarTexto(mov.conta);
 }
@@ -4843,7 +4874,7 @@ function chaveGrupoConciliacaoClara(pag) {
     pag.dataKey,
     Math.abs(arredondarMoeda(pag.valor)).toFixed(2),
     pag.fornecedorNorm || textoConciliacao(pag.fornecedor),
-    grupoUsaNumerariosParcelas() ? '' : normalizarTexto(pag.conta)
+    normalizarTexto(pag.conta)
   ].join('|');
 }
 
@@ -5080,6 +5111,22 @@ function codigoRegraPagamentoConciliacao(pag = {}) {
 function classificarTransferenciaEntreContas(par) {
   const origem = identidadeEmpresaTransferencia(par?.saida);
   const destino = identidadeEmpresaTransferencia(par?.entrada);
+  if (contasPertencemMesmaEmpresa(par?.saida?.conta, par?.entrada?.conta)) {
+    return {
+      tipo: 'PROPRIO',
+      origem,
+      destino,
+      criterio: 'nome-base-das-contas'
+    };
+  }
+  if (empresasSaoMesmaIdentidade(origem.nome || origem.conta, destino.nome || destino.conta)) {
+    return {
+      tipo: 'PROPRIO',
+      origem,
+      destino,
+      criterio: 'mesma-identidade-empresarial'
+    };
+  }
   if (origem.codigo && destino.codigo) {
     return {
       tipo: origem.codigo === destino.codigo ? 'PROPRIO' : 'NUMERARIOS',
@@ -5778,7 +5825,7 @@ function saidasDisponiveisParaPagamentoConciliacao(item, saidasPendentes) {
     .map(([, valorSelecionado]) => String(valorSelecionado)));
   return saidasPendentes.filter(saida =>
     !selecionadasEmOutros.has(String(saida.idxOriginal))
-    && (grupoUsaNumerariosParcelas() || !item.conta || !saida.conta || normalizarTexto(item.conta) === normalizarTexto(saida.conta))
+    && (!item.conta || !saida.conta || normalizarTexto(item.conta) === normalizarTexto(saida.conta))
   );
 }
 
