@@ -642,6 +642,10 @@ let ultimaSyncLocal = 0;
 let salvandoBaseCompartilhada = false;
 let timerSalvarBaseCompartilhada = null;
 let baseCompartilhadaPendente = false;
+const gruposAlteradosPendentes = new Set();
+let estruturaBasePendente = false;
+let tokenSyncCompartilhada = '';
+let baseRemotaDisponivel = false;
 let filtroLoteTimer = null;
 let extratoBancarioTemp = [];
 let infoExtratoBancarioTemp = null;
@@ -921,7 +925,7 @@ function alterarModoGrupo(nome, modo) {
     layoutImportacaoPagamentos: formato.layout
   });
   if (grupoAtivo === nome) selecionarModoImportacaoPagamentos(modoImportacaoDoGrupo(nome), layoutImportacaoDoGrupo(nome));
-  salvarStorage();
+  salvarStorage({ gruposAlterados: [nome] });
   renderGrupos();
   showMsg(`Formato de pagamentos de "${nome}" atualizado para ${nomeModoImportacao(modoImportacaoDoGrupo(nome), layoutImportacaoDoGrupo(nome))}.`, 'ok');
 }
@@ -1522,7 +1526,7 @@ function obterChaveRegraNova(item) {
   return item.chave;
 }
 
-function salvarStorage() {
+function salvarStorage(opcoes = {}) {
   localStorage.setItem(STORAGE_GRUPOS, JSON.stringify(grupos));
   localStorage.setItem(STORAGE_DEPARA, JSON.stringify(depara));
   localStorage.setItem(STORAGE_DEPARA_RECEBIMENTOS, JSON.stringify(deparaRecebimentos));
@@ -1532,6 +1536,7 @@ function salvarStorage() {
   localStorage.setItem(STORAGE_CONTAS_SEM_CONCILIACAO, JSON.stringify(contasSemConciliacao));
   localStorage.setItem(STORAGE_CONFIG_GRUPOS, JSON.stringify(configGrupos));
   localStorage.setItem(STORAGE_DEPARA_SAIDAS_EXTRATO, JSON.stringify(deparaSaidasExtrato));
+  registrarEscopoAlteracaoBase(opcoes);
   agendarSalvarBaseCompartilhada();
 }
 
@@ -1539,11 +1544,24 @@ function salvarStorageRegrasConciliacao() {
   localStorage.setItem(STORAGE_DEPARA, JSON.stringify(depara));
   localStorage.setItem(STORAGE_DEPARA_RECEBIMENTOS, JSON.stringify(deparaRecebimentos));
   localStorage.setItem(STORAGE_DEPARA_SAIDAS_EXTRATO, JSON.stringify(deparaSaidasExtrato));
+  registrarEscopoAlteracaoBase({ gruposAlterados: [grupoAtivo] });
   agendarSalvarBaseCompartilhada();
+}
+
+function registrarEscopoAlteracaoBase(opcoes = {}) {
+  if (opcoes.estruturaCompleta) estruturaBasePendente = true;
+  const nomes = Array.isArray(opcoes.gruposAlterados)
+    ? opcoes.gruposAlterados
+    : (grupoAtivo ? [grupoAtivo] : []);
+  nomes.filter(Boolean).forEach(nome => gruposAlteradosPendentes.add(nome));
+  if (!estruturaBasePendente && gruposAlteradosPendentes.size === 0) estruturaBasePendente = true;
 }
 
 function agendarSalvarBaseCompartilhada(atraso = 650) {
   baseCompartilhadaPendente = true;
+  // Protege alterações locais contra a sincronização periódica enquanto
+  // o envio remoto ainda aguarda o debounce.
+  ultimaSyncLocal = Date.now();
   if (typeof setTimeout !== 'function') return;
   if (typeof clearTimeout === 'function') clearTimeout(timerSalvarBaseCompartilhada);
   timerSalvarBaseCompartilhada = setTimeout(() => {
@@ -1566,11 +1584,25 @@ function atualizarStatusBanco(texto, tipo = 'orange') {
 }
 
 async function carregarBaseCompartilhada(mostrarMensagem = false) {
-  if (salvandoBaseCompartilhada) return;
+  if (salvandoBaseCompartilhada || baseCompartilhadaPendente) return;
   try {
+    if (!mostrarMensagem && tokenSyncCompartilhada) {
+      const respMeta = await fetch(`${API_BASE_DEPARA}?meta=1`, { cache: 'no-store' });
+      if (respMeta.ok) {
+        const meta = await respMeta.json();
+        if (meta.syncToken && meta.syncToken === tokenSyncCompartilhada) return;
+      }
+    }
     const resp = await fetch(API_BASE_DEPARA, { cache: 'no-store' });
     if (!resp.ok) throw new Error('base compartilhada indisponível');
     const data = await resp.json();
+    const ambienteLocal = location.hostname === '127.0.0.1' || location.hostname === 'localhost';
+    if (ambienteLocal && grupos.length > 0 && (!Array.isArray(data.grupos) || data.grupos.length === 0)) {
+      atualizarStatusBanco('Prévia local sem base própria: mantive os grupos deste navegador.', 'orange');
+      return;
+    }
+    tokenSyncCompartilhada = data.syncToken || data.updatedAt || tokenSyncCompartilhada;
+    baseRemotaDisponivel = Array.isArray(data.grupos) && data.grupos.length > 0;
     const remoteUpdatedAt = data.updatedAt ? new Date(data.updatedAt).getTime() : 0;
     if (remoteUpdatedAt && remoteUpdatedAt < ultimaSyncLocal) return;
     grupos = Array.isArray(data.grupos) ? data.grupos : [];
@@ -1610,22 +1642,48 @@ async function carregarBaseCompartilhada(mostrarMensagem = false) {
 async function salvarBaseCompartilhada(forcar = false) {
   if (salvandoBaseCompartilhada) {
     baseCompartilhadaPendente = true;
-    return;
+    return false;
   }
   try {
     salvandoBaseCompartilhada = true;
     ultimaSyncLocal = Date.now();
-    const payload = { grupos, depara, deparaRecebimentos, deparaProvisao, deparaProvisaoParcelas, planoContas, contasSemConciliacao, configGrupos, deparaSaidasExtrato };
+    const envioCompleto = estruturaBasePendente || !baseRemotaDisponivel || gruposAlteradosPendentes.size === 0;
+    const gruposDoEnvio = envioCompleto ? [] : [...gruposAlteradosPendentes];
+    const recortarPorGrupos = (colecao) => Object.fromEntries(gruposDoEnvio
+      .filter(nome => colecao && Object.prototype.hasOwnProperty.call(colecao, nome))
+      .map(nome => [nome, colecao[nome]]));
+    const payload = {
+      grupos,
+      depara: envioCompleto ? depara : recortarPorGrupos(depara),
+      deparaRecebimentos: envioCompleto ? deparaRecebimentos : recortarPorGrupos(deparaRecebimentos),
+      deparaProvisao: envioCompleto ? deparaProvisao : recortarPorGrupos(deparaProvisao),
+      deparaProvisaoParcelas: envioCompleto ? deparaProvisaoParcelas : recortarPorGrupos(deparaProvisaoParcelas),
+      planoContas: envioCompleto ? planoContas : recortarPorGrupos(planoContas),
+      contasSemConciliacao: envioCompleto ? contasSemConciliacao : recortarPorGrupos(contasSemConciliacao),
+      configGrupos: envioCompleto ? configGrupos : recortarPorGrupos(configGrupos),
+      deparaSaidasExtrato: envioCompleto ? deparaSaidasExtrato : recortarPorGrupos(deparaSaidasExtrato),
+      __sync: { estruturaCompleta: envioCompleto, gruposAlterados: gruposDoEnvio }
+    };
     const resp = await fetch(API_BASE_DEPARA, {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(payload)
     });
     if (!resp.ok) throw new Error('não foi possível salvar');
+    const resposta = await resp.json().catch(() => ({}));
+    if (resposta.updatedAt) ultimaSyncLocal = new Date(resposta.updatedAt).getTime() || ultimaSyncLocal;
+    if (resposta.syncToken) tokenSyncCompartilhada = resposta.syncToken;
+    baseRemotaDisponivel = true;
+    if (!baseCompartilhadaPendente) {
+      estruturaBasePendente = false;
+      gruposAlteradosPendentes.clear();
+    }
     atualizarStatusBanco('Base compartilhada salva no site.', 'ok');
     if (forcar) renderGrupos();
+    return true;
   } catch (err) {
     atualizarStatusBanco('Não consegui salvar na base compartilhada agora. Mantive uma cópia local neste navegador.', 'warn');
+    return false;
   } finally {
     salvandoBaseCompartilhada = false;
     if (baseCompartilhadaPendente) agendarSalvarBaseCompartilhada(900);
@@ -1677,7 +1735,7 @@ function importarBaseDePara(event) {
       configGrupos = payload.configGrupos && typeof payload.configGrupos === 'object' ? payload.configGrupos : {};
       deparaSaidasExtrato = payload.deparaSaidasExtrato && typeof payload.deparaSaidasExtrato === 'object' ? payload.deparaSaidasExtrato : {};
       grupoAtivo = grupos.includes(grupoAtivo) ? grupoAtivo : null;
-      salvarStorage();
+      salvarStorage({ estruturaCompleta: true });
       renderGrupos();
       showMsg('Base importada com sucesso.', 'ok');
     } catch (err) {
@@ -2369,7 +2427,6 @@ function salvarRegraProvisaoLinha(idx) {
     }
   });
   salvarStorage();
-  salvarBaseCompartilhada();
   if (aplicouOutras) renderProvisaoRateio();
 }
 
@@ -7164,7 +7221,7 @@ function editarTagsGrupo(g) {
   const tags = normalizarListaTagsGrupos(entrada);
   configGrupos[g] = Object.assign({}, configGrupos[g] || {}, { tags });
   if (filtroTagGrupos && !tagsDisponiveisGrupos().some(tag => normalizarTexto(tag) === normalizarTexto(filtroTagGrupos))) filtroTagGrupos = '';
-  salvarStorage();
+  salvarStorage({ gruposAlterados: [g] });
   renderGrupos();
   showMsg(tags.length ? `Tags de "${g}" atualizadas.` : `Tags de "${g}" removidas.`, 'ok');
 }
@@ -7271,7 +7328,7 @@ function editarGrupoCadastro(g) {
       modoImportacaoPagamentos: novoFormato.modo,
       layoutImportacaoPagamentos: novoFormato.layout
     });
-    salvarStorage();
+    salvarStorage({ estruturaCompleta: nomeLimpo !== atual, gruposAlterados: [nomeLimpo] });
     renderGrupos();
     showMsg(`Cadastro do grupo "${nomeLimpo}" atualizado.`, 'ok');
   });
@@ -7330,7 +7387,7 @@ function criarGrupo() {
     layoutImportacaoPagamentos: formato.layout,
     tags
   };
-  salvarStorage();
+  salvarStorage({ estruturaCompleta: true });
   document.getElementById('input-nome-grupo').value = '';
   const inputTags = document.getElementById('input-tags-grupo');
   if (inputTags) inputTags.value = '';
@@ -7379,7 +7436,7 @@ function excluirGrupo(g) {
     delete configGrupos[g];
     delete deparaSaidasExtrato[g];
     if (grupoAtivo === g) grupoAtivo = null;
-    salvarStorage();
+    salvarStorage({ estruturaCompleta: true });
     renderGrupos();
   });
 }
@@ -7427,13 +7484,14 @@ function processarPlanoContas(file) {
   reader.onprogress = function(e) {
     if (e.lengthComputable) atualizarProgressoImportacao((e.loaded / e.total) * 85, 'Lendo plano de contas...', file.name);
   };
-  reader.onload = function(e) {
+  reader.onload = async function(e) {
     try {
       atualizarProgressoImportacao(88, 'Interpretando plano de contas...', file.name);
       const data = new Uint8Array(e.target.result);
       const wb = XLSX.read(data, { type: 'array', cellDates: false, bookFiles: true });
 
       const contas = [];
+      const chavesContas = new Set();
       const textoCelulaPlano = v => String(v ?? '').replace(/\u00a0/g, ' ').replace(/\s+/g, ' ').trim();
       const normalizarClassificacaoPlano = v => textoCelulaPlano(v).replace(/\s+/g, '');
       const ehCodigoPlano = v => /^\d+$/.test(textoCelulaPlano(v));
@@ -7449,7 +7507,8 @@ function processarPlanoContas(file) {
         nome = textoCelulaPlano(nome);
         if (!codigo || !classificacao || !nome) return;
         const chaveConta = `${codigo}|${classificacao}`;
-        if (contas.some(c => `${c.codigo}|${c.classificacao}` === chaveConta)) return;
+        if (chavesContas.has(chaveConta)) return;
+        chavesContas.add(chaveConta);
         contas.push({ codigo, classificacao, nome });
       };
       const extrairContaPlanoLinha = row => {
@@ -7630,9 +7689,17 @@ function processarPlanoContas(file) {
 
       planoContas[grupoAtivo] = contas;
       salvarStorage();
+      if (typeof clearTimeout === 'function') clearTimeout(timerSalvarBaseCompartilhada);
+      baseCompartilhadaPendente = false;
+      const salvoNaBase = await salvarBaseCompartilhada(true);
       renderResumoPlanoContas();
-      showMsgPlanoContas(`${contas.length} contas analíticas carregadas com sucesso para "${grupoAtivo}".`, 'ok');
-      finalizarProgressoImportacao('Plano de contas carregado.');
+      showMsgPlanoContas(
+        salvoNaBase
+          ? `${contas.length} contas analíticas carregadas e salvas para "${grupoAtivo}".`
+          : `${contas.length} contas analíticas carregadas neste navegador, mas a base compartilhada não confirmou o salvamento. Tente novamente antes de sair.`,
+        salvoNaBase ? 'ok' : 'warn'
+      );
+      finalizarProgressoImportacao(salvoNaBase ? 'Plano de contas salvo.' : 'Plano carregado apenas localmente.');
     } catch (err) {
       showMsgPlanoContas('Erro ao ler o arquivo: ' + err.message, 'warn');
       erroProgressoImportacao('Erro ao carregar o plano de contas.');
