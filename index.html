@@ -668,6 +668,7 @@ let timerFiltroPendenciasConciliacao = null;
 let selecaoFiltroPendenciasConciliacao = { start: 0, end: 0 };
 let pendenciasConciliacaoSelecionadas = new Set();
 const VINCULO_PAGAMENTO_SEM_EXTRATO = '__sem_movimento_extrato__';
+const REGRA_SAIDA_EXTRATO_NAO_EXPORTAR = '__nao_exportar_saida_extrato__';
 let recebimentosRateioTemp = [];
 let infoRecebimentosRateioTemp = null;
 let provisaoRateioTemp = [];
@@ -6105,8 +6106,13 @@ function renderSugestoesConciliacao(sugestoes, qtdPagamentos, qtdMovimentos, ent
   conciliacaoItensTemp.forEach(item => {
     if (!(item.id in codigosConciliacaoTemp)) codigosConciliacaoTemp[item.id] = '';
     if (item.movimento === 'saida-pendente' && !codigosConciliacaoTemp[item.id]) {
+      const regraSaidaSalva = (deparaSaidasExtrato[grupoAtivo] || {})[item.chaveRegraSaida] || '';
+      if (regraSaidaExtratoMarcadaComoRepresentada(regraSaidaSalva)) {
+        saidasExtratoRevisadasConciliacaoTemp[item.id] = true;
+        return;
+      }
       const movimento = extratoBancarioTemp[item.idxOriginal] || item;
-      codigosConciliacaoTemp[item.id] = obterCodigoContaParaDominio((deparaSaidasExtrato[grupoAtivo] || {})[item.chaveRegraSaida] || '')
+      codigosConciliacaoTemp[item.id] = obterCodigoContaParaDominio(regraSaidaSalva)
         || codigoRegraPagamentoParaSaidaExtrato(movimento)
         || obterCodigoContaParaDominio(encontrarCodigoRegraRecebimentoConciliacao(
           regrasRecebimentos,
@@ -6679,8 +6685,14 @@ function atualizarCodigoConciliacaoModal(input) {
 
 function revisarSaidaExtratoSemExportar(id) {
   if (!id) return;
+  const item = conciliacaoItensTemp.find(registro => registro.id === id && registro.movimento === 'saida-pendente');
   codigosConciliacaoTemp[id] = '';
   saidasExtratoRevisadasConciliacaoTemp[id] = true;
+  if (item?.chaveRegraSaida && modoImportacaoDoGrupo() === 'cp_simone') {
+    if (!deparaSaidasExtrato[grupoAtivo]) deparaSaidasExtrato[grupoAtivo] = {};
+    deparaSaidasExtrato[grupoAtivo][item.chaveRegraSaida] = REGRA_SAIDA_EXTRATO_NAO_EXPORTAR;
+    salvarStorageRegrasConciliacao();
+  }
   abrirModalPendenciasConciliacao();
 }
 
@@ -6811,6 +6823,11 @@ function chaveRegraSaidaExtrato(movimento = {}) {
   return [movimento.conta, movimento.tipoConciliacao || 'Saída não conciliada', descricaoMovimentoExtrato(movimento)]
     .map(v => normalizarTexto(v || ''))
     .join(' | ');
+}
+
+function regraSaidaExtratoMarcadaComoRepresentada(valor) {
+  return modoImportacaoDoGrupo() === 'cp_simone'
+    && String(valor || '').trim() === REGRA_SAIDA_EXTRATO_NAO_EXPORTAR;
 }
 
 function codigoRegraPagamentoParaSaidaExtrato(movimento = {}) {
