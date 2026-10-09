@@ -1101,6 +1101,36 @@ function codigoNumerarioParcelas(regras, empresaPagadora, centroCusto, lado, nat
   return obterCodigoContaParaDominio(regras[chaveNumerarioParcelas(empresaPagadora, centroCusto, lado)] || '');
 }
 
+function fornecedorEhGuiaTributariaMatriz(valor) {
+  const texto = normalizarTexto(valor || '');
+  return texto === 'darf'
+    || texto === 'fgts'
+    || texto === 'irrf'
+    || texto === 'gps'
+    || texto.includes('guia da previdencia social');
+}
+
+function pagamentoEhReembolsoTributarioMatriz(r) {
+  return modoImportacaoDoGrupo() === 'cp_simone'
+    && normalizarTexto(r?.[COLS.PLANO] || '') === 'reembolso debito'
+    && fornecedorEhGuiaTributariaMatriz(r?.[COLS.FORNECEDOR]);
+}
+
+function movimentoEhEntradaNumerarioTributarioMatriz(movimento) {
+  return modoImportacaoDoGrupo() === 'cp_simone'
+    && arredondarMoeda(movimento?.valor || 0) > 0
+    && normalizarTexto(movimento?.tipoConciliacao || '').includes('parcelas de titulos')
+    && fornecedorEhGuiaTributariaMatriz(movimento?.complemento);
+}
+
+function chaveNumerarioTributarioMatriz(empresaMatriz) {
+  return ['CP SIMONE NUMERARIOS TRIBUTOS', limparTextoECD(empresaMatriz)].join(' | ');
+}
+
+function codigoNumerarioTributarioMatriz(regras, empresaMatriz) {
+  return obterCodigoContaParaDominio(regras[chaveNumerarioTributarioMatriz(empresaMatriz)] || '');
+}
+
 function parcelasNumerariosLinha(r) {
   if (!linhaEhParcelasNumerarios(r)) return false;
   return empresasComCodigosOuNomesDiferentes(empresaOrigemLinha(r), centroCustoLinha(r));
@@ -3074,6 +3104,36 @@ function prepararPagamentosImportados(dados, abrirTelaPendencias = true) {
     const valorRateio = arredondarMoeda(r[COLS.VALOR_LIQ]);
     const tipoAjusteRateio = r.__rateio ? tipoAjusteRateioPlano(plano, valorRateio) : '';
     if (!forn && !plano) return;
+    if (pagamentoEhReembolsoTributarioMatriz(r)) {
+      const empresaMatriz = empresaMatrizFilialExportacao(empresaOrigem, r[COLS.CONTA]);
+      const chaveNumerario = chaveNumerarioTributarioMatriz(empresaMatriz);
+      const codigoNumerario = codigoNumerarioTributarioMatriz(regrasSalvas, empresaMatriz);
+      registrarResumoRegra(chaveNumerario, codigoNumerario);
+      if (!codigoNumerario && !vistas.has(chaveNumerario)) {
+        vistas.add(chaveNumerario);
+        novas.push({
+          chave: chaveNumerario,
+          fornecedor: 'Conta Corrente Numerários',
+          plano: 'Guias tributárias pagas pela matriz',
+          tipoDoc: 'NUMERÁRIO TRIBUTÁRIO',
+          historico: `${forn} - ${historico}`,
+          trechoHistorico: '',
+          trechoHistoricoIndices: [],
+          numero,
+          empresa: empresaMatriz,
+          empresaOrigem: empresaMatriz,
+          centroCusto: empresaMatriz,
+          empresaLancamento: empresaMatriz,
+          parcelasNumerarios: true,
+          parcelasNumerariosIntercompany: false,
+          numerarioTributarioMatriz: true,
+          pontaNumerario: 'MATRIZ',
+          naturezaNumerario: 'ATIVO',
+          escopoRegra: ''
+        });
+      }
+      return;
+    }
     if (tipoAjusteRateio) {
       ['DÉBITO', 'CRÉDITO'].forEach(ponta => {
         const tipoPonta = tipoAjustePonta(tipoAjusteRateio, ponta);
@@ -3414,7 +3474,8 @@ function resumoFechamentoContasDominio() {
     disponivel: true,
     pendentes,
     pendentesEmpresa,
-    bate: conferencia.divergentes.length === 0 && pendentes === 0
+    bate: conferencia.divergentes.length === 0,
+    prontoExportar: conferencia.divergentes.length === 0 && pendentes === 0
   };
 }
 
@@ -3454,7 +3515,7 @@ function htmlFechamentoContasDominio(resumo) {
     </table></div>
   </details>` : '';
   const textoStatus = resumo.bate
-    ? 'Entradas, saídas e saldo líquido conferem em todas as contas, respeitando as regras do grupo.'
+    ? `Entradas, saídas e saldo líquido conferem em todas as contas, respeitando as regras do grupo.${resumo.pendentes ? ` Existem ${resumo.pendentes} código${resumo.pendentes !== 1 ? 's' : ''} pendente${resumo.pendentes !== 1 ? 's' : ''} para completar a exportação.` : ''}`
     : `${resumo.divergentes.length} conta${resumo.divergentes.length !== 1 ? 's' : ''} com diferença${resumo.pendentes ? ` e ${resumo.pendentes} código${resumo.pendentes !== 1 ? 's' : ''} pendente${resumo.pendentes !== 1 ? 's' : ''}` : ''}.`;
   return `<div class="alert ${resumo.bate ? 'alert-ok' : 'alert-warn'} conciliacao-check-alert" style="margin-top:14px">
     <div class="conciliacao-check-head"><div><strong>Fechamento contábil por conta</strong><span>Compara o arquivo final projetado com banco, caixa e aplicação do extrato, após as desconsiderações definidas no grupo.</span></div>
@@ -3486,14 +3547,15 @@ function htmlResumoConferenciaBancaria() {
   const diferencaConferencia = arredondarMoeda(totalPagamentos - totalSaidasPagamentos);
   const valoresPagamentosBatem = Math.abs(diferencaConferencia) < 0.01;
   const fechamento = resumoFechamentoContasDominio();
-  const valoresBatem = fechamento.disponivel ? fechamento.bate : valoresPagamentosBatem;
+  // O cartão principal mede exclusivamente pagamentos x extrato. Pendências
+  // de códigos/regras pertencem ao fluxo de exportação e não alteram essa
+  // conferência financeira.
+  const valoresBatem = valoresPagamentosBatem;
   const detalheDiferenca = valoresPagamentosBatem ? '' : htmlDetalheDiferencaConferencia(pagamentosConciliaveis, saidasPagamentos);
   const situacaoDiferenca = diferencaConferencia > 0 ? 'Falta no extrato' : 'Sobra no extrato';
   const textoConferenciaGeral = valoresBatem
-    ? 'Entradas, saídas e saldos conferem'
-    : fechamento.disponivel
-      ? `${fechamento.divergentes.length} conta${fechamento.divergentes.length !== 1 ? 's' : ''} com diferença${fechamento.pendentes ? ` · ${fechamento.pendentes} código${fechamento.pendentes !== 1 ? 's' : ''} pendente${fechamento.pendentes !== 1 ? 's' : ''}` : ''}`
-      : `${situacaoDiferenca}: R$ ${fmtValor(Math.abs(diferencaConferencia))}`;
+    ? 'Extrato confere com as parcelas pagas'
+    : `${situacaoDiferenca}: R$ ${fmtValor(Math.abs(diferencaConferencia))}`;
   return `
     <div class="conciliacao-grid conciliacao-summary-grid">
       <div class="metric metric-muted"><div class="metric-label">Grupo ativo</div><div class="metric-value metric-text">${escapeHtml(grupoAtivo || 'Nenhum')}</div></div>
@@ -3535,6 +3597,14 @@ function renderConciliacaoBancaria() {
   if (blocoRateio) blocoRateio.style.display = 'none';
   renderResumoRecebimentosRateio();
   renderPreviewExtratoBancario();
+}
+
+function renderConciliacaoBancariaCalculando() {
+  const el = document.getElementById('resumo-conciliacao-bancaria');
+  if (!el) return;
+  el.innerHTML = `<div class="alert conciliacao-check-alert conciliacao-check-loading">
+    <div class="conciliacao-check-head"><div><strong>Calculando fechamento contábil por conta...</strong><span>Conferindo pagamentos, transferências e movimentos do extrato.</span></div></div>
+  </div>`;
 }
 
 function grupoPodeRecebimentosRateio() {
@@ -3989,8 +4059,9 @@ async function processarRecebimentosRateio(files) {
     trechosRecebimentoConciliacaoTemp = {};
     conciliacaoAplicadaTemp = false;
     mostrarMsgConciliacao(`${novosUnicos.length} recebimento${novosUnicos.length !== 1 ? 's' : ''} por rateio importado${novosUnicos.length !== 1 ? 's' : ''}.`, 'ok');
-    renderConciliacaoBancaria();
+    renderConciliacaoBancariaCalculando();
     if (extratoBancarioTemp.length > 0) gerarSugestoesConciliacao({ redirecionarSeOk: false });
+    renderConciliacaoBancaria();
     finalizarProgressoImportacao('Recebimentos carregados.');
   } catch (err) {
     mostrarMsgConciliacao('Erro ao importar recebimentos por rateio: ' + err.message, 'warn');
@@ -4341,6 +4412,28 @@ function pendenciasRegrasRecebimentos() {
 }
 
 function novaChaveDeItemRecebimento(item) {
+  if (item.numerarioTributarioMatriz) {
+    return {
+      chave: item.chaveNumerarioTributario,
+      idRecebimento: item.id,
+      movimentoRecebimento: item.movimento,
+      fornecedor: 'Conta Corrente Numerários',
+      plano: 'Guias tributárias pagas pela matriz',
+      tipoDoc: 'NUMERÁRIO TRIBUTÁRIO',
+      historico: item.historico || '',
+      trechoHistorico: '',
+      trechoHistoricoIndices: [],
+      numero: item.data || '',
+      empresa: item.empresaMatrizNumerario || '',
+      empresaOrigem: item.empresaMatrizNumerario || '',
+      centroCusto: item.empresaMatrizNumerario || '',
+      empresaLancamento: item.empresaMatrizNumerario || '',
+      numerarioTributarioMatriz: true,
+      pontaNumerario: 'MATRIZ',
+      naturezaNumerario: 'ATIVO',
+      escopoRegra: ''
+    };
+  }
   const ehNumerario = item.movimento === 'numerario-rateio';
   const natureza = String(item.naturezaNumerario || '').toUpperCase();
   return {
@@ -4659,17 +4752,20 @@ async function processarExtratosBancarios(files) {
     if (paresTransferencia > 0) partesMsg.push(`${paresTransferencia} transferência${paresTransferencia !== 1 ? 's' : ''} entre contas identificada${paresTransferencia !== 1 ? 's' : ''}`);
     mostrarMsgConciliacao(partesMsg.join('. ') + '.', 'ok');
     atualizarProgressoImportacao(95, 'Montando resumo dos extratos...', infoExtratoBancarioTemp.arquivo);
-    renderConciliacaoBancaria();
-    if (telaAtual === 'tela-recebimentos') renderRecebimentosSeparados();
+    renderConciliacaoBancariaCalculando();
     if (linhasImportadas.length > 0) {
       atualizarProgressoImportacao(97, 'Cruzando pagamentos e extratos...', infoExtratoBancarioTemp.arquivo);
       await aguardarPinturaInterface();
       origemModalPendencias = 'conciliacao';
       const resultado = gerarSugestoesConciliacao();
+      renderConciliacaoBancaria();
       if (resultado?.qtdParaResolver > 0 && telaAtual !== 'tela-recebimentos') {
         setTimeout(() => abrirModalPendenciasConciliacaoBancaria(), 0);
       }
+    } else {
+      renderConciliacaoBancaria();
     }
+    if (telaAtual === 'tela-recebimentos') renderRecebimentosSeparados();
     finalizarProgressoImportacao('Extrato carregado.');
   } catch (err) {
     mostrarMsgConciliacao('Erro ao importar extrato: ' + err.message, 'warn');
@@ -4883,12 +4979,12 @@ function chaveTransferenciaExtrato(m) {
 }
 
 function movimentoTransferenciaMencionaConta(movimento, conta) {
-  const contaNorm = normalizarTexto(conta || '');
+  const contaNorm = textoConciliacao(conta || '');
   return contaNorm.length >= 3 && movimentoTextoConciliacao(movimento).includes(contaNorm);
 }
 
 function pontuacaoParTransferencia(saida, entrada) {
-  if (!saida || !entrada || normalizarTexto(saida.conta || '') === normalizarTexto(entrada.conta || '')) return 0;
+  if (!saida || !entrada || textoConciliacao(saida.conta || '') === textoConciliacao(entrada.conta || '')) return 0;
   let pontos = 0;
   if (movimentoTransferenciaMencionaConta(saida, entrada.conta)) pontos += 10;
   if (movimentoTransferenciaMencionaConta(entrada, saida.conta)) pontos += 10;
@@ -4902,7 +4998,7 @@ function paresTransferenciasExtrato(movimentos = extratoBancarioTemp) {
   movimentos.forEach((m, idx) => {
     if (!m?.valor) return;
     const transferencia = movimentoEhTransferenciaEntreContas(m);
-    const saidaMista = m.valor < 0 && movimentoTextoConciliacao(m).includes('conciliacao mista');
+    const saidaMista = m.valor < 0 && normalizarTexto(m.tipoConciliacao || '').includes('conciliacao mista');
     if (!transferencia && !saidaMista) return;
     const chave = chaveTransferenciaExtrato(m);
     const mapa = m.valor > 0 ? entradas : saidas;
@@ -5640,7 +5736,7 @@ function renderSugestoesConciliacao(sugestoes, qtdPagamentos, qtdMovimentos, ent
   const entradasAgrupadas = new Map();
   entradas.forEach(m => {
     const descricao = descricaoMovimentoExtrato(m) || 'Sem histórico';
-    const chave = [m.tipoConciliacao || 'Recebimento', descricao].join('||');
+    const chave = [m.conta || '', m.tipoConciliacao || 'Recebimento', descricao].join('||');
     const atual = entradasAgrupadas.get(chave) || { tipo: m.tipoConciliacao || 'Recebimento', historico: descricao, qtd: 0, total: 0, movimentos: [] };
     atual.qtd += 1;
     atual.total = arredondarMoeda(atual.total + Math.abs(m.valor));
@@ -5681,7 +5777,23 @@ function renderSugestoesConciliacao(sugestoes, qtdPagamentos, qtdMovimentos, ent
     : '';
   const linhasPagamentosPendentes = pendentesPagamento.map(renderLinhaPagamento).join('');
   const regrasRecebimentos = deparaRecebimentos[grupoAtivo] || {};
-  const itensRecebimentoExtrato = Array.from(entradasAgrupadas.values()).map((r, idx) => ({ ...r, id: `rec-${idx}`, movimento: 'recebimento', escopoRegra: '' }));
+  const itensRecebimentoExtrato = Array.from(entradasAgrupadas.values()).map((r, idx) => {
+    const primeiroMovimento = r.movimentos?.[0] || {};
+    const numerarioTributarioMatriz = r.movimentos?.length > 0
+      && r.movimentos.every(movimentoEhEntradaNumerarioTributarioMatriz);
+    const empresaMatriz = numerarioTributarioMatriz
+      ? empresaBancoConciliacao(r, primeiroMovimento)
+      : '';
+    return {
+      ...r,
+      id: `rec-${idx}`,
+      movimento: 'recebimento',
+      escopoRegra: '',
+      numerarioTributarioMatriz,
+      empresaMatrizNumerario: empresaMatriz,
+      chaveNumerarioTributario: numerarioTributarioMatriz ? chaveNumerarioTributarioMatriz(empresaMatriz) : ''
+    };
+  });
   const itensRecebimentoRateio = conciliacaoUsaRecebimentosDoExtrato()
     ? criarItensRecebimentosRateioAgrupados()
     : [];
@@ -5741,7 +5853,9 @@ function renderSugestoesConciliacao(sugestoes, qtdPagamentos, qtdMovimentos, ent
         ));
     }
     if (item.movimento === 'recebimento' && !codigosConciliacaoTemp[item.id]) {
-      codigosConciliacaoTemp[item.id] = obterCodigoContaParaDominio(encontrarCodigoRegraRecebimentoConciliacao(regrasRecebimentos, item.tipo, item.historico, item.escopoRegra || ''));
+      codigosConciliacaoTemp[item.id] = item.numerarioTributarioMatriz
+        ? codigoNumerarioTributarioMatriz(depara[grupoAtivo] || {}, item.empresaMatrizNumerario)
+        : obterCodigoContaParaDominio(encontrarCodigoRegraRecebimentoConciliacao(regrasRecebimentos, item.tipo, item.historico, item.escopoRegra || ''));
     }
     if (item.movimento === 'pagamento-pendente' && !codigosConciliacaoTemp[item.id]) {
       const codigoPagamento = codigoRegraPagamentoConciliacao(item);
@@ -6383,6 +6497,11 @@ function encontrarCodigoRegraRecebimentoConciliacao(regras, tipo, historico, esc
 
 function recebimentoAtendeRegra(item, itemRegra) {
   if (!item || !itemRegra || item.movimento !== 'recebimento') return false;
+  if (item.numerarioTributarioMatriz || itemRegra.numerarioTributarioMatriz) {
+    return !!item.numerarioTributarioMatriz
+      && !!itemRegra.numerarioTributarioMatriz
+      && item.chaveNumerarioTributario === itemRegra.chaveNumerarioTributario;
+  }
   if (normalizarTexto(item.tipo || '') !== normalizarTexto(itemRegra.tipo || '')) return false;
   if (normalizarTexto(item.escopoRegra || '') !== normalizarTexto(itemRegra.escopoRegra || '')) return false;
   if (grupoUsaNumerariosParcelas()) return true;
@@ -6472,7 +6591,11 @@ function salvarRegrasRecebimentoConciliacao() {
     const codigo = obterCodigoContaParaDominio(codigosConciliacaoTemp[item.id]);
     if (!codigo) return;
     if (item.movimento === 'recebimento') {
-      regras[obterChaveRegraRecebimentoConciliacao(item)] = codigo;
+      if (item.numerarioTributarioMatriz && item.chaveNumerarioTributario) {
+        regrasPagamentos[item.chaveNumerarioTributario] = codigo;
+      } else {
+        regras[obterChaveRegraRecebimentoConciliacao(item)] = codigo;
+      }
     }
     if (item.movimento === 'numerario-rateio' && item.chave) {
       regrasPagamentos[item.chave] = codigo;
@@ -6799,7 +6922,7 @@ function montarLinhasDominioConciliacao({ validarPendencias = true } = {}) {
         Math.abs(mov.valor || item.total),
         descricaoMovimentoExtrato(mov) || item.historico,
         empresaBancoConciliacao(item, mov),
-        ''
+        item.numerarioTributarioMatriz ? 'TRANSFERENCIA DE NUMERARIOS' : ''
       ));
     });
   });
@@ -8731,6 +8854,29 @@ function gerarLancamentos(dados, regras) {
     totalBruto += valorBruto;
     if (acrescimoDesconto < 0) totalDesconto += Math.abs(acrescimoDesconto);
     if (acrescimoDesconto > 0) totalAcrescimo += acrescimoDesconto;
+    if (pagamentoEhReembolsoTributarioMatriz(r)) {
+      const empresaMatriz = empresaMatrizFilialExportacao(empresaBancoRateio, banco);
+      const chaveNumerario = chaveNumerarioTributarioMatriz(empresaMatriz);
+      const codNumerario = codigoNumerarioTributarioMatriz(regras, empresaMatriz);
+      if (!codNumerario) pendentes.add(chaveNumerario);
+      lancamentosGerados.push({
+        idx,
+        data: dataLiq,
+        codDebito: codNumerario,
+        codCredito,
+        valorLiq: Math.abs(valorLiq),
+        valorFmt: fmtValor(Math.abs(valorLiq)),
+        complemento,
+        empresa: empresaMatriz,
+        plano,
+        acrescimoDesconto,
+        semCodigo: !codNumerario || !codCredito,
+        tipoRateio: 'TRANSFERENCIA DE NUMERARIOS',
+        lancamentoNumerario: true,
+        numerarioTributarioMatriz: true
+      });
+      return;
+    }
     const tipoAjusteRateio = r.__rateio ? tipoAjusteRateioPlano(plano, valorLiq) : '';
     if (tipoAjusteRateio) {
       const valorAjusteRateio = Math.abs(valorLiq);
@@ -8977,6 +9123,41 @@ function adicionarAbaDesconsideradosExportacao(wb, usados) {
   XLSX.utils.book_append_sheet(wb, ws, nomeAbaExcelSeguro('Desconsiderados', usados));
 }
 
+function contasNumerariosTributariosMatrizes() {
+  const prefixo = 'CP SIMONE NUMERARIOS TRIBUTOS | ';
+  return Object.entries(depara[grupoAtivo] || {}).reduce((itens, [chave, codigo]) => {
+    if (!chave.startsWith(prefixo)) return itens;
+    const empresa = limparTextoECD(chave.slice(prefixo.length));
+    const conta = obterCodigoContaParaDominio(codigo);
+    if (empresa && conta) itens.push({ empresa, conta });
+    return itens;
+  }, []);
+}
+
+function adicionarAbaConferenciaNumerarios(wb, linhas, usados) {
+  const contas = contasNumerariosTributariosMatrizes();
+  if (!contas.length) return;
+  const cabecalho = ['Código Matriz/Filial', 'Conta Corrente Numerários', 'Débitos', 'Créditos', 'Diferença', 'Status'];
+  const dados = contas.map(({ empresa, conta }) => {
+    const linhasEmpresa = linhas.filter(linha => normalizarTexto(linha?.[7] || '') === normalizarTexto(empresa));
+    const debitos = arredondarMoeda(linhasEmpresa
+      .filter(linha => String(linha?.[1] || '') === String(conta))
+      .reduce((soma, linha) => soma + Math.abs(numeroMoeda(linha?.[3] || 0)), 0));
+    const creditos = arredondarMoeda(linhasEmpresa
+      .filter(linha => String(linha?.[2] || '') === String(conta))
+      .reduce((soma, linha) => soma + Math.abs(numeroMoeda(linha?.[3] || 0)), 0));
+    const diferenca = arredondarMoeda(debitos - creditos);
+    return [empresa, conta, debitos, creditos, diferenca, Math.abs(diferenca) < 0.01 ? 'CONFERIDO' : 'DIFERENÇA'];
+  });
+  const totalDebitos = arredondarMoeda(dados.reduce((soma, linha) => soma + linha[2], 0));
+  const totalCreditos = arredondarMoeda(dados.reduce((soma, linha) => soma + linha[3], 0));
+  const totalDiferenca = arredondarMoeda(totalDebitos - totalCreditos);
+  dados.push(['TOTAL', '', totalDebitos, totalCreditos, totalDiferenca, Math.abs(totalDiferenca) < 0.01 ? 'CONFERIDO' : 'DIFERENÇA']);
+  const ws = XLSX.utils.aoa_to_sheet([cabecalho, ...dados]);
+  ws['!cols'] = [{ wch: 30 }, { wch: 28 }, { wch: 16 }, { wch: 16 }, { wch: 16 }, { wch: 14 }];
+  XLSX.utils.book_append_sheet(wb, ws, nomeAbaExcelSeguro('Conferência Numerários', usados));
+}
+
 function adicionarAbasDominioExportacao(wb, linhas, separarPorEmpresa = false) {
   const usados = new Set();
   adicionarAbaDominio(wb, separarPorEmpresa ? 'Consolidado' : 'Lançamentos Domínio', linhas, usados);
@@ -8994,6 +9175,7 @@ function adicionarAbasDominioExportacao(wb, linhas, separarPorEmpresa = false) {
       adicionarAbaDominio(wb, empresa, linhasEmpresa, usados);
     });
   }
+  adicionarAbaConferenciaNumerarios(wb, linhas, usados);
   adicionarAbaDesconsideradosExportacao(wb, usados);
 }
 

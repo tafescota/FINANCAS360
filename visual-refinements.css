@@ -1621,6 +1621,12 @@ input[type=search]:focus {
   display: block;
 }
 
+.conciliacao-check-loading {
+  background: #f8fafc;
+  border: 1px solid #cbd5e1;
+  color: #334155;
+}
+
 .conciliacao-check-head {
   display: flex;
   align-items: flex-start;
