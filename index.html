@@ -1123,12 +1123,46 @@ function movimentoEhEntradaNumerarioTributarioMatriz(movimento) {
     && fornecedorEhGuiaTributariaMatriz(movimento?.complemento);
 }
 
-function chaveNumerarioTributarioMatriz(empresaMatriz) {
-  return ['CP SIMONE NUMERARIOS TRIBUTOS', limparTextoECD(empresaMatriz)].join(' | ');
+function chaveNumerarioTributarioMatriz(empresaMatriz, natureza) {
+  return ['CP SIMONE NUMERARIOS TRIBUTOS', limparTextoECD(empresaMatriz), limparTextoECD(natureza).toUpperCase()].join(' | ');
 }
 
-function codigoNumerarioTributarioMatriz(regras, empresaMatriz) {
-  return obterCodigoContaParaDominio(regras[chaveNumerarioTributarioMatriz(empresaMatriz)] || '');
+function codigoNumerarioTributarioMatriz(regras, empresaMatriz, natureza) {
+  const codigo = obterCodigoContaParaDominio(regras[chaveNumerarioTributarioMatriz(empresaMatriz, natureza)] || '');
+  if (codigo || normalizarTexto(natureza) !== 'ativo') return codigo;
+  const chaveAnterior = ['CP SIMONE NUMERARIOS TRIBUTOS', limparTextoECD(empresaMatriz)].join(' | ');
+  return obterCodigoContaParaDominio(regras[chaveAnterior] || '');
+}
+
+function consolidarRecebimentosNumerariosTributariosMatriz(itens) {
+  const consolidados = [];
+  const porMatriz = new Map();
+  itens.forEach(item => {
+    if (!item.numerarioTributarioMatriz) {
+      consolidados.push(item);
+      return;
+    }
+    const chave = normalizarTexto(item.empresaMatrizNumerario || item.chaveNumerarioTributario || '');
+    const existente = porMatriz.get(chave);
+    if (!existente) {
+      const novo = {
+        ...item,
+        id: `rec-numerario-tributario-${porMatriz.size}`,
+        tipo: 'Parcelas de Títulos',
+        historico: `Repasses de guias tributárias - ${item.empresaMatrizNumerario}`,
+        movimentos: [...(item.movimentos || [])],
+        qtd: item.movimentos?.length || item.qtd || 1,
+        total: arredondarMoeda(item.total || 0)
+      };
+      porMatriz.set(chave, novo);
+      consolidados.push(novo);
+      return;
+    }
+    existente.movimentos.push(...(item.movimentos || []));
+    existente.qtd += item.movimentos?.length || item.qtd || 1;
+    existente.total = arredondarMoeda(existente.total + (item.total || 0));
+  });
+  return consolidados;
 }
 
 function parcelasNumerariosLinha(r) {
@@ -3079,6 +3113,7 @@ function prepararPagamentosImportados(dados, abrirTelaPendencias = true) {
   const vistas = new Set();
   const regrasResumoVistas = new Set();
   const resumoRegras = { total: 0, okSalvas: 0 };
+  let regrasNumerariosMigradas = false;
   const registrarResumoRegra = (chave, temCodigo) => {
     if (!normalizarTexto(String(chave || '').replace(/\|/g, ''))) return;
     if (regrasResumoVistas.has(chave)) return;
@@ -3106,14 +3141,21 @@ function prepararPagamentosImportados(dados, abrirTelaPendencias = true) {
     if (!forn && !plano) return;
     if (pagamentoEhReembolsoTributarioMatriz(r)) {
       const empresaMatriz = empresaMatrizFilialExportacao(empresaOrigem, r[COLS.CONTA]);
-      const chaveNumerario = chaveNumerarioTributarioMatriz(empresaMatriz);
-      const codigoNumerario = codigoNumerarioTributarioMatriz(regrasSalvas, empresaMatriz);
+      const chaveNumerario = chaveNumerarioTributarioMatriz(empresaMatriz, 'ATIVO');
+      const codigoRegraAnterior = obterCodigoContaParaDominio(
+        encontrarCodigoRegra(regrasSalvas, forn, plano, tipoDoc, historico, escopoRegra)
+      );
+      const codigoNumerario = codigoNumerarioTributarioMatriz(regrasSalvas, empresaMatriz, 'ATIVO') || codigoRegraAnterior;
+      if (codigoNumerario && !codigoNumerarioTributarioMatriz(regrasSalvas, empresaMatriz, 'ATIVO')) {
+        regrasSalvas[chaveNumerario] = codigoNumerario;
+        regrasNumerariosMigradas = true;
+      }
       registrarResumoRegra(chaveNumerario, codigoNumerario);
       if (!codigoNumerario && !vistas.has(chaveNumerario)) {
         vistas.add(chaveNumerario);
         novas.push({
           chave: chaveNumerario,
-          fornecedor: 'Conta Corrente Numerários',
+          fornecedor: 'Conta Corrente Numerários - Ativo',
           plano: 'Guias tributárias pagas pela matriz',
           tipoDoc: 'NUMERÁRIO TRIBUTÁRIO',
           historico: `${forn} - ${historico}`,
@@ -3127,7 +3169,7 @@ function prepararPagamentosImportados(dados, abrirTelaPendencias = true) {
           parcelasNumerarios: true,
           parcelasNumerariosIntercompany: false,
           numerarioTributarioMatriz: true,
-          pontaNumerario: 'MATRIZ',
+          pontaNumerario: 'EMPRESA DO BANCO',
           naturezaNumerario: 'ATIVO',
           escopoRegra: ''
         });
@@ -3244,6 +3286,7 @@ function prepararPagamentosImportados(dados, abrirTelaPendencias = true) {
   });
 
   resumoRegrasImportacaoTemp = resumoRegras;
+  if (regrasNumerariosMigradas) salvarStorageRegrasConciliacao();
   novasChavesTemp = novas;
   codigosTemp = {};
   selecionadasLote = new Set();
@@ -4417,7 +4460,7 @@ function novaChaveDeItemRecebimento(item) {
       chave: item.chaveNumerarioTributario,
       idRecebimento: item.id,
       movimentoRecebimento: item.movimento,
-      fornecedor: 'Conta Corrente Numerários',
+      fornecedor: 'Conta Corrente Numerários - Passivo',
       plano: 'Guias tributárias pagas pela matriz',
       tipoDoc: 'NUMERÁRIO TRIBUTÁRIO',
       historico: item.historico || '',
@@ -4429,8 +4472,8 @@ function novaChaveDeItemRecebimento(item) {
       centroCusto: item.empresaMatrizNumerario || '',
       empresaLancamento: item.empresaMatrizNumerario || '',
       numerarioTributarioMatriz: true,
-      pontaNumerario: 'MATRIZ',
-      naturezaNumerario: 'ATIVO',
+      pontaNumerario: 'CENTRO DE CUSTO',
+      naturezaNumerario: 'PASSIVO',
       escopoRegra: ''
     };
   }
@@ -5777,7 +5820,7 @@ function renderSugestoesConciliacao(sugestoes, qtdPagamentos, qtdMovimentos, ent
     : '';
   const linhasPagamentosPendentes = pendentesPagamento.map(renderLinhaPagamento).join('');
   const regrasRecebimentos = deparaRecebimentos[grupoAtivo] || {};
-  const itensRecebimentoExtrato = Array.from(entradasAgrupadas.values()).map((r, idx) => {
+  const itensRecebimentoExtratoBrutos = Array.from(entradasAgrupadas.values()).map((r, idx) => {
     const primeiroMovimento = r.movimentos?.[0] || {};
     const numerarioTributarioMatriz = r.movimentos?.length > 0
       && r.movimentos.every(movimentoEhEntradaNumerarioTributarioMatriz);
@@ -5791,9 +5834,10 @@ function renderSugestoesConciliacao(sugestoes, qtdPagamentos, qtdMovimentos, ent
       escopoRegra: '',
       numerarioTributarioMatriz,
       empresaMatrizNumerario: empresaMatriz,
-      chaveNumerarioTributario: numerarioTributarioMatriz ? chaveNumerarioTributarioMatriz(empresaMatriz) : ''
+      chaveNumerarioTributario: numerarioTributarioMatriz ? chaveNumerarioTributarioMatriz(empresaMatriz, 'PASSIVO') : ''
     };
   });
+  const itensRecebimentoExtrato = consolidarRecebimentosNumerariosTributariosMatriz(itensRecebimentoExtratoBrutos);
   const itensRecebimentoRateio = conciliacaoUsaRecebimentosDoExtrato()
     ? criarItensRecebimentosRateioAgrupados()
     : [];
@@ -5854,7 +5898,7 @@ function renderSugestoesConciliacao(sugestoes, qtdPagamentos, qtdMovimentos, ent
     }
     if (item.movimento === 'recebimento' && !codigosConciliacaoTemp[item.id]) {
       codigosConciliacaoTemp[item.id] = item.numerarioTributarioMatriz
-        ? codigoNumerarioTributarioMatriz(depara[grupoAtivo] || {}, item.empresaMatrizNumerario)
+        ? codigoNumerarioTributarioMatriz(depara[grupoAtivo] || {}, item.empresaMatrizNumerario, 'PASSIVO')
         : obterCodigoContaParaDominio(encontrarCodigoRegraRecebimentoConciliacao(regrasRecebimentos, item.tipo, item.historico, item.escopoRegra || ''));
     }
     if (item.movimento === 'pagamento-pendente' && !codigosConciliacaoTemp[item.id]) {
@@ -8856,8 +8900,8 @@ function gerarLancamentos(dados, regras) {
     if (acrescimoDesconto > 0) totalAcrescimo += acrescimoDesconto;
     if (pagamentoEhReembolsoTributarioMatriz(r)) {
       const empresaMatriz = empresaMatrizFilialExportacao(empresaBancoRateio, banco);
-      const chaveNumerario = chaveNumerarioTributarioMatriz(empresaMatriz);
-      const codNumerario = codigoNumerarioTributarioMatriz(regras, empresaMatriz);
+      const chaveNumerario = chaveNumerarioTributarioMatriz(empresaMatriz, 'ATIVO');
+      const codNumerario = codigoNumerarioTributarioMatriz(regras, empresaMatriz, 'ATIVO') || codDeparaPrincipal;
       if (!codNumerario) pendentes.add(chaveNumerario);
       lancamentosGerados.push({
         idx,
@@ -9125,36 +9169,42 @@ function adicionarAbaDesconsideradosExportacao(wb, usados) {
 
 function contasNumerariosTributariosMatrizes() {
   const prefixo = 'CP SIMONE NUMERARIOS TRIBUTOS | ';
-  return Object.entries(depara[grupoAtivo] || {}).reduce((itens, [chave, codigo]) => {
-    if (!chave.startsWith(prefixo)) return itens;
-    const empresa = limparTextoECD(chave.slice(prefixo.length));
+  const porEmpresa = new Map();
+  Object.entries(depara[grupoAtivo] || {}).forEach(([chave, codigo]) => {
+    if (!chave.startsWith(prefixo)) return;
+    const partes = chave.slice(prefixo.length).split(' | ');
+    const natureza = normalizarTexto(partes.pop() || '');
+    const empresa = limparTextoECD(partes.join(' | '));
     const conta = obterCodigoContaParaDominio(codigo);
-    if (empresa && conta) itens.push({ empresa, conta });
-    return itens;
-  }, []);
+    if (!empresa || !conta || (natureza !== 'ativo' && natureza !== 'passivo')) return;
+    if (!porEmpresa.has(empresa)) porEmpresa.set(empresa, { empresa, contaAtivo: '', contaPassivo: '' });
+    porEmpresa.get(empresa)[natureza === 'ativo' ? 'contaAtivo' : 'contaPassivo'] = conta;
+  });
+  return [...porEmpresa.values()].filter(item => item.contaAtivo || item.contaPassivo);
 }
 
 function adicionarAbaConferenciaNumerarios(wb, linhas, usados) {
   const contas = contasNumerariosTributariosMatrizes();
   if (!contas.length) return;
-  const cabecalho = ['Código Matriz/Filial', 'Conta Corrente Numerários', 'Débitos', 'Créditos', 'Diferença', 'Status'];
-  const dados = contas.map(({ empresa, conta }) => {
+  const cabecalho = ['Código Matriz/Filial', 'Numerários Ativo', 'Numerários Passivo', 'Débitos Ativo', 'Créditos Passivo', 'Diferença', 'Status'];
+  const dados = contas.map(({ empresa, contaAtivo, contaPassivo }) => {
     const linhasEmpresa = linhas.filter(linha => normalizarTexto(linha?.[7] || '') === normalizarTexto(empresa));
     const debitos = arredondarMoeda(linhasEmpresa
-      .filter(linha => String(linha?.[1] || '') === String(conta))
+      .filter(linha => contaAtivo && String(linha?.[1] || '') === String(contaAtivo))
       .reduce((soma, linha) => soma + Math.abs(numeroMoeda(linha?.[3] || 0)), 0));
     const creditos = arredondarMoeda(linhasEmpresa
-      .filter(linha => String(linha?.[2] || '') === String(conta))
+      .filter(linha => contaPassivo && String(linha?.[2] || '') === String(contaPassivo))
       .reduce((soma, linha) => soma + Math.abs(numeroMoeda(linha?.[3] || 0)), 0));
     const diferenca = arredondarMoeda(debitos - creditos);
-    return [empresa, conta, debitos, creditos, diferenca, Math.abs(diferenca) < 0.01 ? 'CONFERIDO' : 'DIFERENÇA'];
+    const conferido = !!contaAtivo && !!contaPassivo && Math.abs(diferenca) < 0.01;
+    return [empresa, contaAtivo, contaPassivo, debitos, creditos, diferenca, conferido ? 'CONFERIDO' : 'DIFERENÇA'];
   });
-  const totalDebitos = arredondarMoeda(dados.reduce((soma, linha) => soma + linha[2], 0));
-  const totalCreditos = arredondarMoeda(dados.reduce((soma, linha) => soma + linha[3], 0));
+  const totalDebitos = arredondarMoeda(dados.reduce((soma, linha) => soma + linha[3], 0));
+  const totalCreditos = arredondarMoeda(dados.reduce((soma, linha) => soma + linha[4], 0));
   const totalDiferenca = arredondarMoeda(totalDebitos - totalCreditos);
-  dados.push(['TOTAL', '', totalDebitos, totalCreditos, totalDiferenca, Math.abs(totalDiferenca) < 0.01 ? 'CONFERIDO' : 'DIFERENÇA']);
+  dados.push(['TOTAL', '', '', totalDebitos, totalCreditos, totalDiferenca, Math.abs(totalDiferenca) < 0.01 ? 'CONFERIDO' : 'DIFERENÇA']);
   const ws = XLSX.utils.aoa_to_sheet([cabecalho, ...dados]);
-  ws['!cols'] = [{ wch: 30 }, { wch: 28 }, { wch: 16 }, { wch: 16 }, { wch: 16 }, { wch: 14 }];
+  ws['!cols'] = [{ wch: 30 }, { wch: 20 }, { wch: 20 }, { wch: 16 }, { wch: 18 }, { wch: 16 }, { wch: 14 }];
   XLSX.utils.book_append_sheet(wb, ws, nomeAbaExcelSeguro('Conferência Numerários', usados));
 }
 
