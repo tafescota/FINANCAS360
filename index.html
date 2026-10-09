@@ -468,6 +468,7 @@
         <tbody id="tbody-resultado"></tbody>
       </table>
     </div>
+    <div id="resultado-paginacao" class="conciliacao-note" style="margin:-6px 0 16px;text-align:center"></div>
   </div>
 
   <!-- TELA RECEBIMENTOS -->
@@ -626,6 +627,8 @@ let selecionadasLote = new Set();
 let filtrosNovasChaves = { empresa: '', centroCusto: '', fornecedor: '', plano: '', historico: '', tipoRateio: '', numero: '', tipoDoc: '', codigo: '' };
 let ordenacaoNovasChaves = { campo: '', direcao: 'asc' };
 let lancamentosGerados = [];
+const LOTE_RENDER_LANCAMENTOS = 300;
+let limiteRenderLancamentos = LOTE_RENDER_LANCAMENTOS;
 let lancamentosDesconsideradosExportacao = [];
 let editandoRegras = false;
 let editTemp = {};
@@ -1116,6 +1119,91 @@ function pagamentoEhReembolsoTributarioMatriz(r) {
     && fornecedorEhGuiaTributariaMatriz(r?.[COLS.FORNECEDOR]);
 }
 
+const MATRIZES_TRIBUTARIAS_CP_SIMONE = [
+  { matriz: 'SM MATRIZ - 7524', filiais: ['SM FILIAL - 14247'] },
+  { matriz: 'SHIBATA APARECIDA - 18542', filiais: ['ECOVALLE - 18636'] },
+  {
+    matriz: 'HFM - 7549',
+    filiais: [
+      'HFF - 13527',
+      'HFVD - 14352',
+      'HFC - 20760',
+      'SHIBATA CRUZEIRO - 23366',
+      'SHIBATA GUARÁ - 24753'
+    ]
+  }
+];
+
+function matrizTributariaCpSimoneDaFilial(empresa) {
+  if (modoImportacaoDoGrupo() !== 'cp_simone') return '';
+  const empresaCanonica = empresaCanonicaCpSimone(empresa) || limparTextoECD(empresa);
+  const relacao = MATRIZES_TRIBUTARIAS_CP_SIMONE.find(item => item.filiais
+    .some(filial => normalizarTexto(filial) === normalizarTexto(empresaCanonica)));
+  return relacao?.matriz || '';
+}
+
+function pagamentoEhGuiaTributariaFilial(r) {
+  if (modoImportacaoDoGrupo() !== 'cp_simone') return false;
+  const empresa = empresaMatrizFilialExportacao(empresaOrigemLinha(r), r?.[COLS.CONTA]);
+  if (!matrizTributariaCpSimoneDaFilial(empresa)) return false;
+  const plano = normalizarTexto(r?.[COLS.PLANO] || '')
+    .replace(/[^a-z0-9]+/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+  const planosTributarios = new Set([
+    'irpj',
+    'csll contribuicao social',
+    'pis sobre receita bruta',
+    'cofins sobre receita bruta',
+    'inss funcionario',
+    'fgts empresa',
+    'irrf funcionario'
+  ]);
+  return planosTributarios.has(plano) && fornecedorEhGuiaTributariaMatriz(r?.[COLS.FORNECEDOR]);
+}
+
+function tipoGuiaTributaria(valor) {
+  const texto = normalizarTexto(valor || '');
+  if (texto === 'darf') return 'DARF';
+  if (texto === 'fgts') return 'FGTS';
+  if (texto === 'irrf') return 'IRRF';
+  if (texto === 'gps' || texto.includes('guia da previdencia social')) return 'GPS';
+  return '';
+}
+
+function indicesGuiasTributariasFiliaisReembolsadas(dados = []) {
+  if (modoImportacaoDoGrupo() !== 'cp_simone') return new Set();
+  const reembolsosPorGrupo = new Map();
+  const filiaisPorGrupo = new Map();
+  const adicionar = (mapa, chave, valor, idx = null) => {
+    const atual = mapa.get(chave) || { total: 0, indices: [] };
+    atual.total = arredondarMoeda(atual.total + Math.abs(numeroMoeda(valor || 0)));
+    if (idx !== null) atual.indices.push(idx);
+    mapa.set(chave, atual);
+  };
+  dados.forEach((r, idx) => {
+    const tipoGuia = tipoGuiaTributaria(r?.[COLS.FORNECEDOR]);
+    const data = dataKey(r?.[COLS.LIQUIDACAO]);
+    if (!tipoGuia || !data) return;
+    if (pagamentoEhReembolsoTributarioMatriz(r)) {
+      const matriz = empresaMatrizFilialExportacao(empresaOrigemLinha(r), r?.[COLS.CONTA]);
+      adicionar(reembolsosPorGrupo, [normalizarTexto(matriz), data, tipoGuia].join('|'), r?.[COLS.VALOR_LIQ]);
+      return;
+    }
+    if (!pagamentoEhGuiaTributariaFilial(r)) return;
+    const filial = empresaMatrizFilialExportacao(empresaOrigemLinha(r), r?.[COLS.CONTA]);
+    const matriz = matrizTributariaCpSimoneDaFilial(filial);
+    adicionar(filiaisPorGrupo, [normalizarTexto(matriz), data, tipoGuia].join('|'), r?.[COLS.VALOR_LIQ], idx);
+  });
+  const reconhecidos = new Set();
+  filiaisPorGrupo.forEach((grupoFiliais, chave) => {
+    const grupoMatriz = reembolsosPorGrupo.get(chave);
+    if (!grupoMatriz || Math.abs(arredondarMoeda(grupoFiliais.total - grupoMatriz.total)) >= 0.01) return;
+    grupoFiliais.indices.forEach(idx => reconhecidos.add(idx));
+  });
+  return reconhecidos;
+}
+
 function movimentoEhEntradaNumerarioTributarioMatriz(movimento) {
   return modoImportacaoDoGrupo() === 'cp_simone'
     && arredondarMoeda(movimento?.valor || 0) > 0
@@ -1129,9 +1217,15 @@ function chaveNumerarioTributarioMatriz(empresaMatriz, natureza) {
 
 function codigoNumerarioTributarioMatriz(regras, empresaMatriz, natureza) {
   const codigo = obterCodigoContaParaDominio(regras[chaveNumerarioTributarioMatriz(empresaMatriz, natureza)] || '');
-  if (codigo || normalizarTexto(natureza) !== 'ativo') return codigo;
-  const chaveAnterior = ['CP SIMONE NUMERARIOS TRIBUTOS', limparTextoECD(empresaMatriz)].join(' | ');
-  return obterCodigoContaParaDominio(regras[chaveAnterior] || '');
+  if (codigo) return codigo;
+  const naturezaNormalizada = normalizarTexto(natureza);
+  if (naturezaNormalizada === 'ativo') {
+    const chaveAnterior = ['CP SIMONE NUMERARIOS TRIBUTOS', limparTextoECD(empresaMatriz)].join(' | ');
+    const codigoAnterior = obterCodigoContaParaDominio(regras[chaveAnterior] || '');
+    if (codigoAnterior) return codigoAnterior;
+  }
+  if (modoImportacaoDoGrupo() !== 'cp_simone') return '';
+  return naturezaNormalizada === 'ativo' ? '63' : naturezaNormalizada === 'passivo' ? '194' : '';
 }
 
 function consolidarRecebimentosNumerariosTributariosMatriz(itens) {
@@ -4457,8 +4551,8 @@ function novaChaveDeItemRecebimento(item) {
       chave: item.chaveNumerarioTributario,
       idRecebimento: item.id,
       movimentoRecebimento: item.movimento,
-      fornecedor: 'Conta Corrente Numerários - Passivo',
-      plano: 'Guias tributárias pagas pela matriz',
+      fornecedor: 'Conta Corrente Numerários - Ativo',
+      plano: 'Repasses de guias tributárias recebidos pela matriz',
       tipoDoc: 'NUMERÁRIO TRIBUTÁRIO',
       historico: item.historico || '',
       trechoHistorico: '',
@@ -4469,8 +4563,8 @@ function novaChaveDeItemRecebimento(item) {
       centroCusto: item.empresaMatrizNumerario || '',
       empresaLancamento: item.empresaMatrizNumerario || '',
       numerarioTributarioMatriz: true,
-      pontaNumerario: 'CENTRO DE CUSTO',
-      naturezaNumerario: 'PASSIVO',
+      pontaNumerario: 'EMPRESA DO BANCO',
+      naturezaNumerario: 'ATIVO',
       escopoRegra: ''
     };
   }
@@ -5822,7 +5916,10 @@ function renderSugestoesConciliacao(sugestoes, qtdPagamentos, qtdMovimentos, ent
     const numerarioTributarioMatriz = r.movimentos?.length > 0
       && r.movimentos.every(movimentoEhEntradaNumerarioTributarioMatriz);
     const empresaMatriz = numerarioTributarioMatriz
-      ? empresaBancoConciliacao(r, primeiroMovimento)
+      ? empresaMatrizFilialExportacao(
+        empresaBancoConciliacao(r, primeiroMovimento),
+        primeiroMovimento.conta || r.conta || ''
+      )
       : '';
     return {
       ...r,
@@ -5831,7 +5928,7 @@ function renderSugestoesConciliacao(sugestoes, qtdPagamentos, qtdMovimentos, ent
       escopoRegra: '',
       numerarioTributarioMatriz,
       empresaMatrizNumerario: empresaMatriz,
-      chaveNumerarioTributario: numerarioTributarioMatriz ? chaveNumerarioTributarioMatriz(empresaMatriz, 'PASSIVO') : ''
+      chaveNumerarioTributario: numerarioTributarioMatriz ? chaveNumerarioTributarioMatriz(empresaMatriz, 'ATIVO') : ''
     };
   });
   const itensRecebimentoExtrato = consolidarRecebimentosNumerariosTributariosMatriz(itensRecebimentoExtratoBrutos);
@@ -5895,8 +5992,12 @@ function renderSugestoesConciliacao(sugestoes, qtdPagamentos, qtdMovimentos, ent
     }
     if (item.movimento === 'recebimento' && !codigosConciliacaoTemp[item.id]) {
       codigosConciliacaoTemp[item.id] = item.numerarioTributarioMatriz
-        ? codigoNumerarioTributarioMatriz(depara[grupoAtivo] || {}, item.empresaMatrizNumerario, 'PASSIVO')
+        ? codigoNumerarioTributarioMatriz(depara[grupoAtivo] || {}, item.empresaMatrizNumerario, 'ATIVO')
         : obterCodigoContaParaDominio(encontrarCodigoRegraRecebimentoConciliacao(regrasRecebimentos, item.tipo, item.historico, item.escopoRegra || ''));
+      if (item.numerarioTributarioMatriz && codigosConciliacaoTemp[item.id] && item.chaveNumerarioTributario) {
+        if (!depara[grupoAtivo]) depara[grupoAtivo] = {};
+        depara[grupoAtivo][item.chaveNumerarioTributario] = codigosConciliacaoTemp[item.id];
+      }
     }
     if (item.movimento === 'pagamento-pendente' && !codigosConciliacaoTemp[item.id]) {
       const codigoPagamento = codigoRegraPagamentoConciliacao(item);
@@ -6253,7 +6354,7 @@ function abrirModalPendenciasConciliacao() {
     const ehPagamentoPendente = item.movimento === 'pagamento-pendente';
     const naturezaConta = (item.naturezaNumerario || item.tipo || '').toString().toLowerCase();
     const contaAlvo = ehNumerarioTributario
-      ? 'Numerários passivo'
+      ? 'Numerários ativo'
       : ehNumerarioPendencia
       ? `Numerários ${naturezaConta}`
       : ehRecebimentoPendencia
@@ -6264,7 +6365,7 @@ function abrirModalPendenciasConciliacao() {
             ? 'Conta do de-para do pagamento'
             : 'Conciliação com extrato';
     const placeholderConta = ehNumerarioTributario
-      ? 'Informe a conta de Numerários passivo'
+      ? 'Informe a conta de Numerários ativo'
       : ehNumerarioPendencia
       ? `Informe a conta de ${contaAlvo}`
       : ehRecebimentoPendencia
@@ -6307,7 +6408,7 @@ function abrirModalPendenciasConciliacao() {
     const empresaCol = item.empresaBanco || item.empresa || '';
     const centroCol = item.centroCusto || item.empresaLancamento || '';
     const tipoOperacaoPendencia = ehNumerarioTributario
-      ? 'NUMERÁRIO PASSIVO'
+      ? 'NUMERÁRIO ATIVO'
       : ehNumerarioPendencia
       ? `NUMERÁRIO ${String(item.naturezaNumerario || item.tipo || '').toUpperCase()}`
       : item.rateioRecebimento
@@ -6336,7 +6437,7 @@ function abrirModalPendenciasConciliacao() {
           ? 'Sem vínculo individual'
           : (item.plano || item.tipo || '');
     let orientacaoItem = ehNumerarioTributario
-      ? 'Preencha a conta de Numerários Passivo da matriz. O banco vem do extrato.'
+      ? 'A entrada do reembolso baixa a conta de Numerários Ativo da matriz. O banco vem do extrato.'
       : ehNumerarioPendencia
       ? `Preencha ${contaAlvo}. Não é banco nem cliente.`
       : ehRecebimentoPendencia
@@ -6816,6 +6917,7 @@ function tipoRateioDominioPagamento(lancamento) {
 function lancamentosPagamentosComNumerariosDesatualizados() {
   return lancamentosGerados.some(lancamento => {
     if (!lancamento?.lancamentoNumerario || lancamento?.origemConciliacao) return false;
+    if (lancamento?.numerarioTributarioMatriz || lancamento?.numerarioTributarioFilial) return false;
     const linhaOrigem = linhasImportadas[lancamento.idx];
     if (!linhaOrigem) return false;
     return !rateioIntercompanyLinha(linhaOrigem) && !parcelasNumerariosLinha(linhaOrigem);
@@ -8811,6 +8913,7 @@ function arredondarMoeda(v) {
 
 function gerarLancamentos(dados, regras) {
   lancamentosGerados = [];
+  limiteRenderLancamentos = LOTE_RENDER_LANCAMENTOS;
   lancamentosDesconsideradosExportacao = [];
   let totalLiquido = 0;
   let totalBruto = 0;
@@ -8818,6 +8921,7 @@ function gerarLancamentos(dados, regras) {
   let totalAcrescimo = 0;
   const pendentes = new Set();
   const ajustes = [];
+  const guiasTributariasFiliaisReembolsadas = indicesGuiasTributariasFiliaisReembolsadas(dados);
 
   function gerarLancamentoAjuste({ idx, dataLiq, forn, plano, tipoDoc, historico, escopoRegra, complemento, empresa, acrescimoDesconto, valorLiq, tipoRateioAtual, multiploAutomatico = false, codPrincipal = '', codBanco = '', loteMultiploId = '' }) {
     if (acrescimoDesconto === 0) return;
@@ -8928,6 +9032,39 @@ function gerarLancamentos(dados, regras) {
         tipoRateio: 'TRANSFERENCIA DE NUMERARIOS',
         lancamentoNumerario: true,
         numerarioTributarioMatriz: true
+      });
+      return;
+    }
+    if (guiasTributariasFiliaisReembolsadas.has(idx)) {
+      const empresaFilial = empresaMatrizFilialExportacao(empresaBancoRateio, banco);
+      const chavePassivo = chaveNumerarioTributarioMatriz(empresaFilial, 'PASSIVO');
+      const codPassivo = codigoNumerarioTributarioMatriz(regras, empresaFilial, 'PASSIVO');
+      if (!codDeparaPrincipal) pendentes.add(chave);
+      if (!codPassivo) pendentes.add(chavePassivo);
+      const dadosComuns = {
+        idx,
+        data: dataLiq,
+        valorLiq: Math.abs(valorLiq),
+        valorFmt: fmtValor(Math.abs(valorLiq)),
+        complemento,
+        empresa: empresaFilial,
+        plano,
+        acrescimoDesconto,
+        tipoRateio: 'TRANSFERENCIA DE NUMERARIOS',
+        lancamentoNumerario: true,
+        numerarioTributarioFilial: true
+      };
+      lancamentosGerados.push({
+        ...dadosComuns,
+        codDebito: codDeparaPrincipal,
+        codCredito: codPassivo,
+        semCodigo: !codDeparaPrincipal || !codPassivo
+      });
+      lancamentosGerados.push({
+        ...dadosComuns,
+        codDebito: codPassivo,
+        codCredito,
+        semCodigo: !codPassivo || !codCredito
       });
       return;
     }
@@ -9101,9 +9238,16 @@ function gerarLancamentos(dados, regras) {
     aa.innerHTML = '';
   }
 
-  // Tabela
+  renderTabelaLancamentosResultado();
+
+  mostrarTela('tela-resultado');
+}
+
+function renderTabelaLancamentosResultado() {
   const tbody = document.getElementById('tbody-resultado');
-  tbody.innerHTML = lancamentosGerados.map((l, i) => `
+  if (!tbody) return;
+  const visiveis = lancamentosGerados.slice(0, limiteRenderLancamentos);
+  tbody.innerHTML = visiveis.map((l, i) => `
     <tr class="${l.semCodigo ? 'sem-codigo' : (i % 2 === 1 ? 'alt' : '')}">
       <td style="white-space:nowrap">${l.data}</td>
       <td class="mono" style="${l.semCodigo ? 'color:#c2410c;font-style:italic' : ''}">${l.codDebito || 'sem código'}</td>
@@ -9114,8 +9258,17 @@ function gerarLancamentos(dados, regras) {
       <td class="resultado-complemento" title="${escapeAttr(l.complemento || '')}">${escapeHtml(l.complemento || '')}</td>
     </tr>
   `).join('');
+  const paginacao = document.getElementById('resultado-paginacao');
+  if (!paginacao) return;
+  const restantes = Math.max(0, lancamentosGerados.length - visiveis.length);
+  paginacao.innerHTML = restantes
+    ? `Mostrando ${visiveis.length.toLocaleString('pt-BR')} de ${lancamentosGerados.length.toLocaleString('pt-BR')} lançamentos. A exportação contém todos. <button type="button" class="btn btn-sm" onclick="mostrarMaisLancamentosResultado()">Mostrar mais ${Math.min(LOTE_RENDER_LANCAMENTOS, restantes).toLocaleString('pt-BR')}</button>`
+    : `Mostrando todos os ${lancamentosGerados.length.toLocaleString('pt-BR')} lançamentos.`;
+}
 
-  mostrarTela('tela-resultado');
+function mostrarMaisLancamentosResultado() {
+  limiteRenderLancamentos += LOTE_RENDER_LANCAMENTOS;
+  renderTabelaLancamentosResultado();
 }
 
 function montarLinhasDominioPagamentos() {
@@ -9194,27 +9347,59 @@ function contasNumerariosTributariosMatrizes() {
 }
 
 function adicionarAbaConferenciaNumerarios(wb, linhas, usados) {
-  const contas = contasNumerariosTributariosMatrizes();
-  if (!contas.length) return;
-  const cabecalho = ['Código Matriz/Filial', 'Numerários Ativo', 'Numerários Passivo', 'Débitos Ativo', 'Créditos Passivo', 'Diferença', 'Status'];
-  const dados = contas.map(({ empresa, contaAtivo, contaPassivo }) => {
-    const linhasEmpresa = linhas.filter(linha => normalizarTexto(linha?.[7] || '') === normalizarTexto(empresa));
-    const debitos = arredondarMoeda(linhasEmpresa
-      .filter(linha => contaAtivo && String(linha?.[1] || '') === String(contaAtivo))
-      .reduce((soma, linha) => soma + Math.abs(numeroMoeda(linha?.[3] || 0)), 0));
-    const creditos = arredondarMoeda(linhasEmpresa
-      .filter(linha => contaPassivo && String(linha?.[2] || '') === String(contaPassivo))
-      .reduce((soma, linha) => soma + Math.abs(numeroMoeda(linha?.[3] || 0)), 0));
-    const diferenca = arredondarMoeda(debitos - creditos);
-    const conferido = !!contaAtivo && !!contaPassivo && Math.abs(diferenca) < 0.01;
-    return [empresa, contaAtivo, contaPassivo, debitos, creditos, diferenca, conferido ? 'CONFERIDO' : 'DIFERENÇA'];
+  const contasConfiguradas = contasNumerariosTributariosMatrizes();
+  const configuracaoPorEmpresa = new Map(contasConfiguradas.map(item => [normalizarTexto(item.empresa), item]));
+  const empresas = new Map();
+  linhas.forEach(linha => {
+    const empresa = empresaMatrizFilialExportacao(linha?.[7] || '', linha?.[1], linha?.[2]);
+    const configurada = configuracaoPorEmpresa.get(normalizarTexto(empresa));
+    const contaAtivo = modoImportacaoDoGrupo() === 'cp_simone' ? '63' : configurada?.contaAtivo || '';
+    const contaPassivo = modoImportacaoDoGrupo() === 'cp_simone' ? '194' : configurada?.contaPassivo || '';
+    const movimentaNumerarios = [linha?.[1], linha?.[2]].some(conta =>
+      (contaAtivo && String(conta || '') === String(contaAtivo))
+      || (contaPassivo && String(conta || '') === String(contaPassivo))
+    );
+    if (empresa && movimentaNumerarios) empresas.set(normalizarTexto(empresa), { empresa, contaAtivo, contaPassivo });
   });
-  const totalDebitos = arredondarMoeda(dados.reduce((soma, linha) => soma + linha[3], 0));
-  const totalCreditos = arredondarMoeda(dados.reduce((soma, linha) => soma + linha[4], 0));
-  const totalDiferenca = arredondarMoeda(totalDebitos - totalCreditos);
-  dados.push(['TOTAL', '', '', totalDebitos, totalCreditos, totalDiferenca, Math.abs(totalDiferenca) < 0.01 ? 'CONFERIDO' : 'DIFERENÇA']);
+  contasConfiguradas.forEach(item => {
+    const chave = normalizarTexto(item.empresa);
+    if (!empresas.has(chave)) empresas.set(chave, item);
+  });
+  if (!empresas.size) return;
+  const cabecalho = [
+    'Código Matriz/Filial', 'Numerários Ativo', 'Débitos Ativo', 'Créditos Ativo', 'Saldo Ativo',
+    'Numerários Passivo', 'Débitos Passivo', 'Créditos Passivo', 'Saldo Passivo',
+    'Dif. D Ativo x C Passivo', 'Dif. C Ativo x D Passivo', 'Status'
+  ];
+  const totalConta = (linhasEmpresa, conta, coluna) => arredondarMoeda(linhasEmpresa
+    .filter(linha => conta && String(linha?.[coluna] || '') === String(conta))
+    .reduce((soma, linha) => soma + Math.abs(numeroMoeda(linha?.[3] || 0)), 0));
+  const dados = [...empresas.values()]
+    .sort((a, b) => a.empresa.localeCompare(b.empresa, 'pt-BR'))
+    .map(({ empresa, contaAtivo, contaPassivo }) => {
+      const linhasEmpresa = linhas.filter(linha => normalizarTexto(empresaMatrizFilialExportacao(linha?.[7] || '', linha?.[1], linha?.[2])) === normalizarTexto(empresa));
+      const debitosAtivo = totalConta(linhasEmpresa, contaAtivo, 1);
+      const creditosAtivo = totalConta(linhasEmpresa, contaAtivo, 2);
+      const saldoAtivo = arredondarMoeda(debitosAtivo - creditosAtivo);
+      const debitosPassivo = totalConta(linhasEmpresa, contaPassivo, 1);
+      const creditosPassivo = totalConta(linhasEmpresa, contaPassivo, 2);
+      const saldoPassivo = arredondarMoeda(debitosPassivo - creditosPassivo);
+      const conferido = Math.abs(saldoAtivo) < 0.01 && Math.abs(saldoPassivo) < 0.01;
+      return [empresa, contaAtivo, debitosAtivo, creditosAtivo, saldoAtivo, contaPassivo, debitosPassivo, creditosPassivo, saldoPassivo, '', '', conferido ? 'CONFERIDO' : 'DIFERENÇA'];
+    });
+  const total = indice => arredondarMoeda(dados.reduce((soma, linha) => soma + linha[indice], 0));
+  const saldoAtivoTotal = arredondarMoeda(total(2) - total(3));
+  const saldoPassivoTotal = arredondarMoeda(total(6) - total(7));
+  const diferencaConstituicao = arredondarMoeda(total(2) - total(7));
+  const diferencaLiquidacao = arredondarMoeda(total(3) - total(6));
+  const conferenciaCompleta = Math.abs(saldoAtivoTotal) < 0.01
+    && Math.abs(saldoPassivoTotal) < 0.01
+    && Math.abs(diferencaConstituicao) < 0.01
+    && Math.abs(diferencaLiquidacao) < 0.01;
+  dados.push(['TOTAL', '', total(2), total(3), saldoAtivoTotal, '', total(6), total(7), saldoPassivoTotal,
+    diferencaConstituicao, diferencaLiquidacao, conferenciaCompleta ? 'CONFERIDO' : 'DIFERENÇA']);
   const ws = XLSX.utils.aoa_to_sheet([cabecalho, ...dados]);
-  ws['!cols'] = [{ wch: 30 }, { wch: 20 }, { wch: 20 }, { wch: 16 }, { wch: 18 }, { wch: 16 }, { wch: 14 }];
+  ws['!cols'] = [{ wch: 30 }, { wch: 18 }, { wch: 16 }, { wch: 16 }, { wch: 16 }, { wch: 18 }, { wch: 16 }, { wch: 18 }, { wch: 16 }, { wch: 24 }, { wch: 24 }, { wch: 14 }];
   XLSX.utils.book_append_sheet(wb, ws, nomeAbaExcelSeguro('Conferência Numerários', usados));
 }
 
