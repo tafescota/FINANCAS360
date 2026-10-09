@@ -3113,7 +3113,6 @@ function prepararPagamentosImportados(dados, abrirTelaPendencias = true) {
   const vistas = new Set();
   const regrasResumoVistas = new Set();
   const resumoRegras = { total: 0, okSalvas: 0 };
-  let regrasNumerariosMigradas = false;
   const registrarResumoRegra = (chave, temCodigo) => {
     if (!normalizarTexto(String(chave || '').replace(/\|/g, ''))) return;
     if (regrasResumoVistas.has(chave)) return;
@@ -3148,7 +3147,6 @@ function prepararPagamentosImportados(dados, abrirTelaPendencias = true) {
       const codigoNumerario = codigoNumerarioTributarioMatriz(regrasSalvas, empresaMatriz, 'ATIVO') || codigoRegraAnterior;
       if (codigoNumerario && !codigoNumerarioTributarioMatriz(regrasSalvas, empresaMatriz, 'ATIVO')) {
         regrasSalvas[chaveNumerario] = codigoNumerario;
-        regrasNumerariosMigradas = true;
       }
       registrarResumoRegra(chaveNumerario, codigoNumerario);
       if (!codigoNumerario && !vistas.has(chaveNumerario)) {
@@ -3286,7 +3284,6 @@ function prepararPagamentosImportados(dados, abrirTelaPendencias = true) {
   });
 
   resumoRegrasImportacaoTemp = resumoRegras;
-  if (regrasNumerariosMigradas) salvarStorageRegrasConciliacao();
   novasChavesTemp = novas;
   codigosTemp = {};
   selecionadasLote = new Set();
@@ -6251,10 +6248,13 @@ function abrirModalPendenciasConciliacao() {
       .slice(0, 20);
     const ehNumerarioPendencia = item.movimento === 'numerario-rateio';
     const ehRecebimentoPendencia = item.movimento === 'recebimento';
+    const ehNumerarioTributario = !!item.numerarioTributarioMatriz;
     const ehSaidaPendente = item.movimento === 'saida-pendente';
     const ehPagamentoPendente = item.movimento === 'pagamento-pendente';
     const naturezaConta = (item.naturezaNumerario || item.tipo || '').toString().toLowerCase();
-    const contaAlvo = ehNumerarioPendencia
+    const contaAlvo = ehNumerarioTributario
+      ? 'Numerários passivo'
+      : ehNumerarioPendencia
       ? `Numerários ${naturezaConta}`
       : ehRecebimentoPendencia
         ? 'Conta do cliente/recebimento'
@@ -6263,7 +6263,9 @@ function abrirModalPendenciasConciliacao() {
           : ehPagamentoPendente
             ? 'Conta do de-para do pagamento'
             : 'Conciliação com extrato';
-    const placeholderConta = ehNumerarioPendencia
+    const placeholderConta = ehNumerarioTributario
+      ? 'Informe a conta de Numerários passivo'
+      : ehNumerarioPendencia
       ? `Informe a conta de ${contaAlvo}`
       : ehRecebimentoPendencia
         ? 'Informe a conta do cliente/recebimento'
@@ -6304,13 +6306,17 @@ function abrirModalPendenciasConciliacao() {
         : `<input type="text" class="conta-autocomplete" data-conciliacao-modal-id="${escapeAttr(item.id)}" value="${escapeAttr(valor)}" placeholder="${escapeAttr(placeholderConta)}" oninput="atualizarCodigoConciliacaoModal(this); criarAutocompleteConta(this)" style="width:100%">`;
     const empresaCol = item.empresaBanco || item.empresa || '';
     const centroCol = item.centroCusto || item.empresaLancamento || '';
-    const tipoOperacaoPendencia = ehNumerarioPendencia
+    const tipoOperacaoPendencia = ehNumerarioTributario
+      ? 'NUMERÁRIO PASSIVO'
+      : ehNumerarioPendencia
       ? `NUMERÁRIO ${String(item.naturezaNumerario || item.tipo || '').toUpperCase()}`
       : item.rateioRecebimento
         ? tipoRateioOperacao(item.empresaBanco || item.empresa, item.centroCusto, true)
         : '';
     const classeTipoOperacao = tipoOperacaoPendencia === 'PROPRIO' ? 'badge-blue' : '';
-    let fornecedorCol = ehNumerarioPendencia
+    let fornecedorCol = ehNumerarioTributario
+      ? 'Numerários tributários da matriz'
+      : ehNumerarioPendencia
       ? (item.pontaNumerario === 'EMPRESA DO BANCO' ? 'Numerários da empresa do banco' : 'Numerários da unidade da despesa')
       : fluxoRecebimentos && ehRecebimentoPendencia
         ? (item.tipo || '')
@@ -6320,14 +6326,18 @@ function abrirModalPendenciasConciliacao() {
         ? 'Numerários da conta de origem'
         : 'Numerários da conta de destino';
     }
-    const planoCol = ehNumerarioPendencia
+    const planoCol = ehNumerarioTributario
+      ? contaAlvo
+      : ehNumerarioPendencia
       ? contaAlvo
       : fluxoRecebimentos && ehRecebimentoPendencia
         ? 'Conta do recebimento'
         : ehSaidaPendente
           ? 'Sem vínculo individual'
           : (item.plano || item.tipo || '');
-    let orientacaoItem = ehNumerarioPendencia
+    let orientacaoItem = ehNumerarioTributario
+      ? 'Preencha a conta de Numerários Passivo da matriz. O banco vem do extrato.'
+      : ehNumerarioPendencia
       ? `Preencha ${contaAlvo}. Não é banco nem cliente.`
       : ehRecebimentoPendencia
         ? 'Preencha a conta do cliente/recebimento. O banco vem do extrato.'
