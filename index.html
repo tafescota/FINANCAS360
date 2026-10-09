@@ -3643,7 +3643,6 @@ function calcularConferenciaContasDominio(linhas = [], movimentos = extratoBanca
       dominioEntradas: 0,
       dominioSaidas: 0
     });
-    if (movimentoEhAjusteFechamentoCaixa(mov)) return;
     const item = contas.get(chave);
     const valor = Math.abs(arredondarMoeda(mov.valor || 0));
     if (mov.valor > 0) item.extratoEntradas = arredondarMoeda(item.extratoEntradas + valor);
@@ -5202,10 +5201,10 @@ function htmlAvisoAjustesFechamentoCaixaConciliacao() {
   const resumo = resumoAjustesFechamentoCaixaConciliacao();
   if (!resumo.qtdPagamentos && !resumo.qtdMovimentos) return '';
   return `<div class="alert alert-info" style="margin:10px 0">
-    <strong>Ajustes de fechamento fora do confronto:</strong>
+    <strong>Ajustes automáticos de fechamento:</strong>
     ${resumo.qtdPagamentos} título${resumo.qtdPagamentos !== 1 ? 's' : ''} de FALTA DE CAIXA (R$ ${fmtValor(resumo.valorPagamentos)})
     ${resumo.qtdMovimentos ? ` e ${resumo.qtdMovimentos} movimento${resumo.qtdMovimentos !== 1 ? 's' : ''} correspondente${resumo.qtdMovimentos !== 1 ? 's' : ''} no extrato (R$ ${fmtValor(resumo.valorMovimentos)})` : ''}.
-    Eles também ficam fora do arquivo importável e são listados na aba Desconsiderados da exportação.
+    Os títulos automáticos continuam na aba Desconsiderados; somente os movimentos efetivos do extrato são exportados em FALTA DE CAIXA para zerar o caixa.
   </div>`;
 }
 
@@ -5219,7 +5218,6 @@ function movimentoEhSaidaConciliavelPagamento(m) {
 
 function movimentoEhSaidaPendenteExportavel(m) {
   if (!m || m.valor >= 0) return false;
-  if (movimentoEhAjusteFechamentoCaixa(m)) return false;
   // Toda saída não conciliada precisa permanecer visível. Transferências já
   // pareadas são retiradas antes desta etapa; as demais exigem classificação
   // para que nenhum valor do extrato desapareça da exportação.
@@ -5227,6 +5225,7 @@ function movimentoEhSaidaPendenteExportavel(m) {
 }
 
 const CODIGO_CLIENTES_CP_SIMONE = '1152';
+const CODIGO_FALTA_CAIXA_CP_SIMONE = '451';
 
 function movimentoEhSaidaCaixaParaBancoCpSimone(movimento = {}) {
   if (modoImportacaoDoGrupo() !== 'cp_simone' || arredondarMoeda(movimento.valor || 0) >= 0) return false;
@@ -6154,7 +6153,9 @@ function renderSugestoesConciliacao(sugestoes, qtdPagamentos, qtdMovimentos, ent
         return;
       }
       const movimento = extratoBancarioTemp[item.idxOriginal] || item;
-      codigosConciliacaoTemp[item.id] = movimentoEhSaidaCaixaParaBancoCpSimone(movimento)
+      codigosConciliacaoTemp[item.id] = movimentoEhAjusteFechamentoCaixa(movimento)
+        ? CODIGO_FALTA_CAIXA_CP_SIMONE
+        : movimentoEhSaidaCaixaParaBancoCpSimone(movimento)
         ? CODIGO_CLIENTES_CP_SIMONE
         : obterCodigoContaParaDominio(regraSaidaSalva)
           || codigoRegraPagamentoParaSaidaExtrato(movimento)
@@ -7276,7 +7277,9 @@ function montarLinhasDominioConciliacao({ validarPendencias = true } = {}) {
   });
   itensSaidasExtras.forEach(item => {
     const mov = extratoBancarioTemp[item.idxOriginal] || item;
-    const codigoDebito = movimentoEhSaidaCaixaParaBancoCpSimone(mov)
+    const codigoDebito = movimentoEhAjusteFechamentoCaixa(mov)
+      ? CODIGO_FALTA_CAIXA_CP_SIMONE
+      : movimentoEhSaidaCaixaParaBancoCpSimone(mov)
       ? CODIGO_CLIENTES_CP_SIMONE
       : obterCodigoContaParaDominio(codigosConciliacaoTemp[item.id]);
     if (!codigoDebito) return;

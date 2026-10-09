@@ -50,20 +50,25 @@ const resultado = vm.runInContext(`(() => {
     historico: 'DEPOSITO C/CORRENTE-BDN', complemento: 'ERRO BANCO',
     tipoConciliacao: 'Parcelas de Títulos'
   };
+  const faltaCaixa = {
+    data: new Date(2026, 7, 3), conta: 'HFC - CAIXA LOJA', valor: -0.46,
+    complemento: 'VENDAS DINHEIRO', tipoConciliacao: 'Parcelas de Títulos'
+  };
   const aplicacao = {
     data: new Date(2026, 7, 4), conta: 'INFINITY - BANCO', valor: 35000,
     historico: 'RESGATE - CDB', complemento: 'INFINITY - APLICAÇÃO',
     tipoConciliacao: 'Transferência entre Contas'
   };
 
-  extratoBancarioTemp = [caixa, banco, misto, mistoDeposito, erroBanco, aplicacao];
+  extratoBancarioTemp = [caixa, banco, misto, mistoDeposito, erroBanco, aplicacao, faltaCaixa];
   conciliacaoItensTemp = [
     { id: 'saida-caixa', movimento: 'saida-pendente', idxOriginal: 0, chaveRegraSaida: 'carrefour-antiga' },
     { id: 'rec-banco', movimento: 'recebimento', tipo: banco.tipoConciliacao, historico: banco.historico, conta: banco.conta, movimentos: [banco] },
     { id: 'rec-misto', movimento: 'recebimento', tipo: misto.tipoConciliacao, historico: misto.historico, conta: misto.conta, movimentos: [misto] },
     { id: 'rec-misto-deposito', movimento: 'recebimento', tipo: mistoDeposito.tipoConciliacao, historico: mistoDeposito.historico, conta: mistoDeposito.conta, movimentos: [mistoDeposito] },
     { id: 'rec-erro', movimento: 'recebimento', tipo: erroBanco.tipoConciliacao, historico: erroBanco.historico, conta: erroBanco.conta, movimentos: [erroBanco] },
-    { id: 'rec-aplicacao', movimento: 'recebimento', tipo: aplicacao.tipoConciliacao, historico: aplicacao.historico, conta: aplicacao.conta, movimentos: [aplicacao] }
+    { id: 'rec-aplicacao', movimento: 'recebimento', tipo: aplicacao.tipoConciliacao, historico: aplicacao.historico, conta: aplicacao.conta, movimentos: [aplicacao] },
+    { id: 'saida-falta-caixa', movimento: 'saida-pendente', idxOriginal: 6, chaveRegraSaida: 'falta-caixa-antiga' }
   ];
   codigosConciliacaoTemp = {
     'saida-caixa': '211',
@@ -71,7 +76,8 @@ const resultado = vm.runInContext(`(() => {
     'rec-misto': '5',
     'rec-misto-deposito': '5',
     'rec-erro': '278',
-    'rec-aplicacao': '21'
+    'rec-aplicacao': '21',
+    'saida-falta-caixa': ''
   };
   depara = { [grupoAtivo]: {} };
   deparaRecebimentos = { [grupoAtivo]: {} };
@@ -112,6 +118,10 @@ const resgate = porValor.get(35000);
 if (!resgate || resgate.credito !== '21') {
   throw new Error(`O resgate de aplicação foi alterado: ${JSON.stringify(resgate)}.`);
 }
+const linhaFaltaCaixa = porValor.get(0.46);
+if (!linhaFaltaCaixa || linhaFaltaCaixa.debito !== '451' || linhaFaltaCaixa.credito !== 'HFC - CAIXA LOJA') {
+  throw new Error(`A falta de caixa não foi considerada: ${JSON.stringify(linhaFaltaCaixa)}.`);
+}
 if (resultado.paresCp !== 0) throw new Error('Caixa e banco foram pareados diretamente na CP SIMONE.');
 if (resultado.detectaForaCp || resultado.aplicacaoEhDeposito) {
   throw new Error(`A regra alcançou aplicação ou outro grupo: ${JSON.stringify(resultado)}.`);
@@ -124,5 +134,6 @@ console.log(JSON.stringify({
   mistosViaClientes: true,
   erroBancoViaClientes: true,
   aplicacaoPreservada: true,
+  faltaCaixaConsiderada: true,
   outrosGruposPreservados: true
 }, null, 2));
