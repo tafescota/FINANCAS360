@@ -4642,7 +4642,10 @@ function carregarCodigosItensRecebimentos(itens) {
   itens.forEach(item => {
     if (!(item.id in codigosConciliacaoTemp)) codigosConciliacaoTemp[item.id] = '';
     if (item.movimento === 'recebimento' && !codigosConciliacaoTemp[item.id]) {
-      codigosConciliacaoTemp[item.id] = obterCodigoContaParaDominio(encontrarCodigoRegraRecebimentoConciliacao(regrasRecebimentos, item.tipo, item.historico, item.escopoRegra || ''));
+      const movimentos = item.movimentos?.length ? item.movimentos : [item];
+      codigosConciliacaoTemp[item.id] = movimentos.every(movimentoEhDepositoCaixaNoBancoCpSimone)
+        ? CODIGO_CLIENTES_CP_SIMONE
+        : obterCodigoContaParaDominio(encontrarCodigoRegraRecebimentoConciliacao(regrasRecebimentos, item.tipo, item.historico, item.escopoRegra || ''));
     }
     if (item.movimento === 'numerario-rateio' && !codigosConciliacaoTemp[item.id]) {
       codigosConciliacaoTemp[item.id] = obterCodigoContaParaDominio(regrasNumerarios[item.chave] || '');
@@ -5223,6 +5226,42 @@ function movimentoEhSaidaPendenteExportavel(m) {
   return true;
 }
 
+const CODIGO_CLIENTES_CP_SIMONE = '1152';
+
+function movimentoEhSaidaCaixaParaBancoCpSimone(movimento = {}) {
+  if (modoImportacaoDoGrupo() !== 'cp_simone' || arredondarMoeda(movimento.valor || 0) >= 0) return false;
+  const conta = normalizarTexto(movimento.conta || '');
+  const tipo = normalizarTexto(movimento.tipoConciliacao || '');
+  const destino = normalizarTexto([
+    movimento.historico,
+    movimento.complemento,
+    movimento.documento
+  ].filter(Boolean).join(' '));
+  return conta.includes('caixa loja')
+    && tipo.includes('transferencia entre contas')
+    && destino.includes('banco');
+}
+
+function movimentoEhDepositoCaixaNoBancoCpSimone(movimento = {}) {
+  if (modoImportacaoDoGrupo() !== 'cp_simone' || arredondarMoeda(movimento.valor || 0) <= 0) return false;
+  const conta = normalizarTexto(movimento.conta || '');
+  if (!conta.includes('banco')) return false;
+  const descricao = normalizarTexto([
+    movimento.historico,
+    movimento.complemento,
+    movimento.documento
+  ].filter(Boolean).join(' '));
+  return descricao.includes('caixa loja')
+    || descricao.includes('dep dinheiro')
+    || descricao.includes('deposito c/corrente')
+    || descricao.includes('dep disponivel caixa');
+}
+
+function movimentoEhDepositoCaixaBancoCpSimone(movimento = {}) {
+  return movimentoEhSaidaCaixaParaBancoCpSimone(movimento)
+    || movimentoEhDepositoCaixaNoBancoCpSimone(movimento);
+}
+
 function movimentoEhSaidaConferenciaPagamento(m, pagamentos = [], pagamentosPorDataValor = null) {
   if (!m || m.valor >= 0) return false;
   if (movimentoEhAjusteFechamentoCaixa(m)) return false;
@@ -5257,6 +5296,9 @@ function paresTransferenciasExtrato(movimentos = extratoBancarioTemp) {
   const saidas = new Map();
   movimentos.forEach((m, idx) => {
     if (!m?.valor) return;
+    // Caixa e banco possuem datas e agrupamentos diferentes na CP SIMONE.
+    // Cada ponta precisa passar por Clientes (1152), sem pareamento direto.
+    if (movimentoEhDepositoCaixaBancoCpSimone(m)) return;
     const transferencia = movimentoEhTransferenciaEntreContas(m);
     const saidaMista = m.valor < 0 && normalizarTexto(m.tipoConciliacao || '').includes('conciliacao mista');
     if (!transferencia && !saidaMista) return;
@@ -6112,17 +6154,22 @@ function renderSugestoesConciliacao(sugestoes, qtdPagamentos, qtdMovimentos, ent
         return;
       }
       const movimento = extratoBancarioTemp[item.idxOriginal] || item;
-      codigosConciliacaoTemp[item.id] = obterCodigoContaParaDominio(regraSaidaSalva)
-        || codigoRegraPagamentoParaSaidaExtrato(movimento)
-        || obterCodigoContaParaDominio(encontrarCodigoRegraRecebimentoConciliacao(
-          regrasRecebimentos,
-          item.tipo,
-          item.historico,
-          item.escopoRegra || ''
-        ));
+      codigosConciliacaoTemp[item.id] = movimentoEhSaidaCaixaParaBancoCpSimone(movimento)
+        ? CODIGO_CLIENTES_CP_SIMONE
+        : obterCodigoContaParaDominio(regraSaidaSalva)
+          || codigoRegraPagamentoParaSaidaExtrato(movimento)
+          || obterCodigoContaParaDominio(encontrarCodigoRegraRecebimentoConciliacao(
+            regrasRecebimentos,
+            item.tipo,
+            item.historico,
+            item.escopoRegra || ''
+          ));
     }
     if (item.movimento === 'recebimento' && !codigosConciliacaoTemp[item.id]) {
-      codigosConciliacaoTemp[item.id] = item.numerarioTributarioMatriz
+      const movimentos = item.movimentos?.length ? item.movimentos : [item];
+      codigosConciliacaoTemp[item.id] = movimentos.every(movimentoEhDepositoCaixaNoBancoCpSimone)
+        ? CODIGO_CLIENTES_CP_SIMONE
+        : item.numerarioTributarioMatriz
         ? codigoNumerarioTributarioMatriz(depara[grupoAtivo] || {}, item.empresaMatrizNumerario, 'ATIVO')
         : obterCodigoContaParaDominio(encontrarCodigoRegraRecebimentoConciliacao(regrasRecebimentos, item.tipo, item.historico, item.escopoRegra || ''));
       if (item.numerarioTributarioMatriz && codigosConciliacaoTemp[item.id] && item.chaveNumerarioTributario) {
@@ -7213,10 +7260,13 @@ function montarLinhasDominioConciliacao({ validarPendencias = true } = {}) {
     movimentos.forEach(mov => {
       const idxMov = extratoBancarioTemp.indexOf(mov);
       if (idxMov >= 0 && transferenciasPareadas.has(idxMov)) return;
+      const codigoCredito = movimentoEhDepositoCaixaNoBancoCpSimone(mov)
+        ? CODIGO_CLIENTES_CP_SIMONE
+        : codigo;
       linhas.push(linhaDominio(
         fmtDate(mov.data || item.data),
         codigoBancoConciliacao(mov.conta || item.conta || infoExtratoBancarioTemp?.conta || ''),
-        codigo,
+        codigoCredito,
         Math.abs(mov.valor || item.total),
         descricaoMovimentoExtrato(mov) || item.historico,
         empresaBancoConciliacao(item, mov),
@@ -7225,9 +7275,11 @@ function montarLinhasDominioConciliacao({ validarPendencias = true } = {}) {
     });
   });
   itensSaidasExtras.forEach(item => {
-    const codigoDebito = obterCodigoContaParaDominio(codigosConciliacaoTemp[item.id]);
-    if (!codigoDebito) return;
     const mov = extratoBancarioTemp[item.idxOriginal] || item;
+    const codigoDebito = movimentoEhSaidaCaixaParaBancoCpSimone(mov)
+      ? CODIGO_CLIENTES_CP_SIMONE
+      : obterCodigoContaParaDominio(codigosConciliacaoTemp[item.id]);
+    if (!codigoDebito) return;
     const idxMov = extratoBancarioTemp.indexOf(mov);
     if (idxMov >= 0 && transferenciasPareadas.has(idxMov)) return;
     linhas.push(linhaDominio(
