@@ -21,7 +21,11 @@ export function prepararBasePersistida(baseAtual, baseRecebida) {
     ? [...new Set(sync.gruposAlterados.filter((nome) => typeof nome === "string" && nome.trim()))]
     : [];
 
-  if (sync.estruturaCompleta !== false || gruposAlterados.length === 0) {
+  if (sync.estruturaCompleta === false && gruposAlterados.length === 0) {
+    throw new Error("Salvamento parcial recusado: nenhum grupo alterado foi informado.");
+  }
+
+  if (sync.estruturaCompleta !== false) {
     const { __sync, ...baseCompleta } = recebida;
     return { base: baseCompleta, modo: "completo", gruposAlterados: [] };
   }

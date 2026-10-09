@@ -586,6 +586,7 @@ const STORAGE_PLANO_CONTAS = 'zip_depara_plano_contas';
 const STORAGE_CONTAS_SEM_CONCILIACAO = 'zip_depara_contas_sem_conciliacao';
 const STORAGE_CONFIG_GRUPOS = 'zip_depara_config_grupos';
 const STORAGE_DEPARA_SAIDAS_EXTRATO = 'zip_depara_regras_saidas_extrato';
+const STORAGE_SYNC_PENDENTE = 'zip_depara_sync_pendente_v1';
 const API_BASE_DEPARA = '/.netlify/functions/depara-base';
 
 function limparResiduosSessao() {
@@ -1441,7 +1442,9 @@ function encontrarCodigoRegra(regras, forn, plano, tipoDoc, historico, escopo = 
     cache = new Map();
     cacheCodigosRegras.set(regras, cache);
   }
-  const chaveCache = [forn, plano, tipoDoc, historico, escopo].map(v => limparTextoECD(v)).join('\u0001');
+  const chaveCache = [modoImportacaoDoGrupo(), forn, plano, tipoDoc, historico, escopo]
+    .map(v => limparTextoECD(v))
+    .join('\u0001');
   if (cache.has(chaveCache)) return cache.get(chaveCache);
   const codigo = encontrarCodigoRegraSemCache(regras, forn, plano, tipoDoc, historico, escopo);
   cache.set(chaveCache, codigo || '');
@@ -1486,6 +1489,9 @@ function encontrarCodigoRegraSemCache(regras, forn, plano, tipoDoc, historico, e
   const planoNorm = normalizarTexto(plano);
   const codigoFornecedorPlano = codigoUnicoIndice(indice.fornecedorPlano, `${fornecedorNorm}\u0001${planoNorm}`);
   if (codigoFornecedorPlano) return codigoFornecedorPlano;
+  // A CP SIMONE possui regras compartilhadas de folha entre fornecedores.
+  // Nos demais grupos, o plano sozinho nunca pode resolver outro fornecedor.
+  if (fornecedorNorm && modoImportacaoDoGrupo() !== 'cp_simone') return '';
   const codigoPlanoDocumento = codigoUnicoIndice(indice.planoDocumento, `${planoNorm}\u0001${normalizarTexto(tipoDoc)}`);
   if (codigoPlanoDocumento) return codigoPlanoDocumento;
   return codigoUnicoIndice(indice.plano, planoNorm);
@@ -1565,6 +1571,39 @@ function registrarEscopoAlteracaoBase(opcoes = {}) {
     campos.forEach(campo => camposAlteradosPendentesPorGrupo.get(nome).add(campo));
   });
   if (!estruturaBasePendente && gruposAlteradosPendentes.size === 0) estruturaBasePendente = true;
+  persistirEstadoSyncPendente();
+}
+
+function persistirEstadoSyncPendente() {
+  const camposPorGrupo = Object.fromEntries([...camposAlteradosPendentesPorGrupo]
+    .map(([nome, campos]) => [nome, [...campos]]));
+  localStorage.setItem(STORAGE_SYNC_PENDENTE, JSON.stringify({
+    estruturaCompleta: estruturaBasePendente,
+    gruposAlterados: [...gruposAlteradosPendentes],
+    camposPorGrupo,
+    atualizadoEm: Date.now()
+  }));
+}
+
+function restaurarEstadoSyncPendente() {
+  try {
+    const estado = JSON.parse(localStorage.getItem(STORAGE_SYNC_PENDENTE) || 'null');
+    if (!estado || typeof estado !== 'object') return false;
+    estruturaBasePendente = !!estado.estruturaCompleta;
+    gruposAlteradosPendentes.clear();
+    camposAlteradosPendentesPorGrupo.clear();
+    (Array.isArray(estado.gruposAlterados) ? estado.gruposAlterados : []).filter(Boolean).forEach(nome => {
+      gruposAlteradosPendentes.add(nome);
+      const campos = Array.isArray(estado.camposPorGrupo?.[nome]) ? estado.camposPorGrupo[nome] : [];
+      camposAlteradosPendentesPorGrupo.set(nome, new Set(campos));
+    });
+    if (!estruturaBasePendente && gruposAlteradosPendentes.size === 0) return false;
+    baseCompartilhadaPendente = true;
+    ultimaSyncLocal = Number(estado.atualizadoEm) || Date.now();
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 function agendarSalvarBaseCompartilhada(atraso = 650) {
@@ -1583,6 +1622,13 @@ function agendarSalvarBaseCompartilhada(atraso = 650) {
     if (typeof requestIdleCallback === 'function') requestIdleCallback(executar, { timeout: 1500 });
     else executar();
   }, atraso);
+}
+
+async function salvarBaseCompartilhadaAgora() {
+  if (typeof clearTimeout === 'function') clearTimeout(timerSalvarBaseCompartilhada);
+  timerSalvarBaseCompartilhada = null;
+  baseCompartilhadaPendente = false;
+  return salvarBaseCompartilhada(true);
 }
 
 function atualizarStatusBanco(texto, tipo = 'orange') {
@@ -1661,7 +1707,10 @@ async function salvarBaseCompartilhada(forcar = false) {
   try {
     salvandoBaseCompartilhada = true;
     ultimaSyncLocal = Date.now();
-    const envioCompleto = estruturaBasePendente || !baseRemotaDisponivel || gruposAlteradosPendentes.size === 0;
+    // Falha de rede ou F5 nunca transforma uma edição de grupo em sobrescrita
+    // completa. Envio total só ocorre quando a estrutura foi alterada de forma
+    // explícita ou quando não existe escopo de grupo registrado.
+    const envioCompleto = estruturaBasePendente || gruposAlteradosPendentes.size === 0;
     const gruposDoEnvio = envioCompleto ? [] : [...gruposAlteradosPendentes];
     const camposPorGrupo = Object.fromEntries(gruposDoEnvio.map(nome => [nome, [...(camposAlteradosPendentesPorGrupo.get(nome) || [])]]));
     const recortarPorGrupos = (campo, colecao) => Object.fromEntries(gruposDoEnvio
@@ -1693,6 +1742,7 @@ async function salvarBaseCompartilhada(forcar = false) {
       estruturaBasePendente = false;
       gruposAlteradosPendentes.clear();
       camposAlteradosPendentesPorGrupo.clear();
+      localStorage.removeItem(STORAGE_SYNC_PENDENTE);
     }
     atualizarStatusBanco('Base compartilhada salva no site.', 'ok');
     if (forcar) renderGrupos();
@@ -9708,7 +9758,7 @@ function importarArquivoRegras(event) {
     return;
   }
   const reader = new FileReader();
-  reader.onload = () => {
+  reader.onload = async () => {
     try {
       const payload = JSON.parse(reader.result);
       const importado = obterRegrasDePayloadImportado(payload);
@@ -9724,23 +9774,26 @@ function importarArquivoRegras(event) {
         : '';
       const substituir = confirm(`Importar ${qtd} regra${qtd !== 1 ? 's' : ''} para ${tipoAtual} do grupo "${grupoAtivo}"?\n\nOK = mesclar com as regras atuais.\nCancelar = escolher substituição ou cancelar.${avisoTipo}`);
       let novasRegras;
+      const regrasAtuais = editandoRegras
+        ? (coletarInputsEdicaoRegras(), editTemp)
+        : (obterBaseRegrasAtiva()[grupoAtivo] || {});
       if (substituir) {
-        novasRegras = Object.assign({}, obterBaseRegrasAtiva()[grupoAtivo] || {}, importado.regras);
+        novasRegras = Object.assign({}, regrasAtuais, importado.regras);
       } else {
         const trocarTudo = confirm(`Substituir TODAS as regras de ${tipoAtual} do grupo "${grupoAtivo}" pelas regras do arquivo?`);
         if (!trocarTudo) return;
         novasRegras = Object.assign({}, importado.regras);
       }
-      if (editandoRegras) {
-        editTemp = novasRegras;
-      } else {
-        definirBaseRegrasAtiva(novasRegras);
-        salvarStorage({ camposAlterados: [tipoRegrasAtivo === 'recebimentos' ? 'deparaRecebimentos' : 'depara'] });
-      }
+      definirBaseRegrasAtiva(novasRegras);
+      if (editandoRegras) editTemp = Object.assign({}, novasRegras);
+      salvarStorage({ camposAlterados: [tipoRegrasAtivo === 'recebimentos' ? 'deparaRecebimentos' : 'depara'] });
+      const salvoNaBase = await salvarBaseCompartilhadaAgora();
       regrasSelecionadasEdicao.clear();
       renderRegras();
-      const msgEdicao = editandoRegras ? ' Clique em Salvar alterações para gravar.' : '';
-      document.getElementById('container-regras').insertAdjacentHTML('afterbegin', `<div class="alert alert-ok">${qtd} regra${qtd !== 1 ? 's' : ''} importada${qtd !== 1 ? 's' : ''} para ${tipoAtual}.${msgEdicao}</div>`);
+      const mensagem = salvoNaBase
+        ? `${qtd} regra${qtd !== 1 ? 's' : ''} importada${qtd !== 1 ? 's' : ''} e salva${qtd !== 1 ? 's' : ''} na base compartilhada de ${tipoAtual}.`
+        : `${qtd} regra${qtd !== 1 ? 's' : ''} importada${qtd !== 1 ? 's' : ''} localmente, mas o servidor ainda não confirmou. Não feche a página; tente salvar novamente.`;
+      document.getElementById('container-regras').insertAdjacentHTML('afterbegin', `<div class="alert alert-${salvoNaBase ? 'ok' : 'warn'}">${mensagem}</div>`);
     } catch (err) {
       alert('Erro ao importar regras: ' + err.message);
     }
@@ -9841,12 +9894,13 @@ async function importarPlanilhaRegrasLegadas(event) {
 
     depara[grupoAtivo] = Object.assign({}, depara[grupoAtivo] || {}, regrasLegadas);
     salvarStorage({ camposAlterados: ['depara'] });
+    const salvoNaBase = await salvarBaseCompartilhadaAgora();
     regrasSelecionadasEdicao.clear();
     renderRegras();
     const detalhes = observacoes.length ? ` ${observacoes.join('; ')}.` : '';
     document.getElementById('container-regras').insertAdjacentHTML(
       'afterbegin',
-      `<div class="alert alert-ok">${quantidade} regras antigas importadas e mescladas em Pagamentos do grupo ${escapeHtml(grupoAtivo)}.${escapeHtml(detalhes)}</div>`
+      `<div class="alert alert-${salvoNaBase ? 'ok' : 'warn'}">${quantidade} regras antigas importadas e mescladas em Pagamentos do grupo ${escapeHtml(grupoAtivo)}.${salvoNaBase ? ' Salvas na base compartilhada.' : ' O servidor ainda não confirmou o salvamento.'}${escapeHtml(detalhes)}</div>`
     );
   } catch (err) {
     alert('Erro ao importar o de-para antigo: ' + err.message);
@@ -10176,18 +10230,21 @@ function ativarEdicaoRegras() {
   });
 }
 
-function salvarEdicaoRegras() {
+async function salvarEdicaoRegras() {
   // Coletar inputs
   coletarInputsEdicaoRegras();
   definirBaseRegrasAtiva(Object.assign({}, editTemp));
   salvarStorage({ camposAlterados: [tipoRegrasAtivo === 'recebimentos' ? 'deparaRecebimentos' : 'depara'] });
+  const salvoNaBase = await salvarBaseCompartilhadaAgora();
   editandoRegras = false;
   regrasSelecionadasEdicao.clear();
   document.getElementById('btn-editar-regras').style.display = '';
   document.getElementById('btn-salvar-regras').style.display = 'none';
   document.getElementById('btn-cancelar-regras').style.display = 'none';
   renderRegras();
-  document.getElementById('container-regras').insertAdjacentHTML('afterbegin', '<div class="alert alert-ok">Alterações salvas na base deste grupo.</div>');
+  document.getElementById('container-regras').insertAdjacentHTML('afterbegin', salvoNaBase
+    ? '<div class="alert alert-ok">Alterações salvas e confirmadas na base compartilhada deste grupo.</div>'
+    : '<div class="alert alert-warn">Alterações mantidas neste navegador, mas o servidor ainda não confirmou. Tente salvar novamente antes de sair.</div>');
 }
 
 function cancelarEdicaoRegras() {
@@ -10207,7 +10264,14 @@ function excluirRegra(chave) {
 }
 
 function iniciarSincronizacaoAutomatica() {
-  carregarBaseCompartilhada();
+  if (restaurarEstadoSyncPendente()) {
+    atualizarStatusBanco('Concluindo uma alteração que ficou pendente antes da atualização da página...', 'orange');
+    salvarBaseCompartilhadaAgora().then(salvo => {
+      if (!salvo) atualizarStatusBanco('A alteração continua protegida neste navegador, mas ainda não foi confirmada no site.', 'warn');
+    });
+  } else {
+    carregarBaseCompartilhada();
+  }
   setInterval(() => carregarBaseCompartilhada(), 30000);
   document.addEventListener('visibilitychange', () => {
     if (!document.hidden) carregarBaseCompartilhada();
