@@ -35,7 +35,8 @@ function registroGrupo(base, grupo, updatedAt) {
 }
 
 async function sobreporRegistrosDeGrupo(store, base) {
-  const generation = base.__groupStorageGeneration || GROUP_STORAGE_VERSION;
+  const generation = base.__groupStorageGeneration;
+  if (!generation) return base;
   const registros = await Promise.all((Array.isArray(base.grupos) ? base.grupos : []).map(async (grupo) => {
     const [raw, rawConfig] = await Promise.all([
       store.get(groupBlobKey(generation, grupo)),
@@ -60,6 +61,7 @@ async function sobreporRegistrosDeGrupo(store, base) {
 }
 
 async function lerRegistroGrupoAtual(store, baseAtual, generation, grupo) {
+  if (!generation) return registroGrupo(baseAtual, grupo, baseAtual.updatedAt || null);
   const [rawRegistro, rawConfig] = await Promise.all([
     store.get(groupBlobKey(generation, grupo)),
     store.get(groupConfigBlobKey(generation, grupo)),
@@ -75,7 +77,7 @@ async function salvarBackupAntesDaGravacao(store, baseAtual, body, resultado, ra
   if (!rawAtual) return null;
   const id = criarIdBackup(dataIso);
   if (resultado.modo === "grupos") {
-    const generation = baseAtual.__groupStorageGeneration || GROUP_STORAGE_VERSION;
+    const generation = baseAtual.__groupStorageGeneration || null;
     const sync = body.__sync && typeof body.__sync === "object" ? body.__sync : {};
     const backups = await Promise.all(resultado.gruposAlterados.map(async (grupo) => {
       const registro = await lerRegistroGrupoAtual(store, baseAtual, generation, grupo);
@@ -136,8 +138,8 @@ export default async (req, context) => {
       const updatedAt = new Date().toISOString();
       const syncToken = `${Date.now()}-${Math.random().toString(36).slice(2, 12)}`;
       const backupId = await salvarBackupAntesDaGravacao(store, baseAtual, body, resultado, rawAtual, updatedAt);
-      if (resultado.modo === "grupos" && rawAtual) {
-        const generation = baseAtual.__groupStorageGeneration || GROUP_STORAGE_VERSION;
+      if (resultado.modo === "grupos" && rawAtual && baseAtual.__groupStorageGeneration) {
+        const generation = baseAtual.__groupStorageGeneration;
         await Promise.all(resultado.gruposAlterados.map(async (grupo) => {
           const atual = await lerRegistroGrupoAtual(store, baseAtual, generation, grupo);
           const recebido = registroGrupo(body, grupo, updatedAt);
@@ -165,7 +167,7 @@ export default async (req, context) => {
         await store.set(BLOB_KEY, payload);
       }
       await store.set(SYNC_META_KEY, JSON.stringify({ syncToken, updatedAt }));
-      const modoPersistido = resultado.modo === "grupos" && rawAtual ? "grupos" : "completo";
+      const modoPersistido = resultado.modo === "grupos" && rawAtual && baseAtual.__groupStorageGeneration ? "grupos" : "completo";
       return Response.json({ ok: true, updatedAt, syncToken, modo: modoPersistido, gruposAlterados: resultado.gruposAlterados, backupId });
     } catch (err) {
       return Response.json({ error: err.message }, { status: 500 });
