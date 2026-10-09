@@ -1,0 +1,121 @@
+﻿<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>F360 - De-para Rateio Local</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<style>
+  :root { --bg:#f4f6f9; --card:#fff; --text:#0f172a; --muted:#64748b; --line:#d9e1ec; --blue:#1B8EF2; --navy:#0D1B3E; --ok:#067647; --warn:#a15c07; --warn-bg:#fff7ed; --ok-bg:#ecfdf3; --shadow:0 10px 28px rgba(15,23,42,.08); }
+  *{box-sizing:border-box} body{margin:0;background:var(--bg);color:var(--text);font-family:Inter,Segoe UI,Arial,sans-serif;font-size:14px} .topbar{height:72px;background:var(--navy);display:flex;align-items:center;gap:14px;padding:0 28px;color:#cbd5e1}.brand{font-weight:800;color:#54c7f7;font-size:28px;letter-spacing:-1px}.wrap{max-width:1480px;margin:0 auto;padding:26px}.header{display:flex;align-items:center;justify-content:space-between;gap:16px;margin-bottom:18px}.header h1{font-size:24px;margin:0}.sub{color:var(--muted);margin-top:4px}.card{background:var(--card);border:1px solid var(--line);border-radius:12px;box-shadow:var(--shadow);padding:18px;margin-bottom:18px}.drop{border:2px dashed #b8c4d6;border-radius:12px;padding:34px;text-align:center;background:#f8fafc;cursor:pointer}.drop:hover{border-color:var(--blue);background:#eef6ff}.actions{display:flex;gap:10px;flex-wrap:wrap;align-items:center}.btn{border:1px solid #cbd5e1;background:#fff;color:var(--text);border-radius:8px;padding:10px 14px;font-weight:700;cursor:pointer}.btn:hover{background:#f8fafc}.btn.primary{background:var(--navy);border-color:var(--navy);color:#fff}.btn.blue{background:var(--blue);border-color:var(--blue);color:#fff}.btn.danger{color:#c1121f;border-color:#fecaca}.grid{display:grid;grid-template-columns:repeat(4,minmax(180px,1fr));gap:14px}.metric{border:1px solid var(--line);border-radius:10px;padding:15px;background:#fff}.metric .label{text-transform:uppercase;font-size:11px;font-weight:800;color:var(--muted);letter-spacing:.06em}.metric .value{font-size:28px;font-weight:900;margin-top:6px}.metric.ok{border-color:#86efac;background:#f0fdf4}.metric.warn{border-color:#fdba74;background:#fff7ed}.toolbar{display:grid;grid-template-columns:1fr 220px 160px 150px 130px;gap:10px;align-items:center}.input{width:100%;border:1px solid #cbd5e1;border-radius:8px;padding:10px 12px;font:inherit}.table-wrap{border:1px solid var(--line);border-radius:12px;overflow:hidden;background:#fff}.table-scroll{max-height:58vh;overflow:auto}table{width:100%;border-collapse:collapse;font-size:13px}th{position:sticky;top:0;background:#f1f5f9;z-index:1;text-align:left;text-transform:uppercase;font-size:11px;letter-spacing:.06em;color:#52637a;padding:10px;border-bottom:1px solid var(--line)}td{padding:9px 10px;border-bottom:1px solid #e9eef5;vertical-align:middle}tr:nth-child(even) td{background:#fbfdff}tr:hover td{background:#f6faff}.pill{display:inline-flex;border-radius:999px;padding:3px 9px;font-weight:800;font-size:11px;background:#e8f3fe;color:#075985}.pill.warn{background:#fff1d6;color:#9a3412}.pill.ok{background:#dcfce7;color:#166534}.money{text-align:right;font-variant-numeric:tabular-nums}.muted{color:var(--muted)}.alert{border-left:4px solid #fb923c;background:var(--warn-bg);padding:12px 14px;border-radius:8px;color:#9a3412;margin-bottom:18px}.alert.ok{border-color:#22c55e;background:var(--ok-bg);color:#166534}.small{font-size:12px;color:var(--muted)}.account-name{font-weight:700}.nowrap{white-space:nowrap}.footer{position:sticky;bottom:0;background:rgba(244,246,249,.94);backdrop-filter:blur(8px);padding:14px 0;margin-top:10px}.hidden{display:none!important}@media(max-width:1000px){.grid{grid-template-columns:repeat(2,1fr)}.toolbar{grid-template-columns:1fr}.wrap{padding:16px}}
+</style>
+</head>
+<body>
+<div class="topbar"><div class="brand">zip</div><div>Conciliação F360</div><div style="margin-left:auto" class="pill">Ferramenta local</div></div>
+<div class="wrap">
+  <div class="header">
+    <div><h1>De-para para planilha pronta de rateio</h1><div class="sub">Uso local. Lê a aba <strong>Importacao Dominio</strong>, aplica códigos às contas de débito/crédito e exporta no modelo Domínio.</div></div>
+    <button class="btn" onclick="limparTudo()">Limpar tela</button>
+  </div>
+
+  <div class="alert">Esta página é uma cópia local de apoio. Ela não altera a base compartilhada, não mexe no HTML oficial e salva o de-para somente neste navegador.</div>
+
+  <div class="card">
+    <input type="file" id="file" accept=".xlsx,.xlsm,.xls" class="hidden" onchange="lerArquivo(event)">
+    <div class="drop" onclick="document.getElementById('file').click()">
+      <h2>Arraste ou clique para importar a planilha pronta</h2>
+      <div class="muted">Arquivo esperado: Conciliacao_Bancaria_Dominio... com aba Importacao Dominio</div>
+    </div>
+  </div>
+
+  <div id="area" class="hidden">
+    <div class="grid" id="metrics"></div>
+
+    <div class="card">
+      <div class="actions" style="justify-content:space-between;margin-bottom:12px">
+        <h2 style="margin:0">De-para das contas</h2>
+        <div class="small" id="statusFiltro"></div>
+      </div>
+      <div class="toolbar">
+        <input class="input" id="busca" placeholder="Pesquisar conta, tipo, código..." oninput="render()">
+        <select class="input" id="filtroStatus" onchange="render()">
+          <option value="pendentes">Somente pendentes</option>
+          <option value="todos">Todas</option>
+          <option value="preenchidas">Somente preenchidas</option>
+        </select>
+        <input class="input" id="codigoLote" placeholder="Código para aplicar">
+        <button class="btn" onclick="selecionarFiltradas()">Selecionar filtradas</button>
+        <button class="btn primary" onclick="aplicarCodigo()">Aplicar</button>
+      </div>
+    </div>
+
+    <div class="table-wrap">
+      <div class="table-scroll">
+        <table>
+          <thead><tr><th style="width:42px"><input type="checkbox" onchange="toggleTodas(this.checked)"></th><th>Conta</th><th>Uso</th><th>Ocorrências</th><th>Código Domínio</th></tr></thead>
+          <tbody id="tbodyContas"></tbody>
+        </table>
+      </div>
+    </div>
+
+    <div class="footer">
+      <div class="actions" style="justify-content:flex-end">
+        <button class="btn" onclick="salvarDepara()">Salvar de-para local</button>
+        <button class="btn blue" onclick="exportarDominio()">Exportar Domínio com códigos (.xlsx)</button>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="actions" style="justify-content:space-between;margin-bottom:10px">
+        <h2 style="margin:0">Prévia dos lançamentos</h2>
+        <button class="btn" onclick="togglePreview()" id="btnPreview">Mostrar prévia</button>
+      </div>
+      <div id="preview" class="hidden table-wrap"><div class="table-scroll" style="max-height:360px"><table><thead><tr><th>Data</th><th>Débito</th><th>Crédito</th><th>Valor</th><th>Empresa</th><th>Complemento</th></tr></thead><tbody id="tbodyPreview"></tbody></table></div></div>
+    </div>
+  </div>
+</div>
+<script>
+const STORAGE='f360_rateio_depara_planilha_pronta_v1';
+const CAB=['Data','Cód. Conta Débito','Cód. Conta Crédito','Valor','Cód. Histórico','Complemento Histórico','Inicia Lote','Código Matriz/Filial','Centro de Custo Débito','Centro de Custo Crédito','Tipo de Operação'];
+let linhas=[]; let contas=[]; let depara=JSON.parse(localStorage.getItem(STORAGE)||'{}'); let selecionadas=new Set(); let previewAberto=false;
+function norm(v){return String(v??'').normalize('NFD').replace(/[\u0300-\u036f]/g,'').replace(/\s+/g,' ').trim().toLowerCase()}
+function texto(v){return String(v??'').replace(/[;|·•]/g,' - ').replace(/[–—]/g,'-').replace(/[*$&#@]/g,' - ').replace(/\s*[-]\s*/g,' - ').replace(/\s+/g,' ').trim()}
+function moeda(v){ if(typeof v==='number') return Math.round(v*100)/100; const s=String(v??'').replace(/R\$|\s/g,'').replace(/\./g,'').replace(',','.'); const n=Number(s); return Number.isFinite(n)?Math.round(n*100)/100:0 }
+function fmtMoeda(v){return Math.abs(moeda(v)).toLocaleString('pt-BR',{style:'currency',currency:'BRL'})}
+function excelDate(n){return new Date(Math.round((n-25569)*86400*1000))}
+function fmtData(v){ if(v instanceof Date && !isNaN(v)) return v.toLocaleDateString('pt-BR'); if(typeof v==='number') return excelDate(v).toLocaleDateString('pt-BR'); const s=String(v??'').trim(); if(!s) return ''; const d=new Date(s); if(!isNaN(d)) return d.toLocaleDateString('pt-BR'); const m=s.match(/(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{2,4})/); if(m) return `${m[1].padStart(2,'0')}/${m[2].padStart(2,'0')}/${m[3].length===2?'20'+m[3]:m[3]}`; return s.split(' ')[0]; }
+function keyConta(v){return norm(v)}
+function partesComplemento(comp){
+  const partes=String(comp||'').split('|').map(texto).filter(Boolean);
+  return { fornecedor:partes[0]||'', origem:partes[1]||'', empresa:partes[2]||'', planoContrapartida:partes[3]||'', partes };
+}
+function montarComplemento(l){
+  const p=l.partes||partesComplemento(l.complemento);
+  const base=[];
+  if(p.fornecedor) base.push(p.fornecedor);
+  if(p.origem) base.push(p.origem);
+  if(p.empresa) base.push(p.empresa);
+  if(p.planoContrapartida) base.push(p.planoContrapartida);
+  return texto(base.join(' - ') || l.complemento);
+}
+function lerArquivo(ev){const file=ev.target.files[0]; if(!file)return; const r=new FileReader(); r.onload=e=>{try{const wb=XLSX.read(new Uint8Array(e.target.result),{type:'array',cellDates:true}); const sheet=wb.SheetNames.find(n=>norm(n)==='importacao dominio')||wb.SheetNames[0]; const raw=XLSX.utils.sheet_to_json(wb.Sheets[sheet],{header:1,raw:true,defval:''}); carregarRaw(raw,sheet,file.name)}catch(err){alert('Erro ao ler arquivo: '+err.message)}}; r.readAsArrayBuffer(file)}
+function idx(headers,names){const h=headers.map(norm); for(const n of names){const i=h.indexOf(norm(n)); if(i>=0)return i} return -1}
+function carregarRaw(raw,sheet,filename){const headers=raw[0]||[]; const map={data:idx(headers,['Data de Liquidação','Data']),deb:idx(headers,['Débito','Debito']),cred:idx(headers,['Crédito','Credito']),comp:idx(headers,['Complemento','Complemento Histórico']),valor:idx(headers,['Valor']),empresa:idx(headers,['Empresa do Lançamento','Código Matriz/Filial','Empresa']),origem:idx(headers,['Origem']),fonte:idx(headers,['Arquivo Fonte']),grupo:idx(headers,['Chave de Agrupamento'])}; const faltam=Object.entries(map).filter(([k,v])=>['data','deb','cred','comp','valor','empresa'].includes(k)&&v<0); if(faltam.length){alert('Não encontrei colunas obrigatórias: '+faltam.map(x=>x[0]).join(', ')); return} linhas=raw.slice(1).map((row,i)=>({id:i+1,data:row[map.data],debito:texto(row[map.deb]),credito:texto(row[map.cred]),complemento:texto(row[map.comp]),valor:moeda(row[map.valor]),empresa:texto(row[map.empresa]),origem:map.origem>=0?texto(row[map.origem]):'',fonte:map.fonte>=0?texto(row[map.fonte]):'',grupo:map.grupo>=0?texto(row[map.grupo]):''})).map(l=>Object.assign(l,{partes:partesComplemento(l.complemento)})).filter(l=>l.debito||l.credito||l.valor); montarContas(); document.getElementById('area').classList.remove('hidden'); render(); alert(`Arquivo importado: ${filename}\nAba: ${sheet}\nLinhas: ${linhas.length}`)}
+function montarContas(){const m=new Map(); for(const l of linhas){for(const lado of ['debito','credito']){const nome=l[lado]; if(!nome)continue; const k=keyConta(nome); if(!m.has(k))m.set(k,{key:k,nome,deb:0,cred:0,total:0,codigo:depara[k]||'',exemplos:[],buscaExtra:''}); const c=m.get(k); c[lado==='debito'?'deb':'cred']++; c.total++; const ex=montarComplemento(l); if(ex){ c.buscaExtra += ' ' + ex + ' ' + (l.complemento||'') + ' ' + (l.origem||'') + ' ' + (l.fonte||''); if(c.exemplos.length<3 && !c.exemplos.includes(ex)) c.exemplos.push(ex); }}} contas=[...m.values()].sort((a,b)=>a.nome.localeCompare(b.nome,'pt-BR'))}
+function contasFiltradas(){const q=norm(document.getElementById('busca')?.value||''); const st=document.getElementById('filtroStatus')?.value||'pendentes'; return contas.filter(c=>(!q||norm([c.nome,c.codigo,c.buscaExtra,c.deb?'debito':'',c.cred?'credito':''].join(' ')).includes(q))&&(st==='todos'||(st==='pendentes'&&!c.codigo)||(st==='preenchidas'&&c.codigo)))}
+function render(){const pend=contas.filter(c=>!c.codigo).length; const total=linhas.reduce((s,l)=>s+Math.abs(l.valor),0); document.getElementById('metrics').innerHTML=`<div class="metric"><div class="label">Linhas</div><div class="value">${linhas.length}</div></div><div class="metric"><div class="label">Contas no de-para</div><div class="value">${contas.length}</div></div><div class="metric ${pend?'warn':'ok'}"><div class="label">Pendentes</div><div class="value">${pend}</div></div><div class="metric"><div class="label">Valor total</div><div class="value" style="font-size:22px">${fmtMoeda(total)}</div></div>`; const f=contasFiltradas(); document.getElementById('statusFiltro').textContent=`${f.length} contas visíveis. ${selecionadas.size} selecionadas.`; document.getElementById('tbodyContas').innerHTML=f.map(c=>`<tr><td><input type="checkbox" ${selecionadas.has(c.key)?'checked':''} onchange="this.checked?selecionadas.add('${c.key}'):selecionadas.delete('${c.key}');render()"></td><td><div class="account-name">${esc(c.nome)}</div><div class="small">${esc((c.exemplos||[]).join(' | ')) || c.key}</div></td><td>${c.deb?`<span class="pill">Débito ${c.deb}</span>`:''} ${c.cred?`<span class="pill">Crédito ${c.cred}</span>`:''}</td><td>${c.total}</td><td><input class="input" style="max-width:180px" value="${esc(c.codigo)}" placeholder="Código" onchange="setCodigo('${c.key}',this.value)"></td></tr>`).join('')||'<tr><td colspan="5" class="muted">Nenhuma conta nesse filtro.</td></tr>'; if(previewAberto) renderPreview()}
+function esc(v){return String(v??'').replace(/[&<>"]/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[m]))}
+function setCodigo(k,v){const c=contas.find(x=>x.key===k); if(c)c.codigo=texto(v); depara[k]=texto(v); salvarDepara(false); render()}
+function selecionarFiltradas(){for(const c of contasFiltradas())selecionadas.add(c.key); render()}
+function toggleTodas(on){for(const c of contasFiltradas())on?selecionadas.add(c.key):selecionadas.delete(c.key); render()}
+function aplicarCodigo(){const cod=texto(document.getElementById('codigoLote').value); if(!cod){alert('Digite o código para aplicar.');return} for(const k of selecionadas){const c=contas.find(x=>x.key===k); if(c){c.codigo=cod; depara[k]=cod}} salvarDepara(false); render()}
+function salvarDepara(msg=true){localStorage.setItem(STORAGE,JSON.stringify(depara)); if(msg)alert('De-para local salvo neste navegador.')}
+function codigo(nome){return (contas.find(c=>c.key===keyConta(nome))?.codigo)||depara[keyConta(nome)]||''}
+function linhasDominio(){return linhas.map((l,i)=>[fmtData(l.data),codigo(l.debito),codigo(l.credito),Math.abs(moeda(l.valor)),'',montarComplemento(l),i===0?1:'',texto(l.empresa),'','',texto(l.origem||'')])}
+function exportarDominio(){if(!linhas.length){alert('Importe uma planilha primeiro.');return} salvarDepara(false); const pend=contas.filter(c=>!c.codigo).length; if(pend&&!confirm(`${pend} contas ainda estão sem código. Exportar mesmo assim?`))return; const wb=XLSX.utils.book_new(); const ws=XLSX.utils.aoa_to_sheet([CAB,...linhasDominio()]); XLSX.utils.book_append_sheet(wb,ws,'Lançamentos Domínio'); const d=new Date().toLocaleDateString('pt-BR').replace(/\//g,'-'); XLSX.writeFile(wb,`Dominio_Rateio_Depara_Local_${d}.xlsx`)}
+function togglePreview(){previewAberto=!previewAberto; document.getElementById('preview').classList.toggle('hidden',!previewAberto); document.getElementById('btnPreview').textContent=previewAberto?'Recolher prévia':'Mostrar prévia'; if(previewAberto)renderPreview()}
+function renderPreview(){document.getElementById('tbodyPreview').innerHTML=linhas.slice(0,300).map(l=>`<tr><td>${fmtData(l.data)}</td><td>${esc(codigo(l.debito)||l.debito)}</td><td>${esc(codigo(l.credito)||l.credito)}</td><td class="money">${fmtMoeda(l.valor)}</td><td>${esc(l.empresa)}</td><td title="${esc(montarComplemento(l))}">${esc(montarComplemento(l)).slice(0,180)}</td></tr>`).join('')}
+function limparTudo(){if(confirm('Limpar arquivo carregado e seleção? O de-para salvo será mantido.')){linhas=[];contas=[];selecionadas.clear();document.getElementById('area').classList.add('hidden');document.getElementById('file').value=''}}
+</script>
+</body>
+</html>
