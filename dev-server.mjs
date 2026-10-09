@@ -16,6 +16,10 @@ function groupFilePath(generation, grupo) {
   return join(groupsPath, `${generation}--${Buffer.from(grupo).toString("base64url")}.json`);
 }
 
+function groupConfigFilePath(generation, grupo) {
+  return join(groupsPath, `${generation}--${Buffer.from(grupo).toString("base64url")}--config.json`);
+}
+
 function registroGrupo(base, grupo, updatedAt) {
   const campos = {};
   CAMPOS_POR_GRUPO.forEach((campo) => {
@@ -29,8 +33,10 @@ async function sobreporRegistrosDeGrupo(base) {
   let updatedAt = base.updatedAt || null;
   await Promise.all((Array.isArray(base.grupos) ? base.grupos : []).map(async (grupo) => {
     const path = groupFilePath(generation, grupo);
-    if (!existsSync(path)) return;
-    const registro = JSON.parse(await readFile(path, "utf8"));
+    const configPath = groupConfigFilePath(generation, grupo);
+    if (!existsSync(path) && !existsSync(configPath)) return;
+    const registro = existsSync(path) ? JSON.parse(await readFile(path, "utf8")) : { grupo, campos: {} };
+    if (existsSync(configPath)) registro.campos.configGrupos = JSON.parse(await readFile(configPath, "utf8"));
     CAMPOS_POR_GRUPO.forEach((campo) => {
       if (!Object.prototype.hasOwnProperty.call(registro.campos || {}, campo)) return;
       base[campo] = base[campo] && typeof base[campo] === "object" ? base[campo] : {};
@@ -115,19 +121,30 @@ async function handleBase(req, res) {
       await mkdir(groupsPath, { recursive: true });
       if (resultado.modo === "grupos" && rawAtual) {
         const generation = baseAtual.__groupStorageGeneration || groupStorageVersion;
-        await Promise.all(resultado.gruposAlterados.map((grupo) => writeFile(
-          groupFilePath(generation, grupo),
-          JSON.stringify(registroGrupo(body, grupo, updatedAt), null, 2),
-        )));
+        await Promise.all(resultado.gruposAlterados.map(async (grupo) => {
+          const path = groupFilePath(generation, grupo);
+          const atual = existsSync(path) ? JSON.parse(await readFile(path, "utf8")) : registroGrupo(baseAtual, grupo, baseAtual.updatedAt || null);
+          const recebido = registroGrupo(body, grupo, updatedAt);
+          const registro = { grupo, campos: { ...(atual.campos || {}), ...(recebido.campos || {}) }, updatedAt };
+          const gravacoes = [writeFile(path, JSON.stringify(registro, null, 2))];
+          if (Object.prototype.hasOwnProperty.call(recebido.campos || {}, "configGrupos")) {
+            gravacoes.push(writeFile(groupConfigFilePath(generation, grupo), JSON.stringify(recebido.campos.configGrupos, null, 2)));
+          }
+          await Promise.all(gravacoes);
+        }));
       } else {
         const baseCompleta = rawAtual
           ? resultado.base
           : prepararBasePersistida({}, { ...body, __sync: { estruturaCompleta: true } }).base;
         const generation = `${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
-        await Promise.all((baseCompleta.grupos || []).map((grupo) => writeFile(
-          groupFilePath(generation, grupo),
-          JSON.stringify(registroGrupo(baseCompleta, grupo, updatedAt), null, 2),
-        )));
+        await Promise.all((baseCompleta.grupos || []).flatMap((grupo) => {
+          const registro = registroGrupo(baseCompleta, grupo, updatedAt);
+          const gravacoes = [writeFile(groupFilePath(generation, grupo), JSON.stringify(registro, null, 2))];
+          if (Object.prototype.hasOwnProperty.call(registro.campos, "configGrupos")) {
+            gravacoes.push(writeFile(groupConfigFilePath(generation, grupo), JSON.stringify(registro.campos.configGrupos, null, 2)));
+          }
+          return gravacoes;
+        }));
         await writeFile(basePath, JSON.stringify({ ...baseVazia, ...baseCompleta, __groupStorageGeneration: generation, updatedAt }, null, 2));
       }
       await writeFile(metaPath, JSON.stringify({ syncToken, updatedAt }, null, 2));
