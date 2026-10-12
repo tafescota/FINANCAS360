@@ -1325,6 +1325,7 @@ function obterIndiceRegras(regras) {
     parciaisCompartilhadas: new Map(),
     parciaisSemEscopo: new Map(),
     fornecedorPlano: new Map(),
+    fornecedorPlanoDocumento: new Map(),
     planoDocumento: new Map(),
     plano: new Map()
   };
@@ -1351,6 +1352,7 @@ function obterIndiceRegras(regras) {
     const tipo = normalizarTexto(partes[2] || '');
     if (!fornecedor || !plano || tipo.startsWith('desconto') || tipo.startsWith('acrescimo')) return;
     adicionarCodigoUnicoIndice(indice.fornecedorPlano, `${fornecedor}\u0001${plano}`, codigo);
+    if (tipo) adicionarCodigoUnicoIndice(indice.fornecedorPlanoDocumento, `${fornecedor}\u0001${plano}\u0001${tipo}`, codigo);
     if (tipo) adicionarCodigoUnicoIndice(indice.planoDocumento, `${plano}\u0001${tipo}`, codigo);
     adicionarCodigoUnicoIndice(indice.plano, plano, codigo);
   });
@@ -1436,6 +1438,25 @@ function codigoUnicoRegraPlano(regras, plano) {
 
 const cacheCodigosRegras = new WeakMap();
 
+// Excecoes confirmadas para a CP SIMONE; nao autorizam outros fornecedores do plano.
+const compartilhamentosFornecedorCpSimone = new Map([
+  ['lince finance\u0001consultoria financeira', '425'],
+  ['diversos\u0001manutencao e reparos', '402'],
+  ['telefonica\u0001internet', '373'],
+  ['telefonica\u0001telefonia', '374']
+]);
+
+function codigoCompartilhadoFornecedorCpSimone(indice, fornecedor, plano, tipoDoc) {
+  const tipo = normalizarTexto(tipoDoc);
+  const porDocumento = codigoUnicoIndice(indice.planoDocumento, `${plano}\u0001${tipo}`);
+  // Folha compartilha somente regras do mesmo plano e documento de folha.
+  if (tipo === 'folha de pagamento') return porDocumento;
+  const confirmado = compartilhamentosFornecedorCpSimone.get(`${fornecedor}\u0001${plano}`);
+  if (!confirmado) return '';
+  const candidato = porDocumento || codigoUnicoIndice(indice.plano, plano);
+  return candidato === confirmado ? candidato : '';
+}
+
 function encontrarCodigoRegra(regras, forn, plano, tipoDoc, historico, escopo = '') {
   if (!regras || typeof regras !== 'object') return '';
   let cache = cacheCodigosRegras.get(regras);
@@ -1490,9 +1511,13 @@ function encontrarCodigoRegraSemCache(regras, forn, plano, tipoDoc, historico, e
   const planoNorm = normalizarTexto(plano);
   const codigoFornecedorPlano = codigoUnicoIndice(indice.fornecedorPlano, `${fornecedorNorm}\u0001${planoNorm}`);
   if (codigoFornecedorPlano) return codigoFornecedorPlano;
-  // A CP SIMONE possui regras compartilhadas de folha entre fornecedores.
-  // Nos demais grupos, o plano sozinho nunca pode resolver outro fornecedor.
-  if (fornecedorNorm && modoImportacaoDoGrupo() !== 'cp_simone') return '';
+  if (modoImportacaoDoGrupo() === 'cp_simone') {
+    const mesmoFornecedorDocumento = codigoUnicoIndice(indice.fornecedorPlanoDocumento, `${fornecedorNorm}\u0001${planoNorm}\u0001${tipoNormalizado}`);
+    if (mesmoFornecedorDocumento) return mesmoFornecedorDocumento;
+    return codigoCompartilhadoFornecedorCpSimone(indice, fornecedorNorm, planoNorm, tipoDoc);
+  }
+  // Nos demais modos, preservar a separacao existente por fornecedor.
+  if (fornecedorNorm) return '';
   const codigoPlanoDocumento = codigoUnicoIndice(indice.planoDocumento, `${planoNorm}\u0001${normalizarTexto(tipoDoc)}`);
   if (codigoPlanoDocumento) return codigoPlanoDocumento;
   return codigoUnicoIndice(indice.plano, planoNorm);
