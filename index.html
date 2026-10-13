@@ -1054,6 +1054,12 @@ function fecharModalCnpjContas() {
   document.getElementById('modal-cnpj-contas')?.remove();
 }
 
+function saidaExtratoTemVinculoParcelas(item) {
+  const movimento = extratoBancarioTemp[item?.idxOriginal];
+  return !!movimento && sugestoesParcelasExtratoTemp.some(s =>
+    (s.movs || [s.mov]).includes(movimento));
+}
+
 function linhaFormularioCnpjConta(conta, cnpj = '', origem = 'Manual', bloqueada = false) {
   return `<tr><td>${escapeHtml(conta)}</td><td>${escapeHtml(origem)}</td><td><input type="text" inputmode="numeric" maxlength="18" aria-label="CNPJ de ${escapeAttr(conta)}" data-cnpj-conta="${escapeAttr(conta)}" value="${escapeAttr(cnpj)}" ${bloqueada ? 'readonly' : ''} placeholder="00.000.000/0000-00" style="width:100%;min-width:180px"></td></tr>`;
 }
@@ -6951,7 +6957,7 @@ function abrirModalPendenciasConciliacao() {
         <div class="conciliacao-note" style="margin-top:4px">${mesmasSaidas.length} ${mesmasSaidas.length === 1 ? 'opção' : 'opções'} com o mesmo valor de R$ ${fmtValor(item.total)}${saidasCentavos.length ? ` · ${saidasCentavos.length} provável${saidasCentavos.length !== 1 ? 'is' : ''} com diferença de centavos` : ''}</div>`
       : ehSaidaPendente
         ? `<input type="text" class="conta-autocomplete" data-conciliacao-modal-id="${escapeAttr(item.id)}" value="${escapeAttr(valor)}" placeholder="${escapeAttr(placeholderConta)}" oninput="atualizarCodigoConciliacaoModal(this); criarAutocompleteConta(this)" style="width:100%">
-          <button type="button" class="btn btn-sm" style="margin-top:6px;width:100%" onclick="revisarSaidaExtratoSemExportar('${escapeAttr(item.id)}')">Marcar como já representada / não exportar</button>`
+          ${!grupoParcelasConciliaPorExtrato() || saidaExtratoTemVinculoParcelas(item) ? `<button type="button" class="btn btn-sm" style="margin-top:6px;width:100%" onclick="revisarSaidaExtratoSemExportar('${escapeAttr(item.id)}')">Marcar como já representada / não exportar</button>` : ''}`
         : `<input type="text" class="conta-autocomplete" data-conciliacao-modal-id="${escapeAttr(item.id)}" value="${escapeAttr(valor)}" placeholder="${escapeAttr(placeholderConta)}" oninput="atualizarCodigoConciliacaoModal(this); criarAutocompleteConta(this)" style="width:100%">`;
     const empresaCol = item.empresaBanco || item.empresa || '';
     const centroCol = item.centroCusto || item.empresaLancamento || '';
@@ -6982,7 +6988,7 @@ function abrirModalPendenciasConciliacao() {
       : fluxoRecebimentos && ehRecebimentoPendencia
         ? 'Conta do recebimento'
         : ehSaidaPendente
-          ? 'Sem vínculo individual'
+          ? grupoParcelasConciliaPorExtrato() ? 'Contrapartida contabil pendente' : 'Sem vínculo individual'
           : (item.plano || item.tipo || '');
     let orientacaoItem = ehNumerarioTributario
       ? 'A entrada do reembolso baixa a conta de Numerários Ativo da matriz. O banco vem do extrato.'
@@ -6991,7 +6997,9 @@ function abrirModalPendenciasConciliacao() {
       : ehRecebimentoPendencia
         ? 'Preencha a conta do cliente/recebimento. O banco vem do extrato.'
       : ehSaidaPendente
-        ? 'Esta saída ainda não foi ligada a um pagamento. Informe a conta somente se ela realmente precisar virar um lançamento extra.'
+        ? grupoParcelasConciliaPorExtrato()
+          ? 'Este valor ja consta no extrato. Informe a contrapartida contabil; esta saida bancaria deve aparecer uma unica vez no arquivo final.'
+          : 'Esta saída ainda não foi ligada a um pagamento. Informe a conta somente se ela realmente precisar virar um lançamento extra.'
         : ehPagamentoPendente
           ? 'Este pagamento ainda não foi ligado a uma saída individual. Selecione a saída correspondente ou confirme que ele não possui movimento no extrato.'
         : '';
@@ -7103,6 +7111,10 @@ function atualizarCodigoConciliacaoModal(input) {
 function revisarSaidaExtratoSemExportar(id) {
   if (!id) return;
   const item = conciliacaoItensTemp.find(registro => registro.id === id && registro.movimento === 'saida-pendente');
+  if (grupoParcelasConciliaPorExtrato() && !saidaExtratoTemVinculoParcelas(item)) {
+    alert('Esta saida existe no extrato e ainda nao possui lancamento vinculado. Informe a contrapartida contabil.');
+    return;
+  }
   codigosConciliacaoTemp[id] = '';
   saidasExtratoRevisadasConciliacaoTemp[id] = true;
   if (item?.chaveRegraSaida && modoImportacaoDoGrupo() === 'cp_simone') {
