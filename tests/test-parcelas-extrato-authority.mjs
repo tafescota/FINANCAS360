@@ -59,11 +59,12 @@ linhasImportadas[0][1]='DOC1';gerarSugestoesConciliacao({redirecionarSeOk:false}
 `);
 assert.equal(run('montarPagamentosConciliadosParcelas()[0][0]'),'03/06/2026','Usar a data efetiva do banco');
 assert.equal(run('sugestoesParcelasExtratoTemp[0].status'),'provável');
-assert.equal(run('validarExportacaoParcelasExtrato(montarPagamentosConciliadosParcelas())'),false,'Vinculo provavel necessita confirmacao');
-run(`pagamentosProvaveisConfirmadosTemp.add(chaveConfirmacaoPagamentoParcelas(sugestoesParcelasExtratoTemp[0]));`);
+assert.equal(run('pagamentosProvaveisConfirmadosTemp.size'),0);
+assert.equal(run(`gerarSugestoesConciliacao.toString().includes('abrirRevisaoPagamentosParcelas')`),false);
 assert.equal(run('validarExportacaoParcelasExtrato(montarPagamentosConciliadosParcelas())'),true);
 run(`const linhasDiaErrado=montarPagamentosConciliadosParcelas();linhasDiaErrado[0][0]='02/06/2026';`);
 assert.equal(run('conferirParcelasPorContaDia(linhasDiaErrado).length'),2,'Total mensal igual nao autoriza dias divergentes');
+assert.equal(run('validarExportacaoParcelasExtrato(linhasDiaErrado)'),false,'Sem confirmacao manual, divergencia diaria continua bloqueando');
 run(`
 extratoBancarioTemp=[{conta:'CEF VD',valor:-59.9,data:new Date(2026,5,5),historico:'TARIFA CARTAO',complemento:'MOOZ VISA',tipoConciliacao:'Parcelas de Cartões'},
 {conta:'CEF VD',valor:100,data:new Date(2026,5,5),historico:'CLIENTE TESTE',tipoConciliacao:'Parcelas de Títulos'}];
