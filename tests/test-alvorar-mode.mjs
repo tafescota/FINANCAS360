@@ -1,0 +1,26 @@
+import assert from 'node:assert/strict';
+import vm from 'node:vm';
+import {contextoAplicacao} from './test-transfer-cnpj.mjs';
+
+const ctx = contextoAplicacao();
+const run = code => vm.runInContext(code, ctx);
+assert.equal(run(`normalizarModoImportacao('ALVORAR')`), 'alvorar');
+assert.equal(run(`interpretarOpcaoFormatoPagamento('alvorar__f360_original').modo`), 'alvorar');
+assert.equal(run(`interpretarOpcaoFormatoPagamento('alvorar__f360_original').layout`), 'f360_original');
+assert.equal(run(`nomeModoImportacao('alvorar')`), 'ALVORAR');
+run(`grupoAtivo='ALVORAR';configGrupos={ALVORAR:{modoImportacaoPagamentos:'alvorar',tags:['ALVORAR']},OUTRO:{modoImportacaoPagamentos:'parcelas'},'CP SIMONE - TITULOS':{modoImportacaoPagamentos:'parcelas'}};`);
+assert.equal(run(`modoImportacaoDoGrupo()`), 'alvorar');
+assert.equal(run(`valorOpcaoFormatoGrupo()`), 'alvorar');
+assert.equal(run(`grupoParcelasConciliaPorExtrato()`), true);
+assert.equal(run(`modoPermiteProvisaoParcelas()`), true);
+assert.equal(run(`modoUsaFluxoRateio()`), false);
+assert.equal(run(`modoEhParcelasNumerarios()`), true);
+assert.equal(run(`conciliacaoUsaRecebimentosDoExtrato()`), true);
+assert.equal(run(`grupoPodeRecebimentosSeparados()`), false);
+assert.equal(run(`modoImportacaoDoGrupo('OUTRO')`), 'parcelas');
+assert.equal(run(`modoImportacaoDoGrupo('CP SIMONE - TITULOS')`), 'cp_simone');
+run(`configGrupos.ALVORAR.layoutImportacaoPagamentos='f360_original';`);
+assert.equal(run(`valorOpcaoFormatoGrupo()`), 'alvorar__f360_original');
+run(`grupoAtivo='OUTRO';`);
+assert.equal(run(`valorOpcaoFormatoGrupo()`), 'parcelas');
+console.log('ALVORAR: tipo independente, layouts, conferencias basicas e isolamento dos outros grupos conferidos.');

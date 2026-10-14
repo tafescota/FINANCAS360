@@ -265,9 +265,11 @@
         <option value="parcelas" selected>Parcelas de Títulos (BOTICARIO)</option>
         <option value="parcelas_numerarios">Parcelas com Numerários (BOTICARIO)</option>
         <option value="cp_simone">CP SIMONE</option>
+        <option value="alvorar">ALVORAR</option>
         <option value="rateio">Rateio de Títulos (BOTICARIO)</option>
         <option value="aromas">Aromas</option>
         <option value="parcelas__f360_original">Parcelas de Títulos (FINANÇAS 360 - ORIGINAL)</option>
+        <option value="alvorar__f360_original">ALVORAR (FINANÇAS 360 - ORIGINAL)</option>
         <option value="parcelas_numerarios__f360_original">Parcelas com Numerários (FINANÇAS 360 - ORIGINAL)</option>
         <option value="rateio__f360_original">Rateio de Títulos (FINANÇAS 360 - ORIGINAL)</option>
       </select>
@@ -631,6 +633,8 @@ let layoutImportacaoPagamentos = 'boticario';
 let linhasImportadasModo = 'parcelas';
 let mapaEmpresasImportadas = {};
 let mapaCnpjContasImportadas = {};
+let mapaCnpjEmpresasAlvorar = {};
+let codigosEmpresasAlvorar = new Set();
 let nomesEmpresasCnpjImportadas = {};
 let grupoMapaCnpjContasImportadas = '';
 let sugestoesParcelasExtratoTemp = [];
@@ -778,7 +782,7 @@ function tipoAjusteRateioPlano(plano, valor) {
 
 function modoEhParcelasNumerarios(modo = modoImportacaoDoGrupo()) {
   const modoBase = normalizarModoImportacao(modo);
-  return modoBase === 'parcelas_numerarios' || modoBase === 'cp_simone';
+  return modoBase === 'parcelas_numerarios' || modoBase === 'cp_simone' || modoBase === 'alvorar';
 }
 
 function linhaEhParcelasNumerarios(r) {
@@ -793,6 +797,9 @@ function extrairPrimeiroCodigoEmpresa(valor) {
 
 function registrarMapaEmpresasImportadas(dados) {
   mapaEmpresasImportadas = {};
+  codigosEmpresasAlvorar = new Set(modoImportacaoDoGrupo() === 'alvorar'
+    ? (dados || []).map(r => limparTextoECD(r?.[COLS.EMPRESA])).filter(codigo => /^\d+$/.test(codigo))
+    : []);
   (dados || []).forEach(r => {
     const candidatos = [
       limparTextoECD(r?.[COLS.CC]),
@@ -819,6 +826,7 @@ function unidadeDespesaPorEmpresa(empresa, fallback = '') {
 }
 
 function empresaDonaBancoPorConta(conta, empresaFallback = '') {
+  if (modoImportacaoDoGrupo() === 'alvorar') return codigoEmpresaAlvorar(conta);
   const codigoConta = extrairPrimeiroCodigoEmpresa(conta);
   const porCodigoConta = codigoConta ? mapaEmpresasImportadas[codigoConta] : '';
   if (porCodigoConta) return porCodigoConta;
@@ -848,14 +856,31 @@ function normalizarCnpjConta(valor) {
   return /^\d{14}$/.test(digitos) ? digitos : '';
 }
 
+function codigoEmpresaAlvorar(valor) {
+  const candidatos = [...new Set((String(valor ?? '').match(/\d+/g) || [])
+    .filter(codigo => codigosEmpresasAlvorar.has(codigo)))];
+  return candidatos.length === 1 ? candidatos[0] : '';
+}
+
+function prepararTitulosAlvorar(dados) {
+  if (modoImportacaoDoGrupo() !== 'alvorar') return dados;
+  return dados.filter(r => normalizarTexto(r?.[COLS.TIPO]) === 'conta a pagar')
+    .map(prepararLinhaParcelasNumerarios);
+}
+
 function registrarMapaCnpjContasImportadas(dados) {
   const candidatos = new Map();
   const nomes = new Map();
+  const empresasAlvorar = new Map();
   (dados || []).forEach(r => {
     const conta = normalizarTexto(limparTextoECD(r?.[COLS.CONTA]));
     const cnpj = normalizarCnpjConta(r?.__empresaCnpj ?? r?.[22]);
     if (!conta || !cnpj) return;
     const empresa = limparTextoECD(r?.[COLS.EMPRESA]);
+    if (modoImportacaoDoGrupo() === 'alvorar' && /^\d+$/.test(empresa)) {
+      if (!empresasAlvorar.has(empresa)) empresasAlvorar.set(empresa, new Set());
+      empresasAlvorar.get(empresa).add(cnpj);
+    }
     if (!nomes.has(cnpj)) nomes.set(cnpj, new Set());
     if (empresa) nomes.get(cnpj).add(empresa);
     if (!candidatos.has(conta)) candidatos.set(conta, new Set());
@@ -865,12 +890,22 @@ function registrarMapaCnpjContasImportadas(dados) {
     [conta, cnpjs.size === 1 ? [...cnpjs][0] : '']
   ));
   grupoMapaCnpjContasImportadas = grupoAtivo;
+  mapaCnpjEmpresasAlvorar = Object.fromEntries([...empresasAlvorar].map(([codigo, cnpjs]) =>
+    [codigo, cnpjs.size === 1 ? [...cnpjs][0] : '']));
   nomesEmpresasCnpjImportadas = Object.fromEntries([...nomes].map(([cnpj, empresas]) => [cnpj, empresas.size === 1 ? [...empresas][0] : '']));
 }
 
 function cnpjContaFinanceira(conta) {
   const chave = normalizarTexto(limparTextoECD(conta));
   const manual = normalizarCnpjConta(configGrupos[grupoAtivo]?.cnpjContasFinanceiras?.[chave]);
+  if (modoImportacaoDoGrupo() === 'alvorar' && grupoMapaCnpjContasImportadas === grupoAtivo) {
+    const codigo = codigoEmpresaAlvorar(conta);
+    if (codigo && Object.hasOwn(mapaCnpjEmpresasAlvorar, codigo)) {
+      const cnpj = mapaCnpjEmpresasAlvorar[codigo];
+      return cnpj && (!manual || manual === cnpj) ? cnpj : '';
+    }
+    return manual;
+  }
   if (grupoMapaCnpjContasImportadas === grupoAtivo && Object.hasOwn(mapaCnpjContasImportadas, chave)) {
     const importado = mapaCnpjContasImportadas[chave];
     // Uma conta com empresas conflitantes nos titulos nao permite inferencia.
@@ -881,11 +916,12 @@ function cnpjContaFinanceira(conta) {
 }
 
 function grupoParcelasConciliaPorExtrato() {
-  return ['parcelas', 'parcelas_numerarios'].includes(modoImportacaoDoGrupo());
+  return ['parcelas', 'parcelas_numerarios', 'alvorar'].includes(modoImportacaoDoGrupo());
 }
 
 function empresaContaParcelas(conta) {
   if (!grupoParcelasConciliaPorExtrato()) return '';
+  if (modoImportacaoDoGrupo() === 'alvorar') return codigoEmpresaAlvorar(conta);
   const cnpj = cnpjContaFinanceira(conta);
   if (!cnpj) return '';
   return grupoMapaCnpjContasImportadas === grupoAtivo ? nomesEmpresasCnpjImportadas[cnpj] || '' : '';
@@ -902,7 +938,10 @@ function codigoContaTransitoParcelas(cnpj) {
 function regrasTransitoParcelas() {
   if (!grupoParcelasConciliaPorExtrato()) return [];
   const empresas = new Map();
-  contasBancariasUsadasSessao().forEach(conta => {
+  const contasSessao = modoImportacaoDoGrupo() === 'alvorar'
+    ? [...new Set(extratoBancarioTemp.map(m => limparTextoECD(m.conta)))]
+    : contasBancariasUsadasSessao();
+  contasSessao.forEach(conta => {
     const cnpj = cnpjContaFinanceira(conta);
     if (!cnpj) return;
     if (!empresas.has(cnpj)) empresas.set(cnpj, { cnpj, contas: [], caixa: false, banco: false });
@@ -1000,7 +1039,8 @@ function conferirParcelasPorContaDia(linhas, incluirConferidas = false) {
   const contas = [...new Set(extratoBancarioTemp.map(m => limparTextoECD(m.conta)))];
   const porCodigo = new Map();
   const empresasContas = new Map(contas.map(conta => [conta, normalizarTexto(empresaContaParcelas(conta))]));
-  contas.forEach(conta => new Set([normalizarTexto(conta), normalizarTexto(codigoBancoConciliacao(conta))]).forEach(chave => {
+  contas.forEach(conta => new Set([normalizarTexto(conta), normalizarTexto(codigoBancoConciliacao(conta)),
+    ...(modoImportacaoDoGrupo() === 'alvorar' ? [normalizarTexto(codigoContaExportacaoDominio(conta))] : [])]).forEach(chave => {
     if (!porCodigo.has(chave)) porCodigo.set(chave, []);
     porCodigo.get(chave).push(conta);
   }));
@@ -1038,6 +1078,15 @@ function resumoFechamentoParcelasExtrato() {
 }
 
 function validarExportacaoParcelasExtrato(linhas) {
+  if (modoImportacaoDoGrupo() === 'alvorar') {
+    const contasSemEmpresa = [...new Set(extratoBancarioTemp.map(m => m.conta))].filter(conta => !codigoEmpresaAlvorar(conta));
+    const linhasSemEmpresa = linhas.some(l => !codigoEmpresaAlvorar(l[7]));
+    const titulosSemEmpresa = sugestoesParcelasExtratoTemp.some(s => s.mov && !codigoEmpresaAlvorar(linhasImportadas[s.pag.idx]?.[COLS.EMPRESA]));
+    if (contasSemEmpresa.length || linhasSemEmpresa || titulosSemEmpresa) {
+      alert('Identifique o codigo da empresa da ALVORAR antes de exportar. Contas: ' + contasSemEmpresa.join(', '));
+      return false;
+    }
+  }
   const semVinculo = sugestoesParcelasExtratoTemp.filter(s => !s.mov && vinculosPagamentoConciliacaoTemp[`pag-${s.pag.idx}`] !== VINCULO_PAGAMENTO_SEM_EXTRATO);
   if (semVinculo.length) { alert(`${semVinculo.length} titulo(s) sem vinculo com o extrato. Revise o movimento ou marque para nao exportar.`); abrirModalPendenciasConciliacao(); return false; }
   const transitoPendente = [...movimentosTransitoParcelas().values()].some(m => !codigoContaTransitoParcelas(m.cnpj));
@@ -1079,11 +1128,15 @@ function abrirModalCnpjContas() {
   const contas = new Map(contasBancariasUsadasSessao().map(conta => [normalizarTexto(conta), conta]));
   Object.keys(manuais).forEach(conta => { if (!contas.has(conta)) contas.set(conta, conta); });
   const linhas = [...contas].map(([chave, conta]) => {
-    const temImportado = grupoMapaCnpjContasImportadas === grupoAtivo && Object.hasOwn(mapaCnpjContasImportadas, chave);
-    const importado = temImportado ? mapaCnpjContasImportadas[chave] : '';
+    const alvorar = modoImportacaoDoGrupo() === 'alvorar';
+    const codigoEmpresa = alvorar ? codigoEmpresaAlvorar(conta) : '';
+    const mapaImportado = alvorar ? mapaCnpjEmpresasAlvorar : mapaCnpjContasImportadas;
+    const chaveImportada = alvorar ? codigoEmpresa : chave;
+    const temImportado = grupoMapaCnpjContasImportadas === grupoAtivo && Object.hasOwn(mapaImportado, chaveImportada);
+    const importado = temImportado ? mapaImportado[chaveImportada] : '';
     const manual = normalizarCnpjConta(manuais[chave]);
     const conflito = temImportado && (!importado || (manual && manual !== importado));
-    const origem = conflito ? 'CNPJ conflitante nos titulos/cadastro' : temImportado ? 'Titulos importados' : 'Manual';
+    const origem = conflito ? 'CNPJ conflitante nos titulos/cadastro' : temImportado ? (alvorar ? 'Codigo da empresa nos titulos' : 'Titulos importados') : 'Manual';
     return linhaFormularioCnpjConta(conta, importado || manual, origem, temImportado && !manual);
   }).join('');
   const modal = document.createElement('div');
@@ -1127,6 +1180,7 @@ function escopoRegraPagamento(empresaOrigem, centroCusto, rateio = false, parcel
 }
 
 function empresaOrigemLinha(r) {
+  if (modoImportacaoDoGrupo() === 'alvorar') return codigoEmpresaAlvorar(r?.[COLS.CONTA]);
   const empresaOriginal = limparTextoECD(r?.__empresaOriginal || r?.[COLS.EMPRESA]);
   if (r?.__rateio) return empresaBancoRateioPorConta(r?.[COLS.CONTA], empresaOriginal);
   if (linhaEhParcelasNumerarios(r)) {
@@ -1142,6 +1196,7 @@ function centroCustoLinha(r) {
 }
 
 function empresaLancamentoLinha(r) {
+  if (modoImportacaoDoGrupo() === 'alvorar') return codigoEmpresaAlvorar(r?.[COLS.EMPRESA]);
   return r?.__rateio
     ? limparTextoECD(r?.__centroCusto || r?.[COLS.CC] || r?.[COLS.EMPRESA])
     : limparTextoECD(r?.[COLS.EMPRESA]);
@@ -1177,6 +1232,7 @@ function nomeModoImportacao(modo, layout = 'boticario') {
   const modoBase = normalizarModoImportacao(modo);
   if (modoBase === 'aromas') return 'Aromas';
   if (modoBase === 'cp_simone') return 'CP SIMONE';
+  if (modoBase === 'alvorar') return layout === 'f360_original' ? 'ALVORAR (FINANÇAS 360 - ORIGINAL)' : 'ALVORAR';
   const nome = modoBase === 'parcelas_numerarios'
     ? 'Parcelas com Numerários'
     : modoBase === 'rateio'
@@ -1187,6 +1243,7 @@ function nomeModoImportacao(modo, layout = 'boticario') {
 
 function normalizarModoImportacao(modo) {
   const texto = normalizarTexto(modo);
+  if (texto === 'alvorar' || texto.startsWith('alvorar__') || texto === 'alvorar (financas 360 - original)') return 'alvorar';
   if (texto.includes('cp simone') || texto === 'cp_simone') return 'cp_simone';
   if (texto.includes('aromas')) return 'aromas';
   if (texto.includes('rateio')) return 'rateio';
@@ -1321,6 +1378,11 @@ function empresasComCodigosOuNomesDiferentes(empresaOrigem, centroCusto) {
 
 function itemParcelasNumerariosIntercompany(item) {
   if (typeof item?.parcelasNumerariosIntercompany === 'boolean') return item.parcelasNumerariosIntercompany;
+  if (modoImportacaoDoGrupo() === 'alvorar') {
+    const pagadora = codigoEmpresaAlvorar(item?.empresaOrigem || item?.empresa);
+    const despesa = codigoEmpresaAlvorar(item?.centroCusto);
+    return !!item?.parcelasNumerarios && !!pagadora && !!despesa && pagadora !== despesa;
+  }
   return !!item?.parcelasNumerarios
     && empresasComCodigosOuNomesDiferentes(item?.empresaOrigem || item?.empresa, item?.centroCusto);
 }
@@ -1563,6 +1625,11 @@ function consolidarRecebimentosNumerariosTributariosMatriz(itens) {
 
 function parcelasNumerariosLinha(r) {
   if (!linhaEhParcelasNumerarios(r)) return false;
+  if (modoImportacaoDoGrupo() === 'alvorar') {
+    const pagadora = codigoEmpresaAlvorar(r?.[COLS.CONTA]);
+    const despesa = codigoEmpresaAlvorar(r?.[COLS.EMPRESA]);
+    return !!pagadora && !!despesa && pagadora !== despesa;
+  }
   return empresasComCodigosOuNomesDiferentes(empresaOrigemLinha(r), centroCustoLinha(r));
 }
 
@@ -1571,6 +1638,10 @@ function prepararLinhaParcelasNumerarios(row) {
   row.__parcelasNumerarios = true;
   row.__layoutF360Original = layoutImportacaoPagamentos === 'f360_original';
   row.__empresaOriginal = limparTextoECD(row[COLS.EMPRESA]);
+  if (modoImportacaoDoGrupo() === 'alvorar') {
+    row.__centroCusto = codigoEmpresaAlvorar(row[COLS.EMPRESA]);
+    return row;
+  }
   row.__centroCusto = row.__layoutF360Original
     ? limparTextoECD(row[COLS.CC] || row[COLS.EMPRESA])
     : unidadeDespesaPorEmpresa(row[COLS.EMPRESA], row[COLS.CC] || row[COLS.EMPRESA]);
@@ -2544,6 +2615,8 @@ function selecionarModoImportacaoPagamentos(modo, layout = layoutImportacaoDoGru
         ? 'Usa Rateio de Títulos: selecione juntos pagamentos e recebimentos. A regra considera a unidade da coluna Empresa e a dona do banco pela coluna Conta.'
       : modoImportacaoPagamentos === 'cp_simone'
         ? 'Usa o formato exclusivo da CP Simone: lê Parcelas de Títulos, gera numerários quando a unidade da despesa for diferente da dona da conta bancária e aplica somente as exceções próprias deste formato.'
+      : modoImportacaoPagamentos === 'alvorar'
+        ? 'Usa o formato exclusivo ALVORAR, com leitura de Parcelas de Títulos e configurações do próprio grupo.'
       : modoImportacaoPagamentos === 'parcelas_numerarios'
         ? 'Usa Parcelas de Títulos com numerários: quando a unidade da despesa for diferente da dona da conta bancária, gera uma ponta de numerário ativo e outra de numerário passivo. Recebimentos ficam fora deste módulo.'
         : layoutImportacaoPagamentos === 'f360_original'
@@ -2872,7 +2945,7 @@ function exportarProvisaoRateio() {
 
 function modoPermiteProvisaoParcelas(nome = grupoAtivo) {
   const modo = modoImportacaoDoGrupo(nome);
-  return modo === 'parcelas' || modoEhParcelasNumerarios(modo);
+  return modo === 'parcelas' || modo === 'alvorar' || modoEhParcelasNumerarios(modo);
 }
 
 function partesDataProvisaoParcelas(valor) {
@@ -3651,6 +3724,7 @@ function prepararPagamentosImportados(dados, abrirTelaPendencias = true) {
   origemNovasChaves = 'pagamentos';
   registrarMapaEmpresasImportadas(dados);
   registrarMapaCnpjContasImportadas(dados);
+  dados = prepararTitulosAlvorar(dados);
   linhasImportadas = dados;
 
   const regrasSalvas = depara[grupoAtivo] || {};
@@ -4202,16 +4276,16 @@ function renderConciliacaoBancariaCalculando() {
 
 function grupoPodeRecebimentosRateio() {
   const modo = modoImportacaoDoGrupo();
-  if (modo === 'cp_simone') return false;
+  if (modo === 'cp_simone' || modo === 'alvorar') return false;
   return modoUsaFluxoRateio(modo) || modoEhParcelasNumerarios(modo);
 }
 
 function grupoPodeRecebimentosSeparados() {
-  return modoImportacaoDoGrupo() !== 'cp_simone' && modoEhParcelasNumerarios();
+  return !['cp_simone', 'alvorar'].includes(modoImportacaoDoGrupo()) && modoEhParcelasNumerarios();
 }
 
 function conciliacaoUsaRecebimentosDoExtrato() {
-  return modoImportacaoDoGrupo() === 'cp_simone' || !grupoUsaNumerariosParcelas();
+  return ['cp_simone', 'alvorar'].includes(modoImportacaoDoGrupo()) || !grupoUsaNumerariosParcelas();
 }
 
 function normalizarCabecalhoRecebimentosNumerarios(valor) {
@@ -5779,6 +5853,29 @@ function movimentoEhCandidatoClaroPagamento(pag, mov) {
     && fornecedorBatePagamentoMovimento(pag, movimentoTextoConciliacao(mov));
 }
 
+function conciliarBeneficiariosExatosAlvorar(pagamentos, indiceDataValor, usadosMov, sugestoesPorPagamento) {
+  if (modoImportacaoDoGrupo() !== 'alvorar') return;
+  const propostas = [];
+  const porMovimento = new Map();
+  pagamentos.filter(pag => !sugestoesPorPagamento.has(pag.idx)).forEach(pag => {
+    const fornecedor = textoConciliacao(pag.fornecedor);
+    if (fornecedor.length < 4 || !limparTextoECD(pag.conta)) return;
+    const chave = `${pag.dataKey}\u0001${valorConciliacaoEmCentavos(pag.valor)}`;
+    const candidatos = (indiceDataValor.get(chave) || []).filter(({ mov, idxMov }) =>
+      !usadosMov.has(idxMov) && mov.valor < 0 && mesmaContaConciliacao(pag, mov)
+      && [mov.complemento, mov.historico].some(texto =>
+        ` ${textoConciliacao(texto)} `.includes(` ${fornecedor} `)));
+    candidatos.forEach(item => porMovimento.set(item.idxMov, (porMovimento.get(item.idxMov) || 0) + 1));
+    if (candidatos.length === 1) propostas.push({ pag, item: candidatos[0] });
+  });
+  propostas.forEach(({ pag, item }) => {
+    if (porMovimento.get(item.idxMov) !== 1) return;
+    usadosMov.add(item.idxMov);
+    sugestoesPorPagamento.set(pag.idx, { pag, mov: item.mov, idxMov: item.idxMov,
+      status: 'conciliado', regra: 'Beneficiario completo + conta + data + valor', diferenca: 0 });
+  });
+}
+
 function chaveGrupoConciliacaoClara(pag) {
   return [
     pag.dataKey,
@@ -6019,6 +6116,14 @@ function codigoRegraPagamentoConciliacao(pag = {}) {
 }
 
 function classificarTransferenciaEntreContas(par) {
+  if (modoImportacaoDoGrupo() === 'alvorar') {
+    const origem = identidadeEmpresaTransferencia(par?.saida);
+    const destino = identidadeEmpresaTransferencia(par?.entrada);
+    const codigoOrigem = codigoEmpresaAlvorar(par?.saida?.conta);
+    const codigoDestino = codigoEmpresaAlvorar(par?.entrada?.conta);
+    return { tipo: codigoOrigem && codigoDestino && codigoOrigem === codigoDestino ? 'PROPRIO' : 'NUMERARIOS',
+      origem, destino, criterio: codigoOrigem && codigoDestino ? 'codigo-empresa-alvorar' : 'identificacao-incompleta' };
+  }
   const cnpjOrigem = cnpjContaFinanceira(par?.saida?.conta);
   const cnpjDestino = cnpjContaFinanceira(par?.entrada?.conta);
   const origem = identidadeEmpresaTransferencia(par?.saida);
@@ -6124,7 +6229,7 @@ function empresaBancoConciliacao(item = {}, movimento = {}) {
   const conta = movimento.conta || item.conta || infoExtratoBancarioTemp?.conta || '';
   const porCnpj = empresaContaParcelas(conta);
   if (porCnpj) return porCnpj;
-  if (modoImportacaoDoGrupo() === 'parcelas') {
+  if (['parcelas', 'alvorar'].includes(modoImportacaoDoGrupo())) {
     const empresaPorConta = empresaDonaBancoPorConta(conta, '');
     if (empresaPorConta) return empresaPorConta;
   }
@@ -6274,6 +6379,7 @@ function gerarSugestoesConciliacao(opcoes = {}) {
     }
   });
 
+  conciliarBeneficiariosExatosAlvorar(pagamentos, indiceDataValor, usadosMov, sugestoesPorPagamento);
   autoConciliarGruposDuplicadosClaros(pagamentos, movimentos, usadosMov, sugestoesPorPagamento, indiceDataValor);
   autoConciliarLotesComDiferencaDeCentavo(pagamentos, movimentos, usadosMov, sugestoesPorPagamento, indiceData);
 
@@ -7192,7 +7298,7 @@ function montarChaveRecebimentoPorForma(tipo, escopo = '', origem = '') {
 }
 
 function obterChaveRegraRecebimentoConciliacao(item) {
-  if (grupoUsaNumerariosParcelas()) {
+  if (grupoUsaNumerariosParcelas() && modoImportacaoDoGrupo() !== 'alvorar') {
     return montarChaveRecebimentoPorForma(item.tipo, item.escopoRegra || '', origemRegraRecebimento(item));
   }
   const trecho = obterTrechoRegraRecebimento(item);
@@ -7203,7 +7309,7 @@ function obterChaveRegraRecebimentoConciliacao(item) {
 function encontrarCodigoRegraRecebimentoConciliacao(regras, tipo, historico, escopo = '', origem = '') {
   const historicoLimpo = limparTextoECD(historico);
   const tipoLimpo = limparTextoECD(tipo || 'Recebimento');
-  if (grupoUsaNumerariosParcelas()) {
+  if (grupoUsaNumerariosParcelas() && modoImportacaoDoGrupo() !== 'alvorar') {
     const origemLimpa = limparTextoECD(origem);
     const porForma = regras[montarChaveRecebimentoPorForma(tipoLimpo, escopo, origemLimpa)];
     if (porForma) return porForma;
@@ -7236,7 +7342,7 @@ function recebimentoAtendeRegra(item, itemRegra) {
   }
   if (normalizarTexto(item.tipo || '') !== normalizarTexto(itemRegra.tipo || '')) return false;
   if (normalizarTexto(item.escopoRegra || '') !== normalizarTexto(itemRegra.escopoRegra || '')) return false;
-  if (grupoUsaNumerariosParcelas()) {
+  if (grupoUsaNumerariosParcelas() && modoImportacaoDoGrupo() !== 'alvorar') {
     return normalizarTexto(origemRegraRecebimento(item)) === normalizarTexto(origemRegraRecebimento(itemRegra));
   }
   const termos = normalizarTexto(obterTrechoRegraRecebimento(itemRegra)).split(/\s+/).filter(Boolean);
@@ -7438,6 +7544,9 @@ function empresaCanonicaCpSimone(...valores) {
 }
 
 function empresaMatrizFilialExportacao(empresa, ...contas) {
+  if (modoImportacaoDoGrupo() === 'alvorar') {
+    return codigoEmpresaAlvorar(empresa) || codigoEmpresaAlvorar(contas.filter(Boolean).join(' '));
+  }
   const grupoNorm = normalizarTexto(grupoAtivo || '');
   const contaValidas = contas.map(limparTextoECD).filter(Boolean);
   const canonicaCpSimone = empresaCanonicaCpSimone(empresa, ...contaValidas);
@@ -7831,14 +7940,14 @@ function renderGrupos() {
           <button class="btn btn-sm" onclick="mostrarTela('tela-regras')">📋 Regras</button>
           <button class="btn btn-sm" onclick="mostrarTela('tela-plano-contas')">📑 Plano de Contas</button>
           <button class="btn btn-sm" onclick="abrirModalCnpjContas()">Empresa das contas</button>
-          ${modoGrupo === 'cp_simone'
+          ${modoGrupo === 'cp_simone' || modoGrupo === 'alvorar'
             ? `<button class="btn btn-sm btn-pagamentos-numerarios" onclick="mostrarTela('tela-importar')">⬇ Pagamentos e extratos</button>`
             : modoEhParcelasNumerarios(modoGrupo)
             ? `<button class="btn btn-sm btn-pagamentos-numerarios" onclick="mostrarTela('tela-importar')">⬇ Pagamentos</button>
                <button class="btn btn-sm btn-recebimentos-numerarios" onclick="mostrarTela('tela-recebimentos')">⬆ Recebimentos</button>`
             : `<button class="btn btn-sm btn-blue" onclick="mostrarTela('tela-importar')">⬆ Importar planilha</button>`}
           ${modoGrupo === 'aromas' ? `<button class="btn btn-sm" onclick="mostrarTela('tela-provisao-rateio')">Provisão</button>` : ''}
-          ${(modoGrupo === 'parcelas' || modoEhParcelasNumerarios(modoGrupo)) ? `<button class="btn btn-sm" onclick="mostrarTela('tela-provisao-parcelas')">Provisões</button>` : ''}
+          ${modoPermiteProvisaoParcelas(g) ? `<button class="btn btn-sm" onclick="mostrarTela('tela-provisao-parcelas')">Provisões</button>` : ''}
         ` : ''}
         <button class="btn btn-sm btn-danger" onclick="excluirGrupo('${g}')">🗑</button>
       </div>
@@ -7858,7 +7967,7 @@ function editarGrupoCadastro(g) {
     if (!nomeLimpo) { showMsg('Nome do grupo não pode ficar em branco.', 'warn'); return; }
     if (nomeLimpo !== atual && grupos.includes(nomeLimpo)) { showMsg('Já existe um grupo com esse nome.', 'warn'); return; }
     const modoAtual = valorOpcaoFormatoGrupo(atual);
-    const novoModoRaw = prompt('Formato do grupo: use parcelas, parcelas_numerarios, cp_simone, rateio ou aromas. Para o layout original, acrescente __f360_original.', modoAtual);
+    const novoModoRaw = prompt('Formato do grupo: use parcelas, parcelas_numerarios, cp_simone, alvorar, rateio ou aromas. Para o layout original, acrescente __f360_original.', modoAtual);
     if (novoModoRaw === null) return;
     const novoFormato = interpretarOpcaoFormatoPagamento(novoModoRaw);
     if (nomeLimpo !== atual) {
@@ -7893,6 +8002,8 @@ function editarGrupoCadastro(g) {
 function limparSessaoImportacao() {
   linhasImportadas = [];
   mapaCnpjContasImportadas = {};
+  mapaCnpjEmpresasAlvorar = {};
+  codigosEmpresasAlvorar.clear();
   nomesEmpresasCnpjImportadas = {};
   grupoMapaCnpjContasImportadas = '';
   sugestoesParcelasExtratoTemp = [];
