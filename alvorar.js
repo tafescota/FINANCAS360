@@ -8,6 +8,57 @@ const ESTABELECIMENTOS_ALVORAR = {
 let recebimentosAlvorarTemp = [];
 let infoRecebimentosAlvorarTemp = null;
 let cacheRecebimentosAlvorar = null;
+let visaoPendenciasAlvorarTemp = 'contas';
+
+function resumoVinculosAlvorar() {
+  const titulos = sugestoesParcelasExtratoTemp.filter(s => !s.mov
+    && vinculosPagamentoConciliacaoTemp['pag-' + s.pag.idx] !== VINCULO_PAGAMENTO_SEM_EXTRATO);
+  return { quantidade: titulos.length, valor: arredondarMoeda(titulos.reduce((s, t) => s + Math.abs(t.pag.valor), 0)) };
+}
+
+function filtrarVisaoPendenciasAlvorar(itens, visao = visaoPendenciasAlvorarTemp) {
+  if (modoImportacaoDoGrupo() !== 'alvorar' || visao === 'todas') return itens;
+  return itens.filter(i => (i.movimento === 'pagamento-pendente') === (visao === 'vinculos'));
+}
+
+function agruparPendenciasRecebimentosAlvorar(itens) {
+  if (modoImportacaoDoGrupo() !== 'alvorar') return itens;
+  const grupos = new Map(), resultado = [];
+  itens.forEach(item => {
+    const chave = item.titularidadeAlvorar && item.movimento === 'recebimento' ? item.naturezaAlvorar?.chave : '';
+    if (!chave) { resultado.push(item); return; }
+    if (!grupos.has(chave)) {
+      const grupo = { ...item, total: 0, qtd: 0, datasAgrupadasAlvorar: new Set() };
+      grupos.set(chave, grupo);
+      resultado.push(grupo);
+    }
+    const grupo = grupos.get(chave);
+    grupo.total = arredondarMoeda(grupo.total + item.total);
+    grupo.qtd += item.qtd || 1;
+    grupo.datasAgrupadasAlvorar.add(item.data);
+    grupo.data = `${grupo.datasAgrupadasAlvorar.size} dia(s) / ${grupo.qtd} movimentos`;
+  });
+  return resultado;
+}
+
+function alterarVisaoPendenciasAlvorar(visao) {
+  visaoPendenciasAlvorarTemp = visao;
+  if (visao === 'vinculos') filtroNaturezaPendenciasAlvorarTemp = '';
+  pendenciasConciliacaoSelecionadas.clear();
+  abrirModalPendenciasConciliacao();
+}
+
+function htmlVinculosPagamentosAlvorar() {
+  const resumo = resumoVinculosAlvorar();
+  const saidas = conciliacaoItensTemp.filter(i => i.movimento === 'saida-pendente'
+    && !obterCodigoContaParaDominio(codigosConciliacaoTemp[i.id]));
+  const totalSaidas = arredondarMoeda(saidas.reduce((s, i) => s + i.total, 0));
+  return `<div class="alert ${resumo.quantidade ? 'alert-warn' : 'alert-ok'} conciliacao-check-alert">
+    <div class="conciliacao-check-head"><strong>Vinculos de pagamentos com o extrato</strong><span class="conciliacao-check-status ${resumo.quantidade ? 'warn' : 'ok'}">${resumo.quantidade ? 'Revisao pendente' : 'Vinculos conferem'}</span></div>
+    <div class="conciliacao-check-totals"><span>Titulos sem vinculo: <strong>${resumo.quantidade} / R$ ${fmtValor(resumo.valor)}</strong></span><span>Saidas com contrapartida pendente: <strong>${saidas.length} / R$ ${fmtValor(totalSaidas)}</strong></span></div>
+    <button class="btn btn-sm" onclick="alterarVisaoPendenciasAlvorar('vinculos')">Conferir titulos sem vinculo</button>
+  </div>`;
+}
 
 function familiaEmpresaAlvorar(codigo) {
   return Object.keys(ESTABELECIMENTOS_ALVORAR).find(f => ESTABELECIMENTOS_ALVORAR[f].includes(String(codigo))) || '';

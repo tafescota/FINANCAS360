@@ -3909,7 +3909,8 @@ function prepararPagamentosImportados(dados, abrirTelaPendencias = true) {
     const acrescimoDesconto = arredondarMoeda(r[COLS.ACRESCIMO]);
     if (acrescimoDesconto !== 0) {
       const tipoAjuste = acrescimoDesconto < 0 ? 'DESCONTO' : 'ACRÉSCIMO';
-      const ajusteMultiploAutomatico = !intercompanyRateio && !linhaIntercompanyParcelasNumerarios;
+      const ajusteMultiploAutomatico = (!intercompanyRateio && !linhaIntercompanyParcelasNumerarios)
+        || (modoImportacaoDoGrupo() === 'alvorar' && linhaIntercompanyParcelasNumerarios && arredondarMoeda(r[COLS.VALOR_LIQ]) > 0);
       pontasConfiguraveisAjustePagamento(tipoAjuste, ajusteMultiploAutomatico).forEach(ponta => {
         const tipoPonta = tipoAjustePonta(tipoAjuste, ponta);
         const chaveAjuste = montarChave(forn, plano, tipoPonta, historico, escopoRegra);
@@ -4051,6 +4052,7 @@ function htmlDetalheDiferencaConferencia(pagamentos, saidas) {
 }
 
 function tipoContaFinanceiraConferencia(conta) {
+  if (modoImportacaoDoGrupo() === 'alvorar') return { Banco: 'BANCO', Caixa: 'CAIXA', Aplicacoes: 'APLICAÇÃO' }[tipoContaAlvorar(conta)];
   const texto = normalizarTexto(conta);
   if (texto.includes('caixa loja')) return 'CAIXA';
   if (texto.includes('aplicacao')) return 'APLICAÇÃO';
@@ -4173,6 +4175,8 @@ function resumoFechamentoContasDominio() {
 
 function htmlFechamentoContasDominio(resumo) {
   if (!resumo?.disponivel) return '';
+  const alvorar = modoImportacaoDoGrupo() === 'alvorar';
+  const vinculos = alvorar ? resumoVinculosAlvorar() : null;
   const porTipo = ['BANCO', 'CAIXA', 'APLICAÇÃO'].map(tipo => {
     const itens = resumo.detalhes.filter(item => item.tipo === tipo);
     const somar = campo => arredondarMoeda(itens.reduce((s, item) => s + item[campo], 0));
@@ -4182,6 +4186,8 @@ function htmlFechamentoContasDominio(resumo) {
       dominioEntradas: somar('dominioEntradas'),
       extratoSaidas: somar('extratoSaidas'),
       dominioSaidas: somar('dominioSaidas'),
+      diferencaEntradas: somar('diferencaEntradas'),
+      diferencaSaidas: somar('diferencaSaidas'),
       diferencaSaldo: somar('diferencaSaldo')
     };
   });
@@ -4191,6 +4197,7 @@ function htmlFechamentoContasDominio(resumo) {
     <td class="col-value">R$ ${fmtValor(item.dominioEntradas)}</td>
     <td class="col-value">R$ ${fmtValor(item.extratoSaidas)}</td>
     <td class="col-value">R$ ${fmtValor(item.dominioSaidas)}</td>
+    ${alvorar ? `<td class="col-value ${Math.abs(item.diferencaEntradas) < 0.01 ? 'ok' : 'warn'}">R$ ${fmtValor(item.diferencaEntradas)}</td><td class="col-value ${Math.abs(item.diferencaSaidas) < 0.01 ? 'ok' : 'warn'}">R$ ${fmtValor(item.diferencaSaidas)}</td>` : ''}
     <td class="col-value ${Math.abs(item.diferencaSaldo) < 0.01 ? 'ok' : 'warn'}">R$ ${fmtValor(item.diferencaSaldo)}</td>
   </tr>`).join('');
   const linhasDivergentes = resumo.divergentes.slice(0, 80).map(item => `<tr>
@@ -4212,8 +4219,8 @@ function htmlFechamentoContasDominio(resumo) {
   return `<div class="alert ${resumo.bate ? 'alert-ok' : 'alert-warn'} conciliacao-check-alert" style="margin-top:14px">
     <div class="conciliacao-check-head"><div><strong>Fechamento contábil por conta</strong><span>Compara o arquivo final projetado com banco, caixa e aplicação do extrato, após as desconsiderações definidas no grupo.</span></div>
     <span class="conciliacao-check-status ${resumo.bate ? 'ok' : 'warn'}">${resumo.bate ? 'Fechamento confere' : 'Fechamento pendente'}</span></div>
-    <div class="conciliacao-note" style="margin:8px 0">${escapeHtml(textoStatus)}</div>
-    <div class="table-wrap"><table><thead><tr><th>Tipo</th><th class="col-value">Entradas extrato</th><th class="col-value">Entradas Domínio</th><th class="col-value">Saídas extrato</th><th class="col-value">Saídas Domínio</th><th class="col-value">Dif. saldo</th></tr></thead><tbody>${linhasTipos}</tbody></table></div>
+    <div class="conciliacao-note" style="margin:8px 0">${alvorar ? `${resumo.divergentes.length} conta(s) com diferenca por dia. ${Math.max(0, resumo.pendentes - vinculos.quantidade)} movimentos com conta pendente; ${vinculos.quantidade} titulo(s) sem vinculo no extrato (R$ ${fmtValor(vinculos.valor)}).` : escapeHtml(textoStatus)}</div>
+    <div class="table-wrap"><table><thead><tr><th>Tipo</th><th class="col-value">Entradas extrato</th><th class="col-value">Entradas Domínio</th><th class="col-value">Saídas extrato</th><th class="col-value">Saídas Domínio</th>${alvorar ? '<th class="col-value">Dif. entradas</th><th class="col-value">Dif. saídas</th>' : ''}<th class="col-value">Dif. saldo</th></tr></thead><tbody>${linhasTipos}</tbody></table></div>
     ${detalhe}
   </div>`;
 }
@@ -4248,16 +4255,17 @@ function htmlResumoConferenciaBancaria() {
   const textoConferenciaGeral = valoresBatem
     ? 'Extrato confere com as parcelas pagas'
     : `${situacaoDiferenca}: R$ ${fmtValor(Math.abs(diferencaConferencia))}`;
+  const vinculosAlvorar = modoImportacaoDoGrupo() === 'alvorar' ? resumoVinculosAlvorar() : null;
   return `
     <div class="conciliacao-grid conciliacao-summary-grid">
       <div class="metric metric-muted"><div class="metric-label">Grupo ativo</div><div class="metric-value metric-text">${escapeHtml(grupoAtivo || 'Nenhum')}</div></div>
       <div class="metric metric-muted"><div class="metric-label">Pagamentos carregados</div><div class="metric-value">${qtdPagamentos}</div><div class="metric-sub">linhas importadas</div></div>
-      <div class="metric ${valoresBatem ? 'metric-focus-ok' : 'metric-focus-warn'}"><div class="metric-label">Conferência</div><div class="metric-value ${valoresBatem ? 'ok' : 'warn'}">${valoresBatem ? 'Bate' : 'Diferença'}</div><div class="metric-sub">${escapeHtml(textoConferenciaGeral)}</div></div>
+      <div class="metric ${(vinculosAlvorar ? !vinculosAlvorar.quantidade : valoresBatem) ? 'metric-focus-ok' : 'metric-focus-warn'}"><div class="metric-label">${vinculosAlvorar ? 'Vinculos de pagamentos' : 'Conferência'}</div><div class="metric-value ${(vinculosAlvorar ? !vinculosAlvorar.quantidade : valoresBatem) ? 'ok' : 'warn'}">${vinculosAlvorar ? vinculosAlvorar.quantidade : valoresBatem ? 'Bate' : 'Diferença'}</div><div class="metric-sub">${vinculosAlvorar ? `Titulo(s) sem vinculo: R$ ${fmtValor(vinculosAlvorar.valor)}` : escapeHtml(textoConferenciaGeral)}</div></div>
       <div class="metric metric-muted"><div class="metric-label">Extrato bancário</div><div class="metric-value metric-text">${extratoBancarioTemp.length}</div><div class="metric-sub">${infoExtratoBancarioTemp ? escapeHtml(resumoContasExtrato(extratoBancarioTemp)) : 'Não importado'}</div></div>
       <div class="metric metric-muted recebimentos-movimentacoes"><div class="metric-label">Movimentações (extrato)</div><div class="recebimentos-numerarios-valores"><div><span>Entradas</span><strong>R$ ${fmtValor(entradas.reduce((s, m) => s + m.valor, 0))}</strong><small>${entradas.length} movimentos</small></div><div><span>Saídas</span><strong>R$ ${fmtValor(Math.abs(saidas.reduce((s, m) => s + m.valor, 0)))}</strong><small>${saidas.length} movimentos</small></div></div></div>
     </div>
     ${htmlFechamentoContasDominio(fechamento)}
-    <div class="alert ${valoresPagamentosBatem ? 'alert-ok' : 'alert-warn'} conciliacao-check-alert">
+    ${vinculosAlvorar ? htmlVinculosPagamentosAlvorar() : `<div class="alert ${valoresPagamentosBatem ? 'alert-ok' : 'alert-warn'} conciliacao-check-alert">
       <div class="conciliacao-check-head">
         <div>
           <strong>Conferência de pagamentos</strong>
@@ -4272,7 +4280,7 @@ function htmlResumoConferenciaBancaria() {
       </div>
       ${htmlAvisoAjustesFechamentoCaixaConciliacao()}
       ${detalheDiferenca}
-    </div>`;
+    </div>`}`;
 }
 
 function renderResumoConferenciaResultado() {
@@ -7136,7 +7144,7 @@ function exportarPendenciasConciliacao() {
   const todas = document.getElementById('escopo-exportacao-pendencias')?.value === 'todas';
   const filtro = todas ? '' : filtroPendenciasConciliacaoTemp;
   const natureza = todas ? '' : filtroNaturezaPendenciasAlvorarTemp;
-  const itens = itensPendentesConciliacao(filtro, natureza);
+  const itens = filtrarVisaoPendenciasAlvorar(itensPendentesConciliacao(filtro, natureza), todas ? 'todas' : visaoPendenciasAlvorarTemp);
   if (!itens.length) { alert('Nenhuma pendencia para exportar nesta selecao.'); return; }
   const recebimentos = origemModalPendencias === 'recebimentos';
   const cabecalho = ['Grupo', 'Movimento', 'Tipo', 'Empresa do banco', 'Unidade / empresa do recebimento',
@@ -7208,7 +7216,8 @@ function abrirModalPendenciasConciliacao() {
     setTimeout(() => abrirModalPendenciasConciliacao(), 0);
     return;
   }
-  const itensModal = itensPendentesConciliacao();
+  const itensModalOriginais = filtrarVisaoPendenciasAlvorar(itensPendentesConciliacao());
+  const itensModal = agruparPendenciasRecebimentosAlvorar(itensModalOriginais);
   const limitePendencias = filtroPendenciasConciliacaoTemp ? 650 : 280;
   const itensRenderizados = itensModal.slice(0, limitePendencias);
   const avisoLimitePendencias = itensModal.length > itensRenderizados.length
@@ -7360,8 +7369,8 @@ function abrirModalPendenciasConciliacao() {
         : `<span style="color:var(--text2)">${escapeHtml(item.historico || '')}</span>`;
     return `<tr>
       <td><input type="checkbox" data-pendencia-conciliacao-id="${escapeAttr(item.id)}" ${pendenciasConciliacaoSelecionadas.has(item.id) ? 'checked' : ''} onchange="alternarPendenciaConciliacao(this.dataset.pendenciaConciliacaoId, this.checked)"></td>
-      <td><span class="badge ${item.movimento === 'recebimento' ? 'badge-blue' : ''}">${escapeHtml(labelMovimentoConciliacao(item))}</span></td>
-      <td>${tipoOperacaoPendencia ? `<span class="badge ${classeTipoOperacao}" title="${escapeAttr(tipoOperacaoPendencia)}">${escapeHtml(tipoOperacaoPendencia === 'PROPRIO' ? 'PRÓPRIO' : tipoOperacaoPendencia)}</span>` : ''}</td>
+      <td><span class="badge ${item.movimento === 'recebimento' ? 'badge-blue' : ''}" style="${modoImportacaoDoGrupo() === 'alvorar' ? 'padding:4px 5px' : ''}" title="${escapeAttr(labelMovimentoConciliacao(item))}">${escapeHtml(modoImportacaoDoGrupo() === 'alvorar' && item.titularidadeAlvorar ? 'Entrada' : labelMovimentoConciliacao(item))}</span></td>
+      <td>${tipoOperacaoPendencia ? `<span class="badge ${classeTipoOperacao}" style="${modoImportacaoDoGrupo() === 'alvorar' ? 'padding:4px 5px' : ''}" title="${escapeAttr(tipoOperacaoPendencia)}">${escapeHtml(modoImportacaoDoGrupo() === 'alvorar' && tipoOperacaoPendencia === 'TRANSFERENCIA DE NUMERARIOS' ? 'Numerarios' : tipoOperacaoPendencia === 'PROPRIO' ? 'PRÓPRIO' : tipoOperacaoPendencia)}</span>` : ''}</td>
  
       <td title="${escapeAttr(empresaCol)}"><div class="cell-main">${escapeHtml(empresaCol)}</div></td>
       <td title="${escapeAttr(centroCol)}" style="color:var(--text2)">${escapeHtml(centroCol)}</td>
@@ -7379,11 +7388,11 @@ function abrirModalPendenciasConciliacao() {
   const qtdPontasTransferenciaNoModal = itensModal.filter(item => item.transferenciaContas).length;
   const partesAjudaModal = [];
   if (qtdPontasTransferenciaNoModal) partesAjudaModal.push(`${qtdPontasTransferenciaNoModal} ponta${qtdPontasTransferenciaNoModal !== 1 ? 's' : ''} de transferência entre contas precisa${qtdPontasTransferenciaNoModal !== 1 ? 'm' : ''} da conta de numerários.`);
-  if (qtdPagamentosNoModal) partesAjudaModal.push(`${qtdPagamentosNoModal} pagamento${qtdPagamentosNoModal !== 1 ? 's' : ''} sem regra contábil (R$ ${fmtValor(totalPagamentosNoModal)}).`);
+  if (qtdPagamentosNoModal) partesAjudaModal.push(modoImportacaoDoGrupo() === 'alvorar' ? `${qtdPagamentosNoModal} titulo(s) sem vinculo no extrato (R$ ${fmtValor(totalPagamentosNoModal)}). Informar uma conta nao cria o movimento ausente.` : `${qtdPagamentosNoModal} pagamento${qtdPagamentosNoModal !== 1 ? 's' : ''} sem regra contábil (R$ ${fmtValor(totalPagamentosNoModal)}).`);
   if (qtdSaidasNoModal) partesAjudaModal.push(`${qtdSaidasNoModal} saída${qtdSaidasNoModal !== 1 ? 's' : ''} do extrato sem regra contábil (R$ ${fmtValor(totalSaidasNoModal)}).`);
   if (qtdPagamentosNoModal || qtdSaidasNoModal) partesAjudaModal.push('Estes valores medem somente regras faltantes; não representam a diferença do fechamento.');
   const textoAjudaModal = partesAjudaModal.join(' ');
-  const tituloModal = fluxoRecebimentos ? 'Novas regras de recebimentos' : 'Preencher regras não cadastradas';
+  const tituloModal = modoImportacaoDoGrupo() === 'alvorar' && visaoPendenciasAlvorarTemp === 'vinculos' ? 'Conferir titulos sem vinculo' : fluxoRecebimentos ? 'Novas regras de recebimentos' : 'Preencher regras não cadastradas';
   const subtituloModal = fluxoRecebimentos
     ? `${itensModal.length} regra${itensModal.length !== 1 ? 's' : ''} nova${itensModal.length !== 1 ? 's' : ''} para preencher. As regras salvas já foram aplicadas automaticamente.`
     : `${itensModal.length} item${itensModal.length !== 1 ? 's' : ''} sem regra para preencher. Itens que já possuem regra não aparecem novamente. ${textoAjudaModal}`;
@@ -7411,7 +7420,7 @@ function abrirModalPendenciasConciliacao() {
           <button class="btn btn-sm" onclick="fecharModalPendenciasConciliacao()">Fechar</button>
         </div>
       </div>
-      <div style="padding:14px 22px;border-bottom:1px solid var(--border);display:grid;grid-template-columns:minmax(220px,1fr) minmax(180px,240px) auto auto auto;gap:10px;align-items:center">
+      <div style="padding:14px 22px;border-bottom:1px solid var(--border);display:grid;grid-template-columns:${modoImportacaoDoGrupo() === 'alvorar' ? 'repeat(auto-fit,minmax(min(100%,200px),1fr))!important' : 'minmax(220px,1fr) minmax(180px,240px) auto auto auto'};gap:10px;align-items:center;${modoImportacaoDoGrupo() === 'alvorar' ? 'max-height:25vh;overflow-y:auto' : ''}">
         <input type="search" id="filtro-pendencias-conciliacao" value="${escapeAttr(filtroPendenciasConciliacaoTemp)}" placeholder="${escapeAttr(placeholderPesquisa)}" oninput="atualizarFiltroPendenciasConciliacao(this)">
         <input type="text" id="codigo-lote-conciliacao" class="conta-autocomplete" placeholder="Conta para aplicar nos selecionados" oninput="criarAutocompleteConta(this)">
         <button class="btn btn-sm" onclick="selecionarPendenciasConciliacaoFiltradas()">Selecionar filtradas</button>
@@ -7420,17 +7429,18 @@ function abrirModalPendenciasConciliacao() {
         ${modoImportacaoDoGrupo() === 'alvorar' ? `<select aria-label="Filtrar por natureza" onchange="filtroNaturezaPendenciasAlvorarTemp=this.value;abrirModalPendenciasConciliacao()">
           ${[['', 'Todas as naturezas'], ['CARTOES', 'Cartoes'], ['APLICACAO', 'Aplicacao / resgate'], ['CAIXA', 'Depositos de caixa'], ['REPASSE', 'Repasses / transferencias'], ['NUMERARIOS', 'Numerarios'], ['OUTROS_RECEBIMENTOS', 'Outros recebimentos'], ['OUTRAS_SAIDAS', 'Outras saidas']].map(([valor, label]) => `<option value="${valor}" ${filtroNaturezaPendenciasAlvorarTemp === valor ? 'selected' : ''}>${label}</option>`).join('')}
         </select>` : ''}
+        ${modoImportacaoDoGrupo() === 'alvorar' ? `<select aria-label="Tipo de pendencia" onchange="alterarVisaoPendenciasAlvorar(this.value)">${[['contas','Contas contabeis'],['vinculos','Titulos sem vinculo'],['todas','Todas as pendencias']].map(([v,t])=>`<option value="${v}" ${visaoPendenciasAlvorarTemp===v?'selected':''}>${t}</option>`).join('')}</select>` : ''}
       </div>
       <div style="padding:16px 22px;overflow:auto">
         ${avisoLimitePendencias}
-        <div class="table-wrap table-scroll">
-          <table class="pendencias-conciliacao-table">
+        <div class="table-wrap table-scroll" style="${modoImportacaoDoGrupo() === 'alvorar' ? 'overflow-x:auto!important' : ''}">
+          <table class="pendencias-conciliacao-table" style="${modoImportacaoDoGrupo() === 'alvorar' ? 'min-width:1100px!important' : ''}">
             <thead><tr>${cabecalhosModal}</tr></thead>
             <tbody>${linhas || `<tr><td colspan="11" style="text-align:center;color:var(--ok-text);background:var(--ok-bg);padding:24px">Todas as pendências desta janela foram preenchidas.</td></tr>`}</tbody>
           </table>
         </div>
       </div>
-      <div style="padding:14px 22px;border-top:1px solid var(--border);display:flex;justify-content:flex-end;gap:10px">
+      <div style="padding:14px 22px;border-top:1px solid var(--border);display:flex;justify-content:flex-end;gap:10px;${modoImportacaoDoGrupo() === 'alvorar' ? 'flex-wrap:wrap' : ''}">
         <button class="btn" onclick="fecharModalPendenciasConciliacao()">Cancelar</button>
         <button class="btn" onclick="atualizarModalPendenciasConciliacao()">Atualizar pendências</button>
         <button id="btn-salvar-pendencias-conciliacao" class="btn btn-primary" onclick="salvarModalPendenciasConciliacao()">${textoSalvarModal}</button>
@@ -8286,6 +8296,7 @@ function editarGrupoCadastro(g) {
   });
 }
 function limparSessaoImportacao() {
+  visaoPendenciasAlvorarTemp = 'contas';
   recebimentosAlvorarTemp = [];
   infoRecebimentosAlvorarTemp = null;
   cacheRecebimentosAlvorar = null;
@@ -9222,10 +9233,11 @@ function renderLinhaAjustePar(linha) {
       (linha.ajuste === 'ACRÉSCIMO' && pontaRegra === 'CRÉDITO')
     );
     if (!item && pontaAutomatica) {
-      const valorAutomatico = linha.ajuste === 'DESCONTO' ? 'Conta principal' : 'Banco da empresa';
+      const valorAutomatico = linha.ajuste === 'DESCONTO' ? 'Conta principal'
+        : modoImportacaoDoGrupo() === 'alvorar' && baseItem.parcelasNumerariosIntercompany ? 'Numerario da unidade da despesa' : 'Banco da empresa';
       return `<label class="ajuste-par-field ajuste-par-field-resolvido" title="${escapeAttr(valorAutomatico)} definida automaticamente em cada lançamento">
         <span>${escapeHtml(rotuloPonta)}</span>
-        <input type="text" aria-label="${escapeAttr(valorAutomatico)}" value="${escapeAttr(valorAutomatico)}" readonly>
+        <input type="text" aria-label="${escapeAttr(valorAutomatico)}" value="${escapeAttr(modoImportacaoDoGrupo() === 'alvorar' ? 'Auto' : valorAutomatico)}" readonly>
       </label>`;
     }
     const codigoResolvido = item ? '' : codigoPontaResolvida(pontaRegra);
@@ -9246,7 +9258,7 @@ function renderLinhaAjustePar(linha) {
     <td title="${escapeAttr(fornecedor)}"><div class="cell-main">${escapeHtml(fornecedor)}</div></td>
     <td title="${escapeAttr(plano)}"><div class="cell-main">${escapeHtml(plano)}</div></td>
     <td title="${escapeAttr([linha.ajuste, historicoExibido].filter(Boolean).join(' - '))}" style="color:var(--text2)">
-      <div style="font-weight:800;color:#92400e;margin-bottom:4px">${escapeHtml(linha.ajuste)} - débito e crédito</div>
+      <div style="font-weight:800;color:#92400e;margin-bottom:4px">${escapeHtml(linha.ajuste)} - ${modoImportacaoDoGrupo() === 'alvorar' && baseItem.ajusteMultiploAutomatico ? 'lançamento múltiplo' : 'débito e crédito'}</div>
       ${historicoExibido ? `<div class="historico-regra-label">Clique nas palavras da regra:</div>${palavras}` : ''}
     </td>
     <td title="${escapeAttr([tipoRateioTitulo, tipoRateioSub].filter(Boolean).join(' - '))}" style="color:var(--text2)">${tipoRateioTitulo ? `<span class="badge ${tipoRateio === 'PROPRIO' ? 'badge-blue' : ''}">${escapeHtml(tipoRateioTitulo)}</span>${tipoRateioSub ? `<div class="cell-subtle">${escapeHtml(tipoRateioSub)}</div>` : ''}` : ''}</td>
@@ -10200,6 +10212,16 @@ function gerarLancamentos(dados, regras) {
       if (!codNumerarioCentro) pendentes.add(chaveNumerarioCentro);
       const semCodigoBanco = !codNumerarioBanco || !codCredito;
       const semCodigoCentro = !codDeparaPrincipal || !codNumerarioCentro;
+      if (modoImportacaoDoGrupo() === 'alvorar' && !linhaParcelasNegativa && acrescimoDesconto !== 0) {
+        const loteMultiploId = `AJUSTE-${idx}`;
+        const valorPrincipal = acrescimoDesconto > 0
+          ? Math.abs(arredondarMoeda(valorLiq - acrescimoDesconto)) : valorParcelas;
+        lancamentosGerados.push({ idx, data: dataLiq, codDebito: codNumerarioBanco, codCredito, valorLiq: valorParcelas, valorFmt: fmtValor(valorParcelas), complemento: complementoIntercompany, empresa: empresaBancoRateio, plano, acrescimoDesconto, semCodigo: semCodigoBanco, tipoRateio: tipoRateioAtual, lancamentoNumerario: true });
+        lancamentosGerados.push({ idx, data: dataLiq, codDebito: codDeparaPrincipal, codCredito: codNumerarioCentro, valorLiq: valorPrincipal, valorFmt: fmtValor(valorPrincipal), complemento: complementoIntercompany, empresa: empresaCentroParcelasNumerarios, plano, acrescimoDesconto, semCodigo: semCodigoCentro, tipoRateio: tipoRateioAtual, lancamentoNumerario: true, loteMultiploId, iniciaLoteMultiplo: true });
+        gerarLancamentoAjuste({ idx, dataLiq, forn, plano, tipoDoc, historico, escopoRegra, complemento, empresa: empresaCentroParcelasNumerarios, acrescimoDesconto, valorLiq, tipoRateioAtual, multiploAutomatico: true, codPrincipal: codDeparaPrincipal, codBanco: codNumerarioCentro, loteMultiploId });
+        if (acrescimoDesconto > 0) lancamentosGerados[lancamentosGerados.length - 1].lancamentoNumerario = true;
+        return;
+      }
       if (linhaParcelasNegativa) {
         lancamentosGerados.push({ idx, data: dataLiq, codDebito: codCredito, codCredito: codNumerarioBanco, valorLiq: valorParcelas, valorFmt: fmtValor(valorParcelas), complemento: complementoIntercompany, empresa: empresaBancoRateio, plano, acrescimoDesconto, semCodigo: semCodigoBanco, rateioNegativo: true, tipoRateio: tipoRateioAtual, lancamentoNumerario: true });
         lancamentosGerados.push({ idx, data: dataLiq, codDebito: codNumerarioCentro, codCredito: codDeparaPrincipal, valorLiq: valorParcelas, valorFmt: fmtValor(valorParcelas), complemento: complementoIntercompany, empresa: empresaCentroParcelasNumerarios, plano, acrescimoDesconto, semCodigo: semCodigoCentro, rateioNegativo: true, tipoRateio: tipoRateioAtual, lancamentoNumerario: true });
