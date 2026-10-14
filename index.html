@@ -6980,6 +6980,61 @@ function autoVincularPagamentosPendentesClaros(itens, saidasPendentes) {
   return qtd;
 }
 
+function itensPendentesConciliacao(filtro = filtroPendenciasConciliacaoTemp) {
+  return conciliacaoItensTemp.filter(item => {
+    if (item.movimento === 'saida-pendente') return !obterCodigoContaParaDominio(codigosConciliacaoTemp[item.id]) && !saidasExtratoRevisadasConciliacaoTemp[item.id];
+    if (item.movimento === 'pagamento-pendente') {
+      return !vinculosPagamentoConciliacaoTemp[item.id]
+        && (grupoParcelasConciliaPorExtrato() || !obterCodigoContaParaDominio(codigosConciliacaoTemp[item.id]));
+    }
+    if (item.movimento === 'recebimento' || item.movimento === 'numerario-rateio') return !obterCodigoContaParaDominio(codigosConciliacaoTemp[item.id]);
+    return true;
+  }).filter(item => !filtro || textoBuscaPendenciaConciliacao(item).includes(normalizarTexto(filtro)));
+}
+
+function exportarPendenciasConciliacao() {
+  const todas = document.getElementById('escopo-exportacao-pendencias')?.value === 'todas';
+  const filtro = todas ? '' : filtroPendenciasConciliacaoTemp;
+  const itens = itensPendentesConciliacao(filtro);
+  if (!itens.length) { alert('Nenhuma pendencia para exportar nesta selecao.'); return; }
+  const recebimentos = origemModalPendencias === 'recebimentos';
+  const cabecalho = ['Grupo', 'Movimento', 'Tipo', 'Empresa do banco', 'Unidade / empresa do recebimento',
+    'Conta financeira / extrato', 'Origem / regra', 'Conta esperada', 'Historico', 'Data / Grupo', 'Quantidade de movimentos', 'Valor', 'ID'];
+  const dados = itens.map(item => {
+    const numerario = item.movimento === 'numerario-rateio';
+    const natureza = item.numerarioTributarioMatriz ? 'ativo' : String(item.naturezaNumerario || item.tipo || '').toLowerCase();
+    const origem = item.numerarioTributarioMatriz ? 'Numerarios tributarios da matriz'
+      : item.transferenciaContas ? (item.pontaTransferencia === 'origem' ? 'Numerarios da conta de origem' : 'Numerarios da conta de destino')
+      : numerario ? (item.pontaNumerario === 'EMPRESA DO BANCO' ? 'Numerarios da empresa do banco' : 'Numerarios da unidade da despesa')
+      : recebimentos && item.movimento === 'recebimento' ? item.tipo || ''
+      : item.fornecedor || item.descricao || item.historico || '';
+    const esperada = numerario ? `Numerarios ${natureza}`
+      : recebimentos && item.movimento === 'recebimento' ? 'Conta do recebimento'
+      : item.movimento === 'saida-pendente' ? (grupoParcelasConciliaPorExtrato() ? 'Contrapartida contabil pendente' : 'Sem vinculo individual')
+      : item.plano || item.tipo || '';
+    const tipo = numerario ? `NUMERARIO ${natureza.toUpperCase()}`
+      : item.rateioRecebimento ? tipoRateioOperacao(item.empresaBanco || item.empresa, item.centroCusto, true) : '';
+    return [grupoAtivo, labelMovimentoConciliacao(item), tipo, item.empresaBanco || item.empresa || '',
+      item.centroCusto || item.empresaLancamento || '', item.conta || '', origem, esperada, item.historico || '',
+      item.data || (item.qtd ? `${item.qtd} movimentos` : ''), item.qtd || '', Number(item.total || 0), item.id || ''];
+  });
+  const wb = XLSX.utils.book_new();
+  const ws = XLSX.utils.aoa_to_sheet([cabecalho, ...dados]);
+  ws['!cols'] = [26, 24, 22, 28, 28, 34, 55, 32, 80, 22, 24, 18, 32].map(wch => ({ wch }));
+  ws['!autofilter'] = { ref: `A1:M${dados.length + 1}` };
+  dados.forEach((_, i) => { const celula = ws[`L${i + 2}`]; if (celula) celula.z = '#,##0.00'; });
+  XLSX.utils.book_append_sheet(wb, ws, 'Pendencias');
+  XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet([
+    ['Grupo', grupoAtivo], ['Tipo de importacao', modoImportacaoDoGrupo()],
+    ['Origem da janela', recebimentos ? 'Recebimentos' : 'Conciliacao'],
+    ['Pesquisa', filtro], ['Escopo', todas ? 'Todas as pendencias' : 'Pendencias filtradas'],
+    ['Itens exportados', itens.length], ['Exportado em', new Date().toISOString()]
+  ]), 'Contexto');
+  const grupoArquivo = String(grupoAtivo || 'grupo').replace(/[<>:"/\\|?*\x00-\x1f]/g, '_');
+  const data = new Date().toISOString().slice(0, 10);
+  XLSX.writeFile(wb, `Pendencias_${grupoArquivo}_${todas ? 'todas' : 'filtradas'}_${data}.xlsx`);
+}
+
 function abrirModalPendenciasConciliacao() {
   if (conciliacaoItensTemp.length === 0) {
     alert('Gere as sugestões de conciliação antes de preencher pendências.');
@@ -6999,18 +7054,7 @@ function abrirModalPendenciasConciliacao() {
     setTimeout(() => abrirModalPendenciasConciliacao(), 0);
     return;
   }
-  const itensModal = conciliacaoItensTemp
-    .filter(item => {
-      if (item.movimento === 'saida-pendente') return !obterCodigoContaParaDominio(codigosConciliacaoTemp[item.id]) && !saidasExtratoRevisadasConciliacaoTemp[item.id];
-      if (item.movimento === 'pagamento-pendente') {
-        return !vinculosPagamentoConciliacaoTemp[item.id]
-          && (grupoParcelasConciliaPorExtrato() || !obterCodigoContaParaDominio(codigosConciliacaoTemp[item.id]));
-      }
-      if (item.movimento === 'recebimento') return !obterCodigoContaParaDominio(codigosConciliacaoTemp[item.id]);
-      if (item.movimento === 'numerario-rateio') return !obterCodigoContaParaDominio(codigosConciliacaoTemp[item.id]);
-      return true;
-    })
-    .filter(item => !filtroPendenciasConciliacaoTemp || textoBuscaPendenciaConciliacao(item).includes(normalizarTexto(filtroPendenciasConciliacaoTemp)));
+  const itensModal = itensPendentesConciliacao();
   const limitePendencias = filtroPendenciasConciliacaoTemp ? 650 : 280;
   const itensRenderizados = itensModal.slice(0, limitePendencias);
   const avisoLimitePendencias = itensModal.length > itensRenderizados.length
@@ -7189,12 +7233,17 @@ function abrirModalPendenciasConciliacao() {
   const textoSalvarModal = fluxoRecebimentos ? 'Salvar regras e continuar' : 'Salvar preenchimentos';
   modal.innerHTML = `
     <div style="background:var(--bg);border-radius:var(--radius);box-shadow:0 16px 48px rgba(0,0,0,0.25);width:min(1960px,calc(100vw - 28px));max-height:90vh;display:flex;flex-direction:column">
-      <div style="padding:18px 22px;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between;gap:12px">
-        <div>
+      <div style="padding:18px 22px;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap">
+        <div style="flex:1;min-width:min(260px,100%)">
           <h3 style="margin-bottom:2px">${tituloModal}</h3>
           <div class="conciliacao-note">${subtituloModal}</div>
         </div>
-        <div style="display:flex;gap:8px;align-items:center">
+        <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;max-width:100%">
+          <select id="escopo-exportacao-pendencias" aria-label="Pendencias para exportar" style="max-width:180px">
+            <option value="filtradas">Pendências filtradas</option>
+            <option value="todas">Todas as pendências</option>
+          </select>
+          <button class="btn btn-sm" onclick="exportarPendenciasConciliacao()">Exportar Excel</button>
           <button class="btn btn-sm" onclick="atualizarModalPendenciasConciliacao()">Atualizar pendências</button>
           <button class="btn btn-sm" onclick="fecharModalPendenciasConciliacao()">Fechar</button>
         </div>
