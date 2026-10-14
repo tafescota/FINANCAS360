@@ -5433,6 +5433,10 @@ async function processarExtratosBancarios(files) {
       await aguardarPinturaInterface();
       origemModalPendencias = 'conciliacao';
       const resultado = gerarSugestoesConciliacao();
+      if (modoImportacaoDoGrupo() === 'alvorar') {
+        atualizarProgressoImportacao(98, 'Conferindo fechamento dos bancos...', infoExtratoBancarioTemp.arquivo);
+        await aguardarPinturaInterface();
+      }
       renderConciliacaoBancaria();
       if (resultado?.qtdParaResolver > 0 && telaAtual !== 'tela-recebimentos') {
         setTimeout(() => abrirModalPendenciasConciliacaoBancaria(), 0);
@@ -5747,10 +5751,41 @@ function indicesTransferenciasPareadas(movimentos = extratoBancarioTemp) {
     pareados.add(par.idxEntrada);
     pareados.add(par.idxSaida);
   });
+  transferenciasAgrupadasAlvorar(movimentos).forEach(grupo => {
+    pareados.add(grupo.idxSaida);
+    grupo.entradas.forEach(entrada => pareados.add(entrada.idx));
+  });
   return pareados;
 }
 
+function transferenciasAgrupadasAlvorar(movimentos = extratoBancarioTemp) {
+  if (modoImportacaoDoGrupo() !== 'alvorar') return [];
+  const usados = new Set(paresTransferenciasExtrato(movimentos).flatMap(p => [p.idxEntrada, p.idxSaida]));
+  const nome = valor => normalizarTexto(limparTextoExportacaoDominio(valor));
+  const contas = new Map(movimentos.map(m => [nome(m.conta), limparTextoECD(m.conta)]));
+  const grupos = new Map();
+  movimentos.forEach((mov, idx) => {
+    if (usados.has(idx) || !mov.valor || !movimentoEhTransferenciaEntreContas(mov)) return;
+    if (/caixa|aplica|^apli\b/.test(normalizarTexto(mov.conta))) return;
+    const referencias = [mov.complemento, mov.historico].map(nome).filter(n => contas.has(n) && n !== nome(mov.conta));
+    if (new Set(referencias).size !== 1) return;
+    const outra = contas.get(referencias[0]);
+    if (/caixa|aplica|^apli\b/.test(normalizarTexto(outra))) return;
+    const codigo = codigoEmpresaAlvorar(mov.conta);
+    if (!codigo || codigo !== codigoEmpresaAlvorar(outra)) return;
+    const origem = mov.valor < 0 ? mov.conta : outra;
+    const destino = mov.valor > 0 ? mov.conta : outra;
+    const chave = JSON.stringify([dataKey(mov.data), nome(origem), nome(destino)]);
+    if (!grupos.has(chave)) grupos.set(chave, { saidas: [], entradas: [], empresa: codigo });
+    grupos.get(chave)[mov.valor < 0 ? 'saidas' : 'entradas'].push({ mov, idx });
+  });
+  return [...grupos.values()].filter(g => g.saidas.length === 1 && g.entradas.length > 1
+    && g.entradas.reduce((s, e) => s + valorConciliacaoEmCentavos(e.mov.valor), 0) === valorConciliacaoEmCentavos(g.saidas[0].mov.valor))
+    .map(g => ({ saida: g.saidas[0].mov, idxSaida: g.saidas[0].idx, entradas: g.entradas, empresa: g.empresa }));
+}
+
 function contarTransferenciasPareadas(movimentos = extratoBancarioTemp) {
+  if (modoImportacaoDoGrupo() === 'alvorar') return paresTransferenciasExtrato(movimentos).length + transferenciasAgrupadasAlvorar(movimentos).length;
   return indicesTransferenciasPareadas(movimentos).size / 2;
 }
 
@@ -7738,24 +7773,30 @@ function montarLinhasTransferenciasPareadasDominio() {
     linhas.push(linhaDominio(data, codigoOrigem, bancoOrigem, valor, complemento, empresaOrigem, 'TRANSFERENCIA DE NUMERARIOS'));
     linhas.push(linhaDominio(data, bancoDestino, codigoDestino, valor, complemento, empresaDestino, 'TRANSFERENCIA DE NUMERARIOS'));
   });
+  transferenciasAgrupadasAlvorar().forEach(grupo => {
+    grupo.entradas.forEach(({ mov }) => linhas.push(linhaDominio(fmtDate(mov.data),
+      codigoBancoConciliacao(mov.conta), codigoBancoConciliacao(grupo.saida.conta), Math.abs(mov.valor),
+      `Transferencia propria agrupada - ${grupo.saida.conta} para ${mov.conta}`, grupo.empresa, 'PROPRIO')));
+  });
   return linhas;
 }
 
 function montarLinhasDominioConciliacao({ validarPendencias = true } = {}) {
   coletarCodigosConciliacao();
   const paresTransferencias = paresTransferenciasExtrato(extratoBancarioTemp);
+  const temTransferenciasAgrupadas = transferenciasAgrupadasAlvorar().length > 0;
   const transitos = movimentosTransitoParcelas();
   if (validarPendencias && [...transitos.values()].some(m => !codigoContaTransitoParcelas(m.cnpj))) {
     prepararPagamentosImportados(linhasImportadas, true);
     return null;
   }
-  if (conciliacaoItensTemp.length === 0 && paresTransferencias.length === 0 && transitos.size === 0) {
+  if (conciliacaoItensTemp.length === 0 && paresTransferencias.length === 0 && transitos.size === 0 && !temTransferenciasAgrupadas) {
     return [];
   }
   const itensRecebimentosNovos = conciliacaoItensTemp.filter(item => item.movimento === 'recebimento');
   const itensSaidasExtras = conciliacaoItensTemp.filter(item => item.movimento === 'saida-pendente');
   const itensNumerarioTransferencias = conciliacaoItensTemp.filter(item => item.movimento === 'numerario-rateio' && item.transferenciaContas);
-  if (itensRecebimentosNovos.length === 0 && itensSaidasExtras.length === 0 && itensNumerarioTransferencias.length === 0 && paresTransferencias.length === 0 && transitos.size === 0) {
+  if (itensRecebimentosNovos.length === 0 && itensSaidasExtras.length === 0 && itensNumerarioTransferencias.length === 0 && paresTransferencias.length === 0 && transitos.size === 0 && !temTransferenciasAgrupadas) {
     return [];
   }
   const pendentes = conciliacaoItensTemp.filter(item => {
@@ -8483,10 +8524,30 @@ function ordenarContasAutocomplete(contas, termo) {
     .map(item => item.conta);
 }
 
+const indicesPlanoContasAlvorar = new WeakMap();
+
+function indicePlanoContasAlvorar(contas) {
+  const anterior = indicesPlanoContasAlvorar.get(contas);
+  if (anterior?.quantidade === contas.length) return anterior;
+  const indice = { quantidade: contas.length, codigo: new Map(), classificacao: new Map(), nome: new Map() };
+  contas.forEach(conta => {
+    for (const campo of ['codigo', 'classificacao', 'nome']) {
+      const chave = normalizarTexto(campo === 'codigo' ? conta.codigo : conta[campo] || '');
+      if (!indice[campo].has(chave)) indice[campo].set(chave, conta);
+    }
+  });
+  indicesPlanoContasAlvorar.set(contas, indice);
+  return indice;
+}
+
 function encontrarContaPorValor(valor) {
   const termo = normalizarTexto(valor || '');
   if (!termo || !grupoAtivo) return null;
   const contas = planoContas[grupoAtivo] || [];
+  if (modoImportacaoDoGrupo() === 'alvorar') {
+    const indice = indicePlanoContasAlvorar(contas);
+    return indice.codigo.get(termo) || indice.classificacao.get(termo) || indice.nome.get(termo) || null;
+  }
   return contas.find(c => normalizarTexto(c.codigo) === termo)
     || contas.find(c => normalizarTexto(c.classificacao || '') === termo)
     || contas.find(c => normalizarTexto(c.nome || '') === termo)
@@ -8765,6 +8826,36 @@ function adicionarRecebimentosRateio(resultados) {
 async function processarArquivosImportacao(files) {
   if (!grupoAtivo) { alert('Selecione um grupo antes de importar.'); erroProgressoImportacao('Selecione um grupo antes de importar.'); return; }
   selecionarModoImportacaoPagamentos(modoImportacaoDoGrupo(grupoAtivo));
+  if (modoImportacaoPagamentos === 'alvorar') {
+    const grupoInicial = grupoAtivo;
+    const layoutInicial = layoutImportacaoPagamentos;
+    try {
+      const resultados = [];
+      for (let i = 0; i < files.length; i++) {
+        const file = files[i];
+        atualizarProgressoImportacao((i / files.length) * 85, `Lendo titulos ALVORAR (${i + 1}/${files.length})...`, file.name);
+        const workbook = await lerWorkbookArquivoAsync(file);
+        const leitura = linhasPlanilhaTitulos(workbook, layoutInicial);
+        const titulos = leitura.dados.filter(r => normalizarTexto(r?.[COLS.TIPO]) === 'conta a pagar');
+        if (!titulos.length) throw new Error(`${file.name}: nenhum titulo a pagar encontrado.`);
+        resultados.push({ arquivo: file.name, dados: titulos });
+        await aguardarPinturaInterface();
+      }
+      if (grupoAtivo !== grupoInicial || modoImportacaoDoGrupo() !== 'alvorar') {
+        erroProgressoImportacao('Grupo alterado durante a leitura. Nenhum titulo foi importado.');
+        return;
+      }
+      const dados = resultados.flatMap(r => r.dados);
+      if (!dados.length) throw new Error('Selecione as planilhas de contas pagas da ALVORAR.');
+      linhasImportadasModo = 'alvorar';
+      prepararPagamentosImportados(dados, true);
+      finalizarProgressoImportacao(`${resultados.length} arquivos e ${linhasImportadas.length} titulos carregados.`);
+    } catch (err) {
+      alert('Erro ao ler os arquivos ALVORAR: ' + err.message);
+      erroProgressoImportacao('Falha na leitura. Confira os arquivos selecionados.');
+    }
+    return;
+  }
   if (!modoUsaFluxoRateio(modoImportacaoPagamentos)) {
     const file = files[0];
     const reader = new FileReader();
