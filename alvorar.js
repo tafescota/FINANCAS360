@@ -54,7 +54,13 @@ function codigoContaCorrenteItemAlvorar(item) {
 
 function aplicarContasCorrentesFixasAlvorar(itens) {
   if (modoImportacaoDoGrupo() !== 'alvorar') return;
+  return executarComCalculosExtratoAlvorar(()=>aplicarContasCorrentesFixasAlvorarAtual(itens));
+}
+
+function aplicarContasCorrentesFixasAlvorarAtual(itens) {
   itens.forEach(item => {
+    const recebimento = codigoRecebimentoInternoAlvorar(item);
+    if (recebimento) codigosConciliacaoTemp[item.id] = recebimento;
     const codigo = codigoContrapartidaFixaCartoesAlvorar(item);
     if (codigo) codigosConciliacaoTemp[item.id] = codigo;
     if (item.movimento === 'recebimento' && item.movimentos?.length
@@ -66,9 +72,121 @@ function aplicarContasCorrentesFixasAlvorar(itens) {
         codigosConciliacaoTemp[item.id] = codigoDespesaCaixaSemTituloAlvorar(mov);
       }
     }
+    if(item.movimento==='saida-pendente') {
+      const mov=extratoBancarioTemp[item.idxOriginal];
+      if(mov?.valor<0 && acertosEntreEmpresasAlvorar().movimentos.has(mov))codigosConciliacaoTemp[item.id]='1775';
+    }
   });
   itens.filter(i => i.movimento === 'numerario-rateio').forEach(item => {
     codigosConciliacaoTemp[item.id] = codigoContaCorrenteItemAlvorar(item);
+  });
+}
+
+function contraparteGrupoAlvorar(mov, empresaBanco = codigoEmpresaAlvorar(mov.conta)) {
+  if (modoImportacaoDoGrupo() !== 'alvorar' || !familiaEmpresaAlvorar(empresaBanco)) return '';
+  const propria = familiaEmpresaAlvorar(empresaBanco);
+  const texto = normalizarTexto([mov.historico,mov.complemento].filter(Boolean).join(' '));
+  const familias = new Set();
+  const documentos = texto.match(/\b(?:\d{2}\.\d{3}\.\d{3}\/\d{4}-\d{2}|\d{14})\b/g) || [];
+  documentos.forEach(doc=>Object.entries(mapaCnpjEmpresasAlvorar).forEach(([codigo,cnpj])=>{
+    if (normalizarCnpjConta(doc)===normalizarCnpjConta(cnpj) && familiaEmpresaAlvorar(codigo)!==propria) familias.add(familiaEmpresaAlvorar(codigo));
+  }));
+  const nomes = {MNN:/\bm\s*de\s*n\s*n\b|\bmnn\b/,PCA:/\bpca\b/,SERLOC:/\bserloc\b/,VALE:/\bvale dourado\b/};
+  Object.entries(nomes).forEach(([familia,regex])=>{if(familia!==propria && regex.test(texto))familias.add(familia);});
+  return familias.size===1 ? [...familias][0] : '';
+}
+
+function codigoPagamentoInternoAlvorar(row) {
+  if (modoImportacaoDoGrupo() !== 'alvorar') return '';
+  if (normalizarTexto(row[COLS.PLANO])==='devolucao de ted (estorno)') return '2098';
+  if (normalizarTexto(row[COLS.PLANO])==='falta de caixa'
+    && normalizarTexto(row[COLS.FORNECEDOR])==='vendas dinheiro') return '1488';
+  const conta=row[COLS.CONTA],empresa=codigoEmpresaAlvorar(conta);
+  const contraparte=contraparteGrupoAlvorar({complemento:row[COLS.FORNECEDOR]},empresa);
+  if (!contraparte) return '';
+  const movimentos=extratoBancarioTemp.filter(m=>m.valor<0 && contaNormalizadaAlvorar(m.conta)===contaNormalizadaAlvorar(conta)
+    && dataKey(m.data)===dataKey(row[COLS.LIQUIDACAO]) && contraparteGrupoAlvorar(m)===contraparte);
+  if(!movimentos.length)return '';
+  const acertos=acertosEntreEmpresasAlvorar().movimentos;
+  return movimentos.some(m=>acertos.has(m)) ? '1775' : '';
+}
+
+function movimentoFolhaAlvorar(mov) {
+  return /\b(salarios?|folha)\b/.test(normalizarTexto(mov.historico));
+}
+
+function acertosEntreEmpresasAlvorar() {
+  if(modoImportacaoDoGrupo()!=='alvorar')return {movimentos:new Map(),grupos:[]};
+  const cache=cacheCalculoExtratoAlvorar('acertos-empresas');
+  if(cache?.has('resultado'))return cache.get('resultado');
+  const pareados=indicesTransferenciasPareadas(extratoBancarioTemp),transitos=movimentosTransitoParcelas(),grupos=new Map();
+  extratoBancarioTemp.forEach((mov,idx)=>{
+    if(!mov.valor || pareados.has(idx) || transitos.has(idx) || movimentoFolhaAlvorar(mov))return;
+    const outra=contraparteGrupoAlvorar(mov),propria=familiaEmpresaAlvorar(codigoEmpresaAlvorar(mov.conta));
+    if(!outra || !propria)return;
+    const origem=mov.valor<0?propria:outra,destino=mov.valor<0?outra:propria;
+    const chave=JSON.stringify([dataKey(mov.data),origem,destino]);
+    if(!grupos.has(chave))grupos.set(chave,{data:dataKey(mov.data),origem,destino,entradas:[],saidas:[]});
+    grupos.get(chave)[mov.valor<0?'saidas':'entradas'].push(mov);
+  });
+  const movimentos=new Map(),confirmados=[];
+  const soma=rows=>rows.reduce((s,m)=>s+Math.round(Math.abs(m.valor)*100),0);
+  grupos.forEach(g=>{
+    // Confirmar as duas pontas em centavos; nao consolidar as linhas bancarias da exportacao.
+    if(!g.saidas.length || !g.entradas.length || soma(g.saidas)!==soma(g.entradas))return;
+    confirmados.push({...g,valor:soma(g.saidas)/100});
+    g.saidas.forEach(m=>movimentos.set(m,g.destino));g.entradas.forEach(m=>movimentos.set(m,g.origem));
+  });
+  const resultado={movimentos,grupos:confirmados};
+  if(cache)cache.set('resultado',resultado);
+  return resultado;
+}
+
+function codigoRecebimentoInternoAlvorar(item) {
+  if (modoImportacaoDoGrupo() !== 'alvorar' || item.movimento!=='recebimento' || !(item.total>0)) return '';
+  if (item.codigoInternoAlvorar) return item.codigoInternoAlvorar;
+  if(!item.titularidadeAlvorar && item.movimentos?.length && item.movimentos.every(m=>m.valor>0 && acertosEntreEmpresasAlvorar().movimentos.has(m)))return '1768';
+  if (item.origem==='cartoes' && normalizarTexto(item.adquirente)==='pix bancario') return '2098';
+  const plano=normalizarTexto(item.plano),fornecedor=normalizarTexto(item.fornecedor);
+  const texto=normalizarTexto([item.plano,item.historico].filter(Boolean).join(' '));
+  if (plano==='vendas de mercadorias') return '2098';
+  if (fornecedor==='vendas dinheiro' && plano==='sobra de caixa') return '2098';
+  if (plano==='rendimento sobre aplicacao financeira') return '211';
+  if (plano==='cartao presente a receber') return '1845';
+  if (/\bmooz\b/.test(fornecedor)) {
+    if (/reembolso de cancelamento/.test(texto)) return '2098';
+    if (/devolucao de taxa de antecipacao|devolucao de juros|pagamento a maior|p[a]?g[a]?mento a maior|reembolso de cartoes|ajuste de conciliacao de conta \(receber\)/.test(texto)) return '1782';
+  }
+  if (plano==='devolucao de ted' || plano==='pagamento indevido' || plano==='estornos de creditos'
+    || (plano==='ajuste de conciliacao de conta (receber)' && /erro de deposito/.test(texto))) {
+    const correspondentes=linhasImportadas.filter(r=>normalizarTexto(r[COLS.PLANO])==='devolucao de ted (estorno)'
+      && familiaEmpresaAlvorar(codigoEmpresaAlvorar(r[COLS.EMPRESA]))===familiaEmpresaAlvorar(item.centroCusto)
+      && Math.round(Math.abs(numeroMoeda(r[COLS.VALOR_LIQ]))*100)===Math.round(item.total*100)
+      && (normalizarTexto(r[COLS.FORNECEDOR])===fornecedor
+        || (/erro de deposito/.test(texto) && /deposito.*conta errada/.test(normalizarTexto(r[COLS.HISTORICO]))
+          && contaNormalizadaAlvorar(r[COLS.CONTA])===contaNormalizadaAlvorar(item.conta)
+          && dataKey(r[COLS.LIQUIDACAO])===dataKey(item.data))));
+    const contas=new Set(correspondentes.map(r=>codigoPagamentoInternoAlvorar(r) || obterCodigoContaParaDominio(encontrarCodigoRegra(depara[grupoAtivo] || {},
+      limparTextoECD(r[COLS.FORNECEDOR]),limparTextoECD(r[COLS.PLANO]),limparTextoECD(r[COLS.TIPO_DOC]),
+      separarNumeroDoHistorico(r[COLS.TIPO_DOC],r[COLS.NUMERO],r[COLS.HISTORICO]).historico,escopoRegraLinha(r)))).filter(Boolean));
+    if(correspondentes.length===1 && contas.size===1)return [...contas][0];
+  }
+  return '';
+}
+
+function faltasSemExtratoCaixaAlvorar() {
+  if(modoImportacaoDoGrupo()!=='alvorar')return [];
+  const contas=new Set(extratoBancarioTemp.map(m=>contaNormalizadaAlvorar(m.conta)));
+  return linhasImportadas.map((row,idx)=>({row,idx})).filter(({row})=>tipoContaAlvorar(row[COLS.CONTA])==='Caixa'
+    && normalizarTexto(row[COLS.FORNECEDOR])==='vendas dinheiro' && normalizarTexto(row[COLS.PLANO])==='falta de caixa'
+    && !contas.has(contaNormalizadaAlvorar(row[COLS.CONTA])) && numeroMoeda(row[COLS.VALOR_LIQ])>0);
+}
+
+function montarFaltasSemExtratoCaixaAlvorar() {
+  return faltasSemExtratoCaixaAlvorar().map(({row})=>{
+    const linha=linhaDominio(fmtDate(row[COLS.LIQUIDACAO]),'1488','2098',numeroMoeda(row[COLS.VALOR_LIQ]),
+      'Falta de caixa sem extrato do caixa - '+row[COLS.CONTA],codigoEmpresaAlvorar(row[COLS.EMPRESA]),'PROPRIO');
+    linha.tipoExtratoAlvorar='Caixa';linha.movimentoExportacaoAlvorar='Recebimentos';return linha;
   });
 }
 
@@ -187,10 +305,7 @@ function apurarFaltasCaixaLiquidasAlvorar() {
 function montarAjustesCaixaLiquidosAlvorar(item, codigoRecebimento) {
   if (modoImportacaoDoGrupo() !== 'alvorar') return [];
   return (item.faltasCaixaLiquidasAlvorar || []).map(({ row, valor }) => {
-    const info = separarNumeroDoHistorico(row[COLS.TIPO_DOC], row[COLS.NUMERO], row[COLS.HISTORICO]);
-    const codigo = obterCodigoContaParaDominio(encontrarCodigoRegra(depara[grupoAtivo] || {},
-      limparTextoECD(row[COLS.FORNECEDOR]), limparTextoECD(row[COLS.PLANO]), limparTextoECD(row[COLS.TIPO_DOC]), info.historico, escopoRegraLinha(row)));
-    const linha = linhaDominio(fmtDate(row[COLS.LIQUIDACAO]), codigo, codigoRecebimento, valor,
+    const linha = linhaDominio(fmtDate(row[COLS.LIQUIDACAO]), '1488', '2098', valor,
       'Falta de caixa ja descontada da entrada - ' + row[COLS.CONTA], item.centroCusto, 'PROPRIO');
     linha.tipoExtratoAlvorar = 'Caixa';
     linha.movimentoExportacaoAlvorar = 'Recebimentos';
@@ -410,14 +525,22 @@ function conciliarRecebimentosCompletosAlvorar(entradas) {
     moves.forEach(m => resultado.usados.add(m));
     rows.filter(r => r.origem === 'titulos').forEach(r => titulosAceitos.add(r));
     const rateios = new Map();
+    const acertos = acertosEntreEmpresasAlvorar().movimentos;
+    const contrapartes = new Set(moves.map(m=>acertos.get(m)).filter(Boolean));
     rows.forEach(r => {
-      const id = JSON.stringify([r.dataKey, contaNormalizadaAlvorar(r.conta), r.centroCusto, r.origem, r.tipo, r.plano, Math.sign(r.valor)]);
+      const contraparte = r.origem==='titulos' && contrapartes.size===1 && moves.every(m=>acertos.has(m)) ? [...contrapartes][0] : '';
+      const codigoInterno = contraparte ? '1768' : codigoRecebimentoInternoAlvorar({...r,movimento:'recebimento',total:r.valor});
+      const identidade = [r.dataKey, contaNormalizadaAlvorar(r.conta), r.centroCusto, r.origem, r.tipo, r.plano, Math.sign(r.valor)];
+      const chaveRegra = [contaNormalizadaAlvorar(r.conta), r.empresaBanco, r.centroCusto, r.origem, r.tipo, r.plano, Math.sign(r.valor)];
+      if(codigoInterno || contraparte) {identidade.push(codigoInterno,contraparte);chaveRegra.push(codigoInterno,contraparte);}
+      const id = JSON.stringify(identidade);
       if (!rateios.has(id)) rateios.set(id, { id: 'rec-alvorar-titular-' + encodeURIComponent(id),
         movimento: 'recebimento', rateioRecebimento: true, titularidadeAlvorar: true,
-        ...r, data: r.dataKey, total: 0, qtd: 0, movimentos: [], intercompany: r.empresaBanco !== r.centroCusto,
+        ...r, codigoInternoAlvorar:codigoInterno, contraparteInterempresaAlvorar:contraparte,
+        data: r.dataKey, total: 0, qtd: 0, movimentos: [], intercompany: r.empresaBanco !== r.centroCusto,
         naturezaAlvorar: { categoria: r.origem === 'cartoes' ? 'CARTOES' : 'OUTROS_RECEBIMENTOS',
           label: r.origem === 'cartoes' ? 'Cartoes com titularidade' : 'Titulo recebido', contaEsperada: 'Conta do recebimento da empresa dona da venda',
-          chave: 'ALVORAR RECEBIMENTO | ' + JSON.stringify([contaNormalizadaAlvorar(r.conta), r.empresaBanco, r.centroCusto, r.origem, r.tipo, r.plano, Math.sign(r.valor)]) } });
+          chave: 'ALVORAR RECEBIMENTO | ' + JSON.stringify(chaveRegra) } });
       const item = rateios.get(id);
       item.total = arredondarMoeda(item.total + r.valor);
       item.qtd++;

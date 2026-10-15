@@ -3861,7 +3861,8 @@ function prepararPagamentosImportados(dados, abrirTelaPendencias = true) {
       return;
     }
     const chave = montarChave(forn, plano, tipoDoc, historico, escopoRegra);
-    const codigoRegraPrincipal = obterCodigoContaParaDominio(
+    const codigoInternoRegraAlvorar = codigoPagamentoInternoAlvorar(r);
+    const codigoRegraPrincipal = codigoInternoRegraAlvorar || obterCodigoContaParaDominio(
       encontrarCodigoRegra(regrasSalvas, forn, plano, tipoDoc, historico, escopoRegra)
     );
     registrarResumoRegra(chave, codigoRegraPrincipal);
@@ -3933,7 +3934,7 @@ function prepararPagamentosImportados(dados, abrirTelaPendencias = true) {
         }
       });
     }
-    const acrescimoDesconto = arredondarMoeda(r[COLS.ACRESCIMO]);
+    const acrescimoDesconto = codigoInternoRegraAlvorar === '1775' ? 0 : arredondarMoeda(r[COLS.ACRESCIMO]);
     if (acrescimoDesconto !== 0) {
       const tipoAjuste = acrescimoDesconto < 0 ? 'DESCONTO' : 'ACRÉSCIMO';
       const ajusteMultiploAutomatico = (!intercompanyRateio && !linhaIntercompanyParcelasNumerarios)
@@ -5902,11 +5903,13 @@ function pagamentoConciliacao(row, idx) {
 
 function pagamentosImportadosConciliacao(contasBanco = new Set()) {
   const faltasLiquidasAlvorar = apurarFaltasCaixaLiquidasAlvorar().indices;
+  const faltasSemExtratoAlvorar = new Set(faltasSemExtratoCaixaAlvorar().map(f=>f.idx));
   if (linhasImportadasModo !== 'rateio') {
     return linhasImportadas
       .map((row, idx) => pagamentoConciliacao(row, idx))
       .filter(p => !p.ajusteFechamentoCaixa
         && !faltasLiquidasAlvorar.has(p.idx)
+        && !faltasSemExtratoAlvorar.has(p.idx)
         && (contasBanco.size === 0 || contasBanco.has(normalizarTexto(p.conta)))
         && p.valor > 0);
   }
@@ -8127,6 +8130,7 @@ function montarLinhasDominioConciliacao({ validarPendencias = true } = {}) {
   const linhas = [];
   linhas.push(...marcarMovimentoExportacaoAlvorar(montarLinhasTransferenciasPareadasDominio(), 'Transferencias'));
   linhas.push(...marcarMovimentoExportacaoAlvorar(montarLinhasTransitoParcelas(), 'Transferencias'));
+  linhas.push(...montarFaltasSemExtratoCaixaAlvorar());
   const transferenciasPareadas = indicesTransferenciasPareadas(extratoBancarioTemp);
   const regrasNumerarios = depara[grupoAtivo] || {};
   itensRecebimentosNovos.forEach(item => {
@@ -10055,6 +10059,10 @@ function arredondarMoeda(v) {
 }
 
 function gerarLancamentos(dados, regras) {
+  return executarComCalculosExtratoAlvorar(()=>gerarLancamentosAtual(dados,regras));
+}
+
+function gerarLancamentosAtual(dados, regras) {
   lancamentosGerados = [];
   limiteRenderLancamentos = LOTE_RENDER_LANCAMENTOS;
   lancamentosDesconsideradosExportacao = [];
@@ -10109,13 +10117,14 @@ function gerarLancamentos(dados, regras) {
     if (!forn && !plano && !tipoDoc && !historico) return;
     const escopoRegra = escopoRegraLinha(r);
     const chave = montarChave(forn, plano, tipoDoc, historico, escopoRegra);
-    const codDeparaPrincipal = obterCodigoContaParaDominio(encontrarCodigoRegra(regras, forn, plano, tipoDoc, historico, escopoRegra));
+    const codigoInternoAlvorar = codigoPagamentoInternoAlvorar(r);
+    const codDeparaPrincipal = codigoInternoAlvorar || obterCodigoContaParaDominio(encontrarCodigoRegra(regras, forn, plano, tipoDoc, historico, escopoRegra));
     let codDebito = codDeparaPrincipal;
     const banco = limparTextoECD(r[COLS.CONTA]);
     let codCredito = codigoContaSemConciliacao(banco) || banco;
-    const valorBruto = arredondarMoeda(r[COLS.VALOR_BRUTO]);
+    const valorBruto = arredondarMoeda(codigoInternoAlvorar === '1775' ? r[COLS.VALOR_LIQ] : r[COLS.VALOR_BRUTO]);
     const valorLiq = arredondarMoeda(r[COLS.VALOR_LIQ]);
-    const acrescimoDesconto = arredondarMoeda(r[COLS.ACRESCIMO]);
+    const acrescimoDesconto = codigoInternoAlvorar === '1775' ? 0 : arredondarMoeda(r[COLS.ACRESCIMO]);
     const dataLiq = fmtDate(r[COLS.LIQUIDACAO]);
     const num = infoDoc.numero;
     const parcela = limparTextoECD(r[COLS.PARCELA]);
