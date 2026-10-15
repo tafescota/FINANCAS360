@@ -10,11 +10,28 @@ let infoRecebimentosAlvorarTemp = null;
 let cacheRecebimentosAlvorar = null;
 let visaoPendenciasAlvorarTemp = 'contas';
 let cacheFaltasCaixaAlvorar = null;
+let cicloCalculosExtratoAlvorar = null;
+
+function executarComCalculosExtratoAlvorar(calcular) {
+  if (modoImportacaoDoGrupo() !== 'alvorar' || cicloCalculosExtratoAlvorar) return calcular();
+  // Reuso somente no ciclo sincrono atual; nenhuma regra fica em cache entre acoes.
+  cicloCalculosExtratoAlvorar = {grupo:grupoAtivo, movimentos:extratoBancarioTemp, calculos:new Map()};
+  try { return calcular(); }
+  finally { cicloCalculosExtratoAlvorar = null; }
+}
+
+function cacheCalculoExtratoAlvorar(nome, movimentos = extratoBancarioTemp) {
+  const ciclo = cicloCalculosExtratoAlvorar;
+  if (modoImportacaoDoGrupo() !== 'alvorar' || !ciclo || ciclo.grupo !== grupoAtivo || ciclo.movimentos !== movimentos) return null;
+  if (!ciclo.calculos.has(nome)) ciclo.calculos.set(nome, new Map());
+  return ciclo.calculos.get(nome);
+}
 
 const CONTAS_CORRENTES_ALVORAR = Object.freeze({
   pagamentos: Object.freeze({ ATIVO: '604', PASSIVO: '618' }),
   recebimentos: Object.freeze({ ATIVO: '1924', PASSIVO: '1931' }),
-  emprestimos: Object.freeze({ ATIVO: '1768', PASSIVO: '1775' })
+  emprestimos: Object.freeze({ ATIVO: '1768', PASSIVO: '1775' }),
+  transferencias: Object.freeze({ ATIVO: '597', PASSIVO: '611' })
 });
 
 function codigoContaCorrenteAlvorar(empresaBanco, empresaMovimento, natureza, origem = 'pagamentos') {
@@ -37,9 +54,67 @@ function codigoContaCorrenteItemAlvorar(item) {
 
 function aplicarContasCorrentesFixasAlvorar(itens) {
   if (modoImportacaoDoGrupo() !== 'alvorar') return;
+  itens.forEach(item => {
+    const codigo = codigoContrapartidaFixaCartoesAlvorar(item);
+    if (codigo) codigosConciliacaoTemp[item.id] = codigo;
+    if (item.movimento === 'recebimento' && item.movimentos?.length
+      && item.movimentos.every(movimentoResgateXpAlvorar)) codigosConciliacaoTemp[item.id] = '4130';
+    if (item.movimento === 'saida-pendente' && !codigosConciliacaoTemp[item.id]) {
+      const mov = extratoBancarioTemp[item.idxOriginal];
+      if (mov && mov.valor < 0 && tipoContaAlvorar(mov.conta) === 'Caixa'
+        && normalizarTexto(mov.tipoConciliacao) === 'parcelas de titulos') {
+        codigosConciliacaoTemp[item.id] = codigoDespesaCaixaSemTituloAlvorar(mov);
+      }
+    }
+  });
   itens.filter(i => i.movimento === 'numerario-rateio').forEach(item => {
     codigosConciliacaoTemp[item.id] = codigoContaCorrenteItemAlvorar(item);
   });
+}
+
+function movimentoResgateXpAlvorar(mov) {
+  return modoImportacaoDoGrupo() === 'alvorar' && mov.valor > 0 && tipoContaAlvorar(mov.conta) === 'Banco'
+    && /\bxp investimentos\b/.test(normalizarTexto(mov.complemento));
+}
+
+function codigoDespesaCaixaSemTituloAlvorar(mov) {
+  if (modoImportacaoDoGrupo() !== 'alvorar') return '';
+  const fornecedor = normalizarTexto(mov.complemento);
+  const codigos = new Set();
+  Object.entries(depara[grupoAtivo] || {}).forEach(([chave,codigo]) => {
+    const [nome,plano,tipo] = chaveRegraSemEscopoDeUnidade(chave).split(' | ');
+    if (!fornecedor || normalizarTexto(nome) !== fornecedor || !plano
+      || /^(desconto|acrescimo)/.test(normalizarTexto(tipo))) return;
+    const conta = obterCodigoContaParaDominio(codigo);
+    if (conta) codigos.add(conta);
+  });
+  // Nao escolher entre despesas conflitantes do mesmo fornecedor.
+  return codigos.size === 1 ? [...codigos][0] : '51301';
+}
+
+function codigoContrapartidaFixaCartoesAlvorar(item) {
+  if (modoImportacaoDoGrupo() !== 'alvorar') return '';
+  if (item.movimento === 'recebimento' && Number(item.total) > 0) {
+    if (item.cartaoPeloExtratoAlvorar) return item.codigoCartaoExtratoAlvorar;
+    if (item.titularidadeAlvorar && item.origem === 'cartoes'
+      && /^mooz boleto$/.test(normalizarTexto(item.adquirente))) return '1783';
+    if (item.titularidadeAlvorar && item.origem === 'cartoes'
+      && /^mooz cartoes\s*\(hagana\)$/.test(normalizarTexto(item.adquirente))) return '1782';
+    const movimentos = item.movimentos || [];
+    if (movimentos.length && movimentos.every(m => Number(m.valor) > 0
+      && normalizarTexto(m.tipoConciliacao) === 'parcelas de cartoes'
+      && /^moozcartoeshagana\b/.test(normalizarTexto(m.complemento)))) return '1782';
+    return '';
+  }
+  if (item.movimento !== 'saida-pendente') return '';
+  const mov = extratoBancarioTemp[item.idxOriginal];
+  if (!mov || !(Number(mov.valor) < 0) || tipoContaAlvorar(mov.conta) !== 'Banco'
+    || normalizarTexto(mov.tipoConciliacao) !== 'parcelas de cartoes') return '';
+  const complemento = normalizarTexto(mov.complemento);
+  const moozPixIdentificado = complemento === 'pix pixsistemapagamentoinstantaneo'
+    && /\b06\.?308\.?851\/?0001-?82\b/.test(String(mov.historico || ''));
+  // Regra permanente: o sinal e a origem do extrato definem o ajuste, nao o historico ou o mes.
+  return /^moozcartoeshagana\b/.test(complemento) || moozPixIdentificado ? '2098' : '';
 }
 
 function pagamentosAlvorarComContasCorrentesDesatualizadas() {
@@ -313,12 +388,12 @@ function renderResumoImportacaoAlvorar() {
 }
 
 function conciliarRecebimentosCompletosAlvorar(entradas) {
-  const vazio = { itens: [], usados: new Set(), divergencias: [] };
+  const vazio = { itens: [], usados: new Set(), divergencias: [], aceleracoesSemNovaEntrada: [], cartoesPeloExtrato: [] };
   if (modoImportacaoDoGrupo() !== 'alvorar' || !recebimentosAlvorarTemp.length) return vazio;
   if (cacheRecebimentosAlvorar?.extrato === extratoBancarioTemp && cacheRecebimentosAlvorar.recebimentos === recebimentosAlvorarTemp
     && cacheRecebimentosAlvorar.pagamentos === linhasImportadas
     && cacheRecebimentosAlvorar.qtd === entradas.length) return cacheRecebimentosAlvorar.resultado;
-  const resultado = { itens: [], usados: new Set(), divergencias: [] };
+  const resultado = { itens: [], usados: new Set(), divergencias: [], aceleracoesSemNovaEntrada: [], cartoesPeloExtrato: [] };
   const titulosAceitos = new Set();
   const faltasLiquidas = apurarFaltasCaixaLiquidasAlvorar();
   const grupos = new Map();
@@ -353,8 +428,32 @@ function conciliarRecebimentosCompletosAlvorar(entradas) {
   };
   grupos.forEach((g, key) => {
     if (g.planilha.length && g.extrato.length && soma(g.planilha) === soma(g.extrato)) aceitar(g.planilha, g.extrato);
-    else resultado.divergencias.push({ chave: key, origem: 'cartoes', conta: (g.planilha[0] || g.extrato[0]).conta,
-      data: dataKey((g.planilha[0] || g.extrato[0]).data), planilha: soma(g.planilha)/100, extrato: soma(g.extrato)/100 });
+    else {
+      const vendas = g.planilha.filter(r=>normalizarTexto(r.tipoLancamento)==='venda' && r.valor>0);
+      const aceleracoes = g.planilha.filter(r=>normalizarTexto(r.tipoLancamento)==='aceleracao de parcelas' && r.valor>0);
+      // Sem tolerancia: somente vendas identificadas que fecham integralmente com a entrada.
+      if (vendas.length && aceleracoes.length && vendas.length+aceleracoes.length===g.planilha.length
+        && g.extrato.length && g.extrato.every(m=>m.valor>0) && soma(vendas)===soma(g.extrato)) {
+        aceitar(vendas,g.extrato);
+        resultado.aceleracoesSemNovaEntrada.push({chave:key, conta:g.extrato[0].conta,
+          data:dataKey(g.extrato[0].data), valor:soma(aceleracoes)/100, registros:aceleracoes});
+      } else if (g.extrato.length && g.extrato.every(m=>m.valor>0)
+        && g.extrato.every(m=>codigoPermitidoAlvorar(m.conta))
+        && /^mooz(cartoes|boleto)/.test(categoriaRecebimentoAlvorar(g.extrato[0].complemento))) {
+        // Divergencias nao sao rateadas: cada entrada pertence a dona da conta e mantem o valor do banco.
+        const codigo = /boleto/.test(categoriaRecebimentoAlvorar(g.extrato[0].complemento)) ? '1783' : '1782';
+        g.extrato.forEach(m=>{
+          const empresa = codigoEmpresaAlvorar(m.conta);
+          const fonte = {data:m.data,dataKey:dataKey(m.data),conta:m.conta,empresaBanco:empresa,centroCusto:empresa,
+            valor:m.valor,origem:'cartoes',tipo:m.complemento,plano:'Cartoes pelo extrato',historico:descricaoMovimentoExtrato(m),
+            adquirente:m.complemento,cartaoPeloExtratoAlvorar:true,codigoCartaoExtratoAlvorar:codigo};
+          aceitar([fonte],[m]);
+        });
+        resultado.cartoesPeloExtrato.push({chave:key,origem:'cartoes',conta:g.extrato[0].conta,data:dataKey(g.extrato[0].data),
+          planilha:soma(g.planilha)/100,extrato:soma(g.extrato)/100,codigo,registros:g.planilha});
+      } else resultado.divergencias.push({ chave: key, origem: 'cartoes', conta: (g.planilha[0] || g.extrato[0]).conta,
+        data: dataKey((g.planilha[0] || g.extrato[0]).data), planilha: soma(g.planilha)/100, extrato: soma(g.extrato)/100 });
+    }
   });
   // Titulos: documento/fornecedor + data + conta + valor, sem aceitar apenas coincidencia de valor.
   const porDiaConta = new Map();
@@ -396,6 +495,36 @@ function conciliarRecebimentosCompletosAlvorar(entradas) {
   return resultado;
 }
 
+function conferenciaDivergenciasRecebimentosAlvorar() {
+  const divergencias = cacheRecebimentosAlvorar?.resultado?.divergencias || [];
+  const itensPorMovimento = new Map(conciliacaoItensTemp.filter(i=>i.movimento==='saida-pendente').map(i=>[i.idxOriginal,i]));
+  const saidas = new Map();
+  extratoBancarioTemp.forEach((m,idx)=>{
+    if (!(m.valor<0) || normalizarTexto(m.tipoConciliacao)!=='parcelas de cartoes') return;
+    const chave = JSON.stringify([dataKey(m.data),contaNormalizadaAlvorar(m.conta),categoriaRecebimentoAlvorar(m.complemento),-1]);
+    if (!saidas.has(chave)) saidas.set(chave,{total:0,completas:true});
+    const grupo=saidas.get(chave), item=itensPorMovimento.get(idx);
+    grupo.total+=Math.round(m.valor*100);
+    grupo.completas=grupo.completas && !!item && !saidasExtratoRevisadasConciliacaoTemp[item.id]
+      && Math.round(item.total*100)===Math.round(Math.abs(m.valor)*100)
+      && !!obterCodigoContaParaDominio(codigosConciliacaoTemp[item.id]);
+  });
+  const classificadas=[], pendentes=[];
+  divergencias.forEach(d=>{
+    const grupo=d.origem==='cartoes' && d.planilha===0 && d.extrato<0 ? saidas.get(d.chave) : null;
+    if (grupo?.completas && grupo.total===Math.round(d.extrato*100)) classificadas.push(d);
+    else pendentes.push(d);
+  });
+  return {pendentes,classificadas};
+}
+
+function contasRecebimentosSemExtratoAlvorar() {
+  if (modoImportacaoDoGrupo() !== 'alvorar') return [];
+  const presentes = new Set(extratoBancarioTemp.map(m=>contaNormalizadaAlvorar(m.conta)));
+  const contas = new Map(recebimentosAlvorarTemp.map(r=>[contaNormalizadaAlvorar(r.conta),r.conta]));
+  return [...contas].filter(([chave])=>!presentes.has(chave)).map(([,conta])=>conta).sort();
+}
+
 function bloquearRecebimentosAlvorar() {
   if (modoImportacaoDoGrupo() !== 'alvorar') return false;
   if (!recebimentosAlvorarTemp.length) {
@@ -406,8 +535,10 @@ function bloquearRecebimentosAlvorar() {
     return false;
   }
   const resumo = cacheRecebimentosAlvorar?.resultado;
-  if (!resumo || resumo.divergencias.length) {
-    alert(`A exportacao ALVORAR foi pausada: ${resumo?.divergencias.length || 'ha'} grupos de recebimentos sem titularidade/valor confirmado com o extrato. Exporte a conferencia para revisar. Nenhum valor sera rateado por aproximacao.`);
+  const conferencia = conferenciaDivergenciasRecebimentosAlvorar();
+  const ausentes = contasRecebimentosSemExtratoAlvorar();
+  if (!resumo || conferencia.pendentes.length) {
+    alert(`A exportacao ALVORAR foi pausada: ${conferencia.pendentes.length || 'ha'} grupos de recebimentos sem titularidade/valor confirmado com o extrato.${ausentes.length ? ' Extratos ausentes: '+ausentes.join(', ')+'.' : ''} Exporte a conferencia para revisar. Nenhum valor sera rateado por aproximacao.`);
     return true;
   }
   return false;
@@ -419,19 +550,40 @@ function htmlConferenciaRecebimentosAlvorar() {
   if (!r) return '';
   const faltas = apurarFaltasCaixaLiquidasAlvorar();
   const totalFaltas = [...faltas.grupos.values()].reduce((s, g) => s + g.faltaCentavos, 0) / 100;
-  return `<div class="alert ${r.divergencias.length ? 'alert-warn' : 'alert-ok'}" style="display:block">Recebimentos ALVORAR: ${r.itens.length} parcelas de rateio identificadas · ${r.divergencias.length} divergencias de origem/valor.
+  const conferencia = conferenciaDivergenciasRecebimentosAlvorar();
+  const ausentes = contasRecebimentosSemExtratoAlvorar();
+  return `<div class="alert ${conferencia.pendentes.length ? 'alert-warn' : 'alert-ok'}" style="display:block">Recebimentos ALVORAR: ${r.itens.length} parcelas de rateio identificadas · ${conferencia.pendentes.length} divergencias de origem/valor.
+    ${ausentes.length ? `<div><strong>Extratos ausentes:</strong> ${ausentes.map(escapeHtml).join(', ')}</div>` : ''}
+    ${conferencia.classificadas.length ? `<span>Saidas de cartoes ja classificadas: ${conferencia.classificadas.length} grupos.</span>` : ''}
+    ${r.aceleracoesSemNovaEntrada?.length ? `<span>Aceleracoes sem nova entrada: ${r.aceleracoesSemNovaEntrada.length} grupos.</span>` : ''}
+    ${r.cartoesPeloExtrato?.length ? `<span>Cartoes pelo valor do extrato: ${r.cartoesPeloExtrato.length} grupos; diferencas do relatorio apenas para conferencia.</span>` : ''}
     ${faltas.indices.size ? `<span>Faltas ja refletidas na entrada liquida: ${faltas.indices.size} / R$ ${fmtValor(totalFaltas)}. Sem nova saida de caixa.</span>` : ''}
     <button class="btn btn-sm" onclick="exportarConferenciaRecebimentosAlvorar()">Exportar conferencia</button></div>`;
 }
 
-function exportarConferenciaRecebimentosAlvorar() {
-  const rows = cacheRecebimentosAlvorar?.resultado?.divergencias || [];
+function criarConferenciaRecebimentosAlvorar() {
+  const conferencia = conferenciaDivergenciasRecebimentosAlvorar();
+  const rows = [...conferencia.pendentes.map(r=>({...r,situacao:'Pendente'})),
+    ...conferencia.classificadas.map(r=>({...r,situacao:'Saida ja classificada'})),
+    ...(cacheRecebimentosAlvorar?.resultado?.cartoesPeloExtrato || []).map(r=>({...r,situacao:'Valor do extrato; diferenca sem lancamento'}))];
   const wb = XLSX.utils.book_new();
-  const ws = XLSX.utils.aoa_to_sheet([['Origem','Data','Conta','Planilha','Extrato','Diferenca','Fornecedor'],
-    ...rows.map(r => [r.origem,r.data,r.conta,r.planilha,r.extrato,arredondarMoeda(r.planilha-r.extrato),r.fornecedor || ''])]);
-  ws['!cols'] = [18,16,45,20,20,20,45].map(wch => ({wch}));
+  const ws = XLSX.utils.aoa_to_sheet([['Origem','Data','Conta','Planilha','Extrato','Diferenca','Fornecedor','Situacao'],
+    ...rows.map(r => [r.origem,r.data,r.conta,r.planilha,r.extrato,arredondarMoeda(r.planilha-r.extrato),r.fornecedor || '',r.situacao])]);
+  ws['!cols'] = [18,16,45,20,20,20,45,30].map(wch => ({wch}));
   XLSX.utils.book_append_sheet(wb,ws,'Divergencias');
-  XLSX.writeFile(wb,'Conferencia_Recebimentos_ALVORAR.xlsx');
+  const aceleracoes = cacheRecebimentosAlvorar?.resultado?.aceleracoesSemNovaEntrada || [];
+  if (aceleracoes.length) {
+    const dados = [['Data','Conta','Empresa da venda','Valor','Tipo','Arquivo origem','Linha origem'],
+      ...aceleracoes.flatMap(g=>g.registros.map(r=>[g.data,g.conta,r.centroCusto,r.valor,r.tipoLancamento,r.arquivoOrigem,r.linhaOrigem]))];
+    const revisao = XLSX.utils.aoa_to_sheet(dados);
+    revisao['!cols']=[16,45,24,20,30,35,18].map(wch=>({wch}));
+    XLSX.utils.book_append_sheet(wb,revisao,'Aceleracoes sem nova entrada');
+  }
+  return wb;
+}
+
+function exportarConferenciaRecebimentosAlvorar() {
+  XLSX.writeFile(criarConferenciaRecebimentosAlvorar(),'Conferencia_Recebimentos_ALVORAR.xlsx');
 }
 
 function tipoContaAlvorar(conta) {
@@ -444,7 +596,7 @@ function movimentoDepositoCaixaBancoAlvorar(mov) {
   const tipo = tipoContaAlvorar(mov.conta);
   if (!((tipo === 'Caixa' && mov.valor < 0) || (tipo === 'Banco' && mov.valor > 0))) return null;
   if (tipo === 'Caixa' && !movimentoEhTransferenciaEntreContas(mov)) return null;
-  const referencias = [mov.complemento, mov.historico].filter(Boolean);
+  const referencias = (tipo === 'Caixa' ? [mov.historico] : [mov.complemento, mov.historico]).filter(Boolean);
   const candidatas = referencias.filter(conta => {
     if (!codigoPermitidoAlvorar(conta)) return false;
     const nome = normalizarTexto(conta);
@@ -453,8 +605,78 @@ function movimentoDepositoCaixaBancoAlvorar(mov) {
     return !caixaLoja && tipoContaAlvorar(conta) !== 'Aplicacoes'
       && /\bbanco\b|\bitau\b|\bsicoob\b|\bbradesco\b|\bsantander\b|\bsicredi\b|\bcef\b/.test(nome);
   });
-  if (!candidatas.length) return null;
+  if (!candidatas.length) {
+    if (tipo === 'Caixa' && codigoPermitidoAlvorar(mov.complemento)
+      && /\bbanco\b|\bitau\b|\bsicoob\b|\bbradesco\b|\bsantander\b|\bsicredi\b|\bcef\b/.test(normalizarTexto(mov.complemento))) {
+      return {mov, cnpj:cnpjContaFinanceira(mov.conta) || codigoPermitidoAlvorar(mov.conta), outraConta:''};
+    }
+    return null;
+  }
   return { mov, cnpj: cnpjContaFinanceira(mov.conta) || codigoPermitidoAlvorar(mov.conta), outraConta: candidatas[0] };
+}
+
+function titularidadeDepositoCaixaAlvorar(deposito) {
+  const origem = codigoEmpresaAlvorar(deposito.mov.conta);
+  const destino = codigoEmpresaAlvorar(deposito.outraConta);
+  if (!origem || !destino) return {pendente:true, origem, destino};
+  const cnpjOrigem = cnpjContaFinanceira(deposito.mov.conta);
+  const cnpjDestino = cnpjContaFinanceira(deposito.outraConta);
+  if (origem === destino) return {origem, destino, proprio:true};
+  if (!cnpjOrigem || !cnpjDestino) return {pendente:true, origem, destino};
+  if (cnpjOrigem === cnpjDestino) return {origem, destino, proprio:true};
+  const contas = cnpjOrigem.slice(0,8) === cnpjDestino.slice(0,8)
+    ? CONTAS_CORRENTES_ALVORAR.transferencias : CONTAS_CORRENTES_ALVORAR.emprestimos;
+  return {origem, destino, cnpjOrigem, cnpjDestino, contas};
+}
+
+function montarDepositosCaixaAlvorar() {
+  return [...movimentosTransitoParcelas().values()].flatMap(deposito => {
+    const {mov, outraConta} = deposito;
+    const data = fmtDate(mov.data), valor = Math.abs(mov.valor);
+    const conta = codigoBancoConciliacao(mov.conta);
+    const historico = `Deposito em transito - ${mov.conta} / ${outraConta} - ${descricaoMovimentoExtrato(mov)}`;
+    if (mov.valor > 0) {
+      const linha = linhaDominio(data, conta, '51531', valor, historico, codigoEmpresaAlvorar(mov.conta), 'PROPRIO');
+      linha.tipoExtratoAlvorar = 'Banco';
+      return [linha];
+    }
+    const titular = titularidadeDepositoCaixaAlvorar(deposito);
+    if (titular.pendente) return [];
+    if (titular.proprio) {
+      const linha = linhaDominio(data, '51531', conta, valor, historico, titular.origem, 'PROPRIO');
+      linha.tipoExtratoAlvorar = 'Caixa';
+      return [linha];
+    }
+    // A matriz assume o transito na retirada; a entrada bancaria nao identifica a filial.
+    const complemento = `Transferencia de caixa origem ${titular.origem} destino ${titular.destino} - ${historico}`;
+    const linhas = [
+      linhaDominio(data, titular.contas.ATIVO, conta, valor, complemento, titular.origem, 'TRANSFERENCIA DE NUMERARIOS'),
+      linhaDominio(data, '51531', titular.contas.PASSIVO, valor, complemento, titular.destino, 'TRANSFERENCIA DE NUMERARIOS')
+    ];
+    linhas.forEach(l => { l.tipoExtratoAlvorar = 'Caixa'; });
+    return linhas;
+  });
+}
+
+function conferenciaParesTransferenciasCaixaAlvorar(linhas) {
+  const pares = new Map();
+  linhas.forEach(l => {
+    if (![l[1],l[2]].some(c=>['597','611'].includes(String(c)))) return;
+    const match = String(l[5] || '').match(/^Transferencia de caixa origem (\d+) destino (\d+) -/);
+    const origem = match?.[1] || '', destino = match?.[2] || '';
+    const key = `${origem}|${destino}`;
+    if (!pares.has(key)) pares.set(key, {origem,destino,valores:[0,0,0,0],saidas:0,identificado:!!match});
+    const par = pares.get(key), valor = Math.round(Number(l[3] || 0)*100);
+    if (String(l[1])==='597') { par.valores[0]+=valor; par.saidas++; if (String(l[7])!==origem) par.identificado=false; }
+    if (String(l[2])==='597') par.valores[1]+=valor;
+    if (String(l[1])==='611') par.valores[2]+=valor;
+    if (String(l[2])==='611') { par.valores[3]+=valor; if (String(l[7])!==destino) par.identificado=false; }
+  });
+  return [...pares.values()].sort((a,b)=>Number(a.destino)-Number(b.destino)||Number(a.origem)-Number(b.origem)).map(p=>({
+    ...p, diferencaDebitos:p.valores[0]-p.valores[3], diferencaCreditos:p.valores[1]-p.valores[2],
+    bate:p.identificado && !!familiaEmpresaAlvorar(p.origem) && !!familiaEmpresaAlvorar(p.destino)
+      && p.valores[0]===p.valores[3] && p.valores[1]===p.valores[2]
+  }));
 }
 
 function marcarMovimentoExportacaoAlvorar(linhas, movimento) {
@@ -485,6 +707,56 @@ function particionarExportacaoAlvorar(linhas, { separarMovimentos = false } = {}
     arquivos.get(caminho).push(linha.slice());
   });
   return arquivos;
+}
+
+function calcularConferenciaContasCorrentesAlvorar(linhas) {
+  const grupos = Object.entries(CONTAS_CORRENTES_ALVORAR).map(([categoria, contas]) => ({
+    categoria, contas, valores: [0,0,0,0], empresas: new Map()
+  }));
+  linhas.forEach(linha => {
+    const empresa = String(linha[7] || '');
+    grupos.forEach(grupo => {
+      const {ATIVO, PASSIVO} = grupo.contas;
+      const valor = Math.round(Number(linha[3] || 0) * 100);
+      const parcelas = [String(linha[1]) === ATIVO, String(linha[2]) === ATIVO,
+        String(linha[1]) === PASSIVO, String(linha[2]) === PASSIVO].map(usa => usa ? valor : 0);
+      if (!parcelas.some(Boolean)) return;
+      if (!grupo.empresas.has(empresa)) grupo.empresas.set(empresa, [0,0,0,0]);
+      parcelas.forEach((v,i) => { grupo.valores[i] += v; grupo.empresas.get(empresa)[i] += v; });
+    });
+  });
+  return grupos.map(grupo => {
+    const [debitoAtivo, creditoAtivo, debitoPassivo, creditoPassivo] = grupo.valores;
+    const diferencaDebitos = debitoAtivo - creditoPassivo;
+    const diferencaCreditos = creditoAtivo - debitoPassivo;
+    const empresas = [...grupo.empresas].sort(([a],[b]) => Number(a)-Number(b)).map(([empresa, valores]) => ({empresa, valores}));
+    const pares = grupo.categoria === 'transferencias' ? conferenciaParesTransferenciasCaixaAlvorar(linhas) : [];
+    return {...grupo, empresas, pares, diferencaDebitos, diferencaCreditos,
+      saldoAtivo:debitoAtivo-creditoAtivo, saldoPassivo:creditoPassivo-debitoPassivo,
+      bate:diferencaDebitos===0 && diferencaCreditos===0 && empresas.every(e=>!!familiaEmpresaAlvorar(e.empresa)) && pares.every(p=>p.bate),
+      temMovimento:empresas.length>0};
+  });
+}
+
+function htmlConferenciaContasCorrentesAlvorar(resumo, escopo = 'Arquivo final projetado') {
+  if (modoImportacaoDoGrupo() !== 'alvorar' || !resumo) return '';
+  const labels = {pagamentos:'Pagamentos',recebimentos:'Recebimentos',emprestimos:'Emprestimos sem vinculo',transferencias:'Transferencias de caixa'};
+  const moeda = centavos => `R$ ${fmtValor(centavos/100)}`;
+  const status = g => !g.temMovimento ? 'Sem movimento' : g.bate ? 'Espelhamento confere' : 'Diferenca';
+  const linhas = resumo.map(g => `<tr><td>${labels[g.categoria]}</td><td>${g.contas.ATIVO} / ${g.contas.PASSIVO}</td>
+    <td class="col-value">${moeda(g.valores[0])}</td><td class="col-value">${moeda(g.valores[3])}</td><td class="col-value">${moeda(g.diferencaDebitos)}</td>
+    <td class="col-value">${moeda(g.valores[1])}</td><td class="col-value">${moeda(g.valores[2])}</td><td class="col-value">${moeda(g.diferencaCreditos)}</td>
+    <td>${status(g)}</td></tr>`).join('');
+  const detalhes = resumo.flatMap(g => g.empresas.map(({empresa,valores:v}) => `<tr><td>${labels[g.categoria]}</td><td>${escapeHtml(familiaEmpresaAlvorar(empresa) || '')} / ${escapeHtml(empresa || 'Empresa pendente')}</td>
+    <td>${g.contas.ATIVO} / ${g.contas.PASSIVO}</td><td class="col-value">${moeda(v[0]-v[1])}</td><td class="col-value">${moeda(v[3]-v[2])}</td></tr>`)).join('');
+  const pares = resumo.find(g=>g.categoria==='transferencias')?.pares || [];
+  const quadroPares = pares.length ? `<details class="conciliacao-diff-details" style="margin-top:10px" data-conferencia-pares-caixa-alvorar><summary>Transferencias de caixa por par filial/matriz (597 x 611)</summary><div class="table-wrap"><table style="min-width:800px"><thead><tr><th>Filial de origem</th><th>Matriz destinataria</th><th>Saidas</th><th>D 597</th><th>C 611</th><th>Diferenca</th><th>Status</th></tr></thead><tbody>${pares.map(p=>`<tr><td>${escapeHtml(p.origem || 'Pendente')}</td><td>${escapeHtml(p.destino || 'Pendente')}</td><td>${p.saidas}</td><td class="col-value">${moeda(p.valores[0])}</td><td class="col-value">${moeda(p.valores[3])}</td><td class="col-value">${moeda(p.diferencaDebitos)}</td><td>${p.bate?'Conferido':'Revisar'}</td></tr>`).join('')}</tbody></table></div></details>` : '';
+  return `<section class="conciliacao-check-alert" style="margin-top:14px" data-conferencia-contas-correntes-alvorar>
+    <div class="conciliacao-check-head"><div><strong>Conferencia de numerarios, emprestimos e transferencias</strong><span>${escapeHtml(escopo)}</span></div></div>
+    <div class="table-wrap"><table style="min-width:1050px"><thead><tr><th>Natureza</th><th>Ativo / Passivo</th><th>D ativo</th><th>C passivo</th><th>Diferenca</th><th>C ativo</th><th>D passivo</th><th>Diferenca</th><th>Status</th></tr></thead><tbody>${linhas}</tbody></table></div>
+    ${detalhes ? `<details class="conciliacao-diff-details" style="margin-top:10px"><summary>Saldos do movimento por empresa</summary><div class="table-wrap"><table><thead><tr><th>Natureza</th><th>Empresa / filial</th><th>Ativo / Passivo</th><th>Saldo devedor ativo</th><th>Saldo credor passivo</th></tr></thead><tbody>${detalhes}</tbody></table></div></details>` : ''}
+    ${quadroPares}
+  </section>`;
 }
 
 function adicionarConferenciaNumerariosAlvorar(wb, linhas) {
@@ -521,6 +793,28 @@ function adicionarConferenciaNumerariosAlvorar(wb, linhas) {
     [],['Espelhamento D ativo x C passivo',(totals[0]-totals[3])/100],['Espelhamento C ativo x D passivo',(totals[1]-totals[2])/100]]);
   ws['!cols']=[22,25,20,20,20,25,20,20,20].map(wch=>({wch}));
   XLSX.utils.book_append_sheet(wb,ws,'Numerarios ALVORAR');
+  const conferencia = calcularConferenciaContasCorrentesAlvorar(linhas);
+  const labels = {pagamentos:'Pagamentos',recebimentos:'Recebimentos',emprestimos:'Emprestimos entre empresas sem vinculo',transferencias:'Transferencias de caixa'};
+  const rows = [['Natureza','Estabelecimento','Conta ativo','Conta passivo','Debitos ativo','Creditos ativo','Saldo devedor ativo','Debitos passivo','Creditos passivo','Saldo credor passivo','Dif. D ativo x C passivo','Dif. C ativo x D passivo','Status']];
+  conferencia.forEach(g => {
+    g.empresas.forEach(({empresa,valores:v}) => rows.push([labels[g.categoria],empresa,g.contas.ATIVO,g.contas.PASSIVO,
+      v[0]/100,v[1]/100,(v[0]-v[1])/100,v[2]/100,v[3]/100,(v[3]-v[2])/100,'','','Saldo do movimento']));
+    const v=g.valores;
+    rows.push([labels[g.categoria],'TOTAL',g.contas.ATIVO,g.contas.PASSIVO,v[0]/100,v[1]/100,g.saldoAtivo/100,
+      v[2]/100,v[3]/100,g.saldoPassivo/100,g.diferencaDebitos/100,g.diferencaCreditos/100,
+      !g.temMovimento?'SEM MOVIMENTO':g.bate?'CONFERIDO':'DIFERENCA']);
+  });
+  const separado = XLSX.utils.aoa_to_sheet(rows);
+  separado['!cols']=[40,22,18,18,20,20,22,20,20,22,26,26,24].map(wch=>({wch}));
+  XLSX.utils.book_append_sheet(wb,separado,'Conferencia por natureza');
+  const pares = conferencia.find(g=>g.categoria==='transferencias').pares;
+  if (pares.length) {
+    const dadosPares = [['Filial origem','Matriz destino','Saidas de caixa','Debitos 597','Creditos 611','Diferenca','Status'],
+      ...pares.map(p=>[p.origem,p.destino,p.saidas,p.valores[0]/100,p.valores[3]/100,p.diferencaDebitos/100,p.bate?'CONFERIDO':'DIFERENCA'])];
+    const wsPares = XLSX.utils.aoa_to_sheet(dadosPares);
+    wsPares['!cols']=[22,22,20,22,22,22,20].map(wch=>({wch}));
+    XLSX.utils.book_append_sheet(wb,wsPares,'Transferencias caixa - pares');
+  }
 }
 
 function saidasAvulsasPagamentosAlvorar() {
@@ -632,6 +926,7 @@ function nomeContaConferenciaAlvorar(valor) {
   if (conta?.nome) return conta.nome;
   const fixas = {
     '604': 'Conta corrente - Numerários', '618': 'Conta corrente - Numerários',
+    '597': 'Conta Corrente - Transferencia (ativo)', '611': 'Conta Corrente - Transferencia (passivo)',
     '1924': 'Conta corrente - Clientes', '1931': 'Conta corrente - Clientes',
     '1768': 'Empréstimos entre unidades - Ativo', '1775': 'Empréstimos entre unidades - Passivo',
     '51531': 'Caixa - Depósitos em trânsito'
@@ -669,6 +964,10 @@ async function exportarZipAlvorar(linhas, { somentePagamentos = false, separarMo
     const conferencia = XLSX.utils.book_new();
     adicionarConferenciaNumerariosAlvorar(conferencia,linhas);
     if (conferencia.SheetNames.length) XLSX.CFB.utils.cfb_add(zip,'Conferencias/Numerarios.xlsx',new Uint8Array(XLSX.write(conferencia,{type:'array',bookType:'xlsx'})));
+    if (!somentePagamentos && cacheRecebimentosAlvorar?.resultado) {
+      const recebimentos = criarConferenciaRecebimentosAlvorar();
+      XLSX.CFB.utils.cfb_add(zip,'Conferencias/Recebimentos.xlsx',new Uint8Array(XLSX.write(recebimentos,{type:'array',bookType:'xlsx'})));
+    }
     const texto = somentePagamentos
       ? 'SOMENTE PAGAMENTOS CONCILIADOS DA ALVORAR.\nContem titulos pagos vinculados aos extratos, com descontos, acrescimos e numerarios vinculados, e saidas avulsas do extrato com contrapartida preenchida, uma unica vez. Inclui ajustes negativos de cartoes que estejam classificados como saidas avulsas.\nNao contem entradas de recebimentos, depositos caixa/banco nem transferencias, aplicacoes ou resgates gerados pela conciliacao dos extratos. Saidas expressamente marcadas para nao exportar permanecem excluidas.\nBanco, Caixa e Aplicacoes indicam a origem do pagamento; cada familia agrupa matriz e filiais na coluna Codigo Matriz/Filial. Pastas sem pagamentos nao sao geradas.\nA pasta Conferencias nao deve ser importada no Dominio. Este arquivo e parcial: nao representa o fechamento completo de entradas e saidas. Nao importar junto com a exportacao completa do mesmo periodo, para nao duplicar pagamentos.\n'
       : 'Depositos caixa/banco: saida D 51531 / C caixa na pasta Caixa; entrada D banco / C 51531 na pasta Banco. Cada ponta usa a data do proprio extrato, sem pareamento. O saldo em transito pode passar de um mes para outro.\nDemais transferencias: um unico lancamento. Banco tem prioridade sobre Caixa e Aplicacoes; Caixa tem prioridade sobre Aplicacoes.\nFiliais: coluna Codigo Matriz/Filial. A pasta Conferencias nao deve ser importada no Dominio.\nExcluir uma pasta nao remove as contrapartidas de transferencias diretas incluidas em outra. Confira o que ja foi importado pela analista antes de importar arquivos parciais.\n';
