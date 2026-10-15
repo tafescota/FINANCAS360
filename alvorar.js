@@ -9,6 +9,71 @@ let recebimentosAlvorarTemp = [];
 let infoRecebimentosAlvorarTemp = null;
 let cacheRecebimentosAlvorar = null;
 let visaoPendenciasAlvorarTemp = 'contas';
+let cacheFaltasCaixaAlvorar = null;
+
+function chaveDiaCaixaAlvorar(data, conta) {
+  return JSON.stringify([dataKey(data), contaNormalizadaAlvorar(conta)]);
+}
+
+function apurarFaltasCaixaLiquidasAlvorar() {
+  const vazio = { grupos: new Map(), indices: new Set() };
+  if (modoImportacaoDoGrupo() !== 'alvorar' || !recebimentosAlvorarTemp.length || !extratoBancarioTemp.length) return vazio;
+  if (cacheFaltasCaixaAlvorar?.pagamentos === linhasImportadas
+    && cacheFaltasCaixaAlvorar.recebimentos === recebimentosAlvorarTemp
+    && cacheFaltasCaixaAlvorar.extrato === extratoBancarioTemp
+    && cacheFaltasCaixaAlvorar.quantidades === [linhasImportadas.length,recebimentosAlvorarTemp.length,extratoBancarioTemp.length].join('|')) return cacheFaltasCaixaAlvorar.resultado;
+  const grupos = new Map();
+  linhasImportadas.forEach((row, idx) => {
+    const empresa = codigoPermitidoAlvorar(row[COLS.CONTA]);
+    if (!empresa || empresa !== String(row[COLS.EMPRESA]) || tipoContaAlvorar(row[COLS.CONTA]) !== 'Caixa'
+      || normalizarTexto(row[COLS.FORNECEDOR]) !== 'vendas dinheiro'
+      || normalizarTexto(row[COLS.PLANO]) !== 'falta de caixa'
+      || !normalizarTexto(row[COLS.HISTORICO]).includes('ajuste do fechamento de caixa')
+      || arredondarMoeda(row[COLS.VALOR_LIQ]) <= 0 || arredondarMoeda(row[COLS.ACRESCIMO]) !== 0) return;
+    const chave = chaveDiaCaixaAlvorar(row[COLS.LIQUIDACAO], row[COLS.CONTA]);
+    if (!grupos.has(chave)) grupos.set(chave, { empresa, faltas: [], recebimentos: [], extratos: [] });
+    grupos.get(chave).faltas.push({ row, idx, valor: arredondarMoeda(row[COLS.VALOR_LIQ]) });
+  });
+  recebimentosAlvorarTemp.forEach(r => {
+    const grupo = grupos.get(chaveDiaCaixaAlvorar(r.data, r.conta));
+    if (grupo && r.origem === 'titulos' && normalizarTexto(r.fornecedor) === 'vendas dinheiro') grupo.recebimentos.push(r);
+  });
+  extratoBancarioTemp.forEach(m => {
+    const grupo = grupos.get(chaveDiaCaixaAlvorar(m.data, m.conta));
+    if (grupo && normalizarTexto(m.tipoConciliacao) === 'parcelas de titulos'
+      && normalizarTexto(m.complemento) === 'vendas dinheiro') grupo.extratos.push(m);
+  });
+  const resultado = { grupos: new Map(), indices: new Set() };
+  const somar = lista => lista.reduce((s, r) => s + Math.round(r.valor * 100), 0);
+  grupos.forEach((grupo, chave) => {
+    const vendas = grupo.recebimentos.filter(r => normalizarTexto(r.plano) === 'vendas de mercadorias');
+    const configuracoes = new Set(vendas.map(r => JSON.stringify([r.tipo,r.plano,r.centroCusto,r.empresaBanco])));
+    if (!grupo.extratos.length || grupo.extratos.some(m => m.valor <= 0) || !vendas.length || configuracoes.size !== 1
+      || grupo.recebimentos.some(r => r.valor <= 0 || r.empresaBanco !== grupo.empresa || r.centroCusto !== grupo.empresa
+        || !['vendas de mercadorias','sobra de caixa'].includes(normalizarTexto(r.plano)))) return;
+    const faltaCentavos = somar(grupo.faltas);
+    // Exigir prova integral do fechamento, sem tolerancia nem rateio por aproximacao.
+    if (somar(vendas) <= faltaCentavos || somar(grupo.recebimentos) - faltaCentavos !== somar(grupo.extratos)) return;
+    resultado.grupos.set(chave, { ...grupo, faltaCentavos });
+    grupo.faltas.forEach(f => resultado.indices.add(f.idx));
+  });
+  cacheFaltasCaixaAlvorar = { pagamentos: linhasImportadas, recebimentos: recebimentosAlvorarTemp,
+    extrato: extratoBancarioTemp, quantidades: [linhasImportadas.length,recebimentosAlvorarTemp.length,extratoBancarioTemp.length].join('|'), resultado };
+  return resultado;
+}
+
+function montarAjustesCaixaLiquidosAlvorar(item, codigoRecebimento) {
+  if (modoImportacaoDoGrupo() !== 'alvorar') return [];
+  return (item.faltasCaixaLiquidasAlvorar || []).map(({ row, valor }) => {
+    const info = separarNumeroDoHistorico(row[COLS.TIPO_DOC], row[COLS.NUMERO], row[COLS.HISTORICO]);
+    const codigo = obterCodigoContaParaDominio(encontrarCodigoRegra(depara[grupoAtivo] || {},
+      limparTextoECD(row[COLS.FORNECEDOR]), limparTextoECD(row[COLS.PLANO]), limparTextoECD(row[COLS.TIPO_DOC]), info.historico, escopoRegraLinha(row)));
+    const linha = linhaDominio(fmtDate(row[COLS.LIQUIDACAO]), codigo, codigoRecebimento, valor,
+      'Falta de caixa ja descontada da entrada - ' + row[COLS.CONTA], item.centroCusto, 'PROPRIO');
+    linha.tipoExtratoAlvorar = 'Caixa';
+    return linha;
+  });
+}
 
 function resumoVinculosAlvorar() {
   const titulos = sugestoesParcelasExtratoTemp.filter(s => !s.mov
@@ -203,9 +268,11 @@ function conciliarRecebimentosCompletosAlvorar(entradas) {
   const vazio = { itens: [], usados: new Set(), divergencias: [] };
   if (modoImportacaoDoGrupo() !== 'alvorar' || !recebimentosAlvorarTemp.length) return vazio;
   if (cacheRecebimentosAlvorar?.extrato === extratoBancarioTemp && cacheRecebimentosAlvorar.recebimentos === recebimentosAlvorarTemp
+    && cacheRecebimentosAlvorar.pagamentos === linhasImportadas
     && cacheRecebimentosAlvorar.qtd === entradas.length) return cacheRecebimentosAlvorar.resultado;
   const resultado = { itens: [], usados: new Set(), divergencias: [] };
   const titulosAceitos = new Set();
+  const faltasLiquidas = apurarFaltasCaixaLiquidasAlvorar();
   const grupos = new Map();
   const chave = (data, conta, categoria, sinal = 1) => JSON.stringify([dataKey(data), contaNormalizadaAlvorar(conta), categoria, sinal]);
   const adicionar = (key, lado, valor) => {
@@ -234,6 +301,7 @@ function conciliarRecebimentosCompletosAlvorar(entradas) {
       item.movimentos.push(r);
     });
     resultado.itens.push(...rateios.values());
+    return [...rateios.values()];
   };
   grupos.forEach((g, key) => {
     if (g.planilha.length && g.extrato.length && soma(g.planilha) === soma(g.extrato)) aceitar(g.planilha, g.extrato);
@@ -248,7 +316,13 @@ function conciliarRecebimentosCompletosAlvorar(entradas) {
     porDiaConta.get(k).push(m);
   });
   const titulos = recebimentosAlvorarTemp.filter(r => r.origem === 'titulos');
-  const propostas = titulos.map(r => ({ r, candidatas: (porDiaConta.get(chave(r.data, r.conta, 'titulos')) || []).filter(m =>
+  faltasLiquidas.grupos.forEach(grupo => {
+    const itens = aceitar(grupo.recebimentos, grupo.extratos);
+    const principal = itens.find(i => normalizarTexto(i.plano) === 'vendas de mercadorias');
+    principal.total = arredondarMoeda(principal.total - grupo.faltaCentavos / 100);
+    principal.faltasCaixaLiquidasAlvorar = grupo.faltas;
+  });
+  const propostas = titulos.filter(r => !titulosAceitos.has(r)).map(r => ({ r, candidatas: (porDiaConta.get(chave(r.data, r.conta, 'titulos')) || []).filter(m => !resultado.usados.has(m) &&
     Math.round(m.valor*100) === Math.round(r.valor*100) && ((r.numero && String(m.documento || '').split(/\s+/).includes(r.numero))
       || (r.fornecedor && normalizarTexto(m.complemento) === normalizarTexto(r.fornecedor)))) }));
   const disputas = new Map();
@@ -270,7 +344,7 @@ function conciliarRecebimentosCompletosAlvorar(entradas) {
     else resultado.divergencias.push({origem:'titulos',data:r.dataKey,conta:r.conta,planilha:soma(rows)/100,
       extrato:soma(moves)/100,fornecedor:r.fornecedor});
   });
-  cacheRecebimentosAlvorar = { extrato: extratoBancarioTemp, recebimentos: recebimentosAlvorarTemp, qtd: entradas.length, resultado };
+  cacheRecebimentosAlvorar = { extrato: extratoBancarioTemp, recebimentos: recebimentosAlvorarTemp, pagamentos: linhasImportadas, qtd: entradas.length, resultado };
   return resultado;
 }
 
@@ -295,7 +369,10 @@ function htmlConferenciaRecebimentosAlvorar() {
   if (modoImportacaoDoGrupo() !== 'alvorar' || !recebimentosAlvorarTemp.length) return '';
   const r = cacheRecebimentosAlvorar?.resultado;
   if (!r) return '';
-  return `<div class="alert ${r.divergencias.length ? 'alert-warn' : 'alert-ok'}">Recebimentos ALVORAR: ${r.itens.length} parcelas de rateio identificadas · ${r.divergencias.length} divergencias de origem/valor.
+  const faltas = apurarFaltasCaixaLiquidasAlvorar();
+  const totalFaltas = [...faltas.grupos.values()].reduce((s, g) => s + g.faltaCentavos, 0) / 100;
+  return `<div class="alert ${r.divergencias.length ? 'alert-warn' : 'alert-ok'}" style="display:block">Recebimentos ALVORAR: ${r.itens.length} parcelas de rateio identificadas · ${r.divergencias.length} divergencias de origem/valor.
+    ${faltas.indices.size ? `<span>Faltas ja refletidas na entrada liquida: ${faltas.indices.size} / R$ ${fmtValor(totalFaltas)}. Sem nova saida de caixa.</span>` : ''}
     <button class="btn btn-sm" onclick="exportarConferenciaRecebimentosAlvorar()">Exportar conferencia</button></div>`;
 }
 

@@ -5861,10 +5861,12 @@ function pagamentoConciliacao(row, idx) {
 }
 
 function pagamentosImportadosConciliacao(contasBanco = new Set()) {
+  const faltasLiquidasAlvorar = apurarFaltasCaixaLiquidasAlvorar().indices;
   if (linhasImportadasModo !== 'rateio') {
     return linhasImportadas
       .map((row, idx) => pagamentoConciliacao(row, idx))
       .filter(p => !p.ajusteFechamentoCaixa
+        && !faltasLiquidasAlvorar.has(p.idx)
         && (contasBanco.size === 0 || contasBanco.has(normalizarTexto(p.conta)))
         && p.valor > 0);
   }
@@ -8077,6 +8079,7 @@ function montarLinhasDominioConciliacao({ validarPendencias = true } = {}) {
       const rateios = montarLinhasRecebimentoRateioDominio(item, codigo, regrasNumerarios);
       if (modoImportacaoDoGrupo() === 'alvorar') rateios.forEach(l => { l.tipoExtratoAlvorar = tipoContaAlvorar(item.conta); });
       linhas.push(...rateios);
+      linhas.push(...montarAjustesCaixaLiquidosAlvorar(item, codigo));
       return;
     }
     const movimentos = item.movimentos && item.movimentos.length ? item.movimentos : [item];
@@ -8296,6 +8299,7 @@ function editarGrupoCadastro(g) {
   });
 }
 function limparSessaoImportacao() {
+  cacheFaltasCaixaAlvorar = null;
   visaoPendenciasAlvorarTemp = 'contas';
   recebimentosAlvorarTemp = [];
   infoRecebimentosAlvorarTemp = null;
