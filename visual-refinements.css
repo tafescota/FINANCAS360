@@ -558,6 +558,23 @@ tbody tr:hover:not(.conciliacao-row-ok):not(.conciliacao-row-warn) {
   white-space: nowrap;
 }
 
+[data-conferencia-contas-correntes-alvorar] .table-wrap {
+  max-width: 100%;
+  overflow-x: auto !important;
+}
+
+[data-conferencia-contas-correntes-alvorar] table {
+  table-layout: auto !important;
+}
+
+[data-conferencia-contas-correntes-alvorar] .col-value {
+  text-align: right;
+  white-space: nowrap !important;
+  overflow-wrap: normal !important;
+  word-break: normal;
+  font-variant-numeric: tabular-nums;
+}
+
 .conciliation-table .col-secondary,
 .muted-line {
   color: var(--ui-muted);
@@ -1916,6 +1933,17 @@ input[type=search]:focus {
   min-width: 0;
   min-height: 36px;
   width: 100%;
+}
+
+#modal-pendencias-conciliacao[data-modo-importacao="alvorar"] .pendencias-conciliacao-table .badge {
+  white-space: nowrap;
+}
+
+@media (max-width: 700px) {
+  #modal-pendencias-conciliacao[data-modo-importacao="alvorar"] .pendencias-pesquisa {
+    max-height: 25vh !important;
+    overflow-y: auto !important;
+  }
 }
 
 #modal-pendencias-conciliacao [style*="grid-template-columns"] {

@@ -1025,8 +1025,8 @@ function abrirRevisaoPagamentosParcelas() {
     <div style="padding:18px 22px;border-bottom:1px solid var(--border)"><h3>Revisar vinculos provaveis</h3></div>
     <div style="padding:16px 22px;overflow:auto"><div class="table-wrap table-scroll"><table><thead><tr><th>Confirmar</th><th>Titulo</th><th>Extrato</th><th>Criterio</th></tr></thead><tbody>${itens.map(s => `<tr>
       <td><input type="checkbox" aria-label="Confirmar ${escapeAttr(s.pag.fornecedor)}" data-confirmacao-parcelas="${escapeAttr(chaveConfirmacaoPagamentoParcelas(s))}" ${pagamentosProvaveisConfirmadosTemp.has(chaveConfirmacaoPagamentoParcelas(s)) ? 'checked' : ''}></td>
-      <td>${escapeHtml(s.pag.fornecedor)}<br>${escapeHtml(s.pag.conta)}<br>${escapeHtml(s.pag.dataKey)} - R$ ${fmtValor(s.pag.valor)}</td>
-      <td>${(s.movs || [s.mov]).map(m => `${escapeHtml(fmtDate(m.data))} - ${escapeHtml(m.conta)} - R$ ${fmtValor(Math.abs(m.valor))}<br>${escapeHtml(descricaoMovimentoExtrato(m))}`).join('<hr>')}</td>
+      <td>${escapeHtml(s.pag.fornecedor)}<br>${escapeHtml(rotuloContaFinanceiraAlvorar(s.pag.conta))}<br>${escapeHtml(s.pag.dataKey)} - R$ ${fmtValor(s.pag.valor)}</td>
+      <td>${(s.movs || [s.mov]).map(m => `${escapeHtml(fmtDate(m.data))} - ${escapeHtml(rotuloContaFinanceiraAlvorar(m.conta))} - R$ ${fmtValor(Math.abs(m.valor))}<br>${escapeHtml(descricaoMovimentoExtrato(m))}`).join('<hr>')}</td>
       <td>${escapeHtml(s.regra)}</td></tr>`).join('')}</tbody></table></div></div>
     <div style="padding:14px 22px;border-top:1px solid var(--border);display:flex;justify-content:flex-end;gap:10px"><button class="btn" onclick="document.getElementById('modal-revisao-parcelas').remove()">Cancelar</button><button class="btn btn-primary" onclick="salvarRevisaoPagamentosParcelas()">Salvar confirmacoes</button></div></div>`;
   document.body.appendChild(modal);
@@ -1043,8 +1043,8 @@ function salvarRevisaoPagamentosParcelas() {
 
 function montarPagamentosConciliadosParcelas() {
   const porIndice = new Map(sugestoesParcelasExtratoTemp.filter(s => s.mov).map(s => [s.pag.idx, s]));
-  const lancamentos = lancamentosGerados.filter(l => !l.origemConciliacao);
   const linhas = montarLinhasDominioPagamentos();
+  const lancamentos = lancamentosGerados.filter(l => !l.origemConciliacao);
   return linhas.flatMap((linha, idx) => {
     const sugestao = porIndice.get(lancamentos[idx]?.idx);
     if (!sugestao) return [];
@@ -1053,6 +1053,7 @@ function montarPagamentosConciliadosParcelas() {
     if (modoImportacaoDoGrupo() === 'alvorar') {
       copia.tipoExtratoAlvorar = tipoContaAlvorar(sugestao.mov.conta);
       copia.movimentoExportacaoAlvorar = 'Pagamentos';
+      copia.contaPendenteTituloAlvorar = contaPendenteDeTituloAlvorar(lancamentos[idx]);
     }
     return [copia];
   });
@@ -1125,9 +1126,10 @@ function validarExportacaoParcelasExtrato(linhas) {
   if (semVinculo.length) { alert(`${semVinculo.length} titulo(s) sem vinculo com o extrato. Revise o movimento ou marque para nao exportar.`); abrirModalPendenciasConciliacao(); return false; }
   const transitoPendente = [...movimentosTransitoParcelas().values()].some(m => !codigoContaTransitoParcelas(m.cnpj));
   if (transitoPendente) { prepararPagamentosImportados(linhasImportadas, true); return false; }
-  if (linhas.some(l => !l[1] || !l[2])) { alert('Preencha as contas contabilizadas antes de exportar.'); return false; }
+  if (linhas.some(l => !l[1] || !l[2]) && !contasPendentesTitulosExportaveisAlvorar(linhas)) { alert('Preencha as contas contabilizadas antes de exportar.'); return false; }
   const diferencas = conferirParcelasPorContaDia(linhas);
   if (diferencas.length) { alert(`Exportacao interrompida: ${diferencas.length} diferenca(s) por conta/dia. ${diferencas.slice(0,5).map(d => d.conta+' '+d.data).join('; ')}`); return false; }
+  if (modoImportacaoDoGrupo() === 'alvorar' && !confirmarExportacaoTitulosSemContaAlvorar(linhas)) return false;
   return true;
 }
 
@@ -2910,7 +2912,7 @@ function renderProvisaoRateio() {
       <td><input type="text" class="conta-autocomplete" style="width:110px" placeholder="${escapeAttr(r.debitoSugerido || 'Débito')}" value="${escapeAttr(r.debitoConta || '')}" data-idx="${i}" data-campo="debito" oninput="atualizarContaProvisao(this); criarAutocompleteConta(this)" onblur="salvarRegraProvisaoLinha(${i})"></td>
       <td><input type="text" class="conta-autocomplete" style="width:110px" placeholder="Crédito" value="${escapeAttr(r.creditoConta || '')}" data-idx="${i}" data-campo="credito" oninput="atualizarContaProvisao(this); criarAutocompleteConta(this)" onblur="salvarRegraProvisaoLinha(${i})"></td>
       <td style="text-align:right;white-space:nowrap">R$ ${fmtValor(r.valor)}</td>
-      <td>${escapeHtml(r.empresa || '')}</td>
+      <td>${escapeHtml(rotuloUnidadeAlvorar(r.empresa || ''))}</td>
       <td>${escapeHtml(r.fornecedor || '')}</td>
       <td>${escapeHtml([r.documento, r.numero].filter(Boolean).join(' - '))}</td>
       <td title="${escapeAttr(r.complemento)}">${escapeHtml(r.complemento)}</td>
@@ -3468,7 +3470,7 @@ function renderProvisaoParcelas() {
     <td><input type="text" class="conta-autocomplete" style="width:115px" placeholder="${escapeAttr(r.debitoSugerido || 'Débito')}" value="${escapeAttr(r.debitoConta || '')}" data-idx="${i}" data-campo="debito" oninput="atualizarContaProvisaoParcelas(this); criarAutocompleteConta(this)" onblur="salvarRegraProvisaoParcelasLinha(${i})"></td>
     <td><input type="text" class="conta-autocomplete" style="width:115px" placeholder="Crédito" value="${escapeAttr(r.creditoConta || '')}" data-idx="${i}" data-campo="credito" oninput="atualizarContaProvisaoParcelas(this); criarAutocompleteConta(this)" onblur="salvarRegraProvisaoParcelasLinha(${i})"></td>
     <td style="text-align:right;white-space:nowrap">R$ ${fmtValor(r.valor)}</td>
-    <td>${escapeHtml(r.empresa || '')}</td><td>${escapeHtml(r.fornecedor || '')}</td>
+    <td>${escapeHtml(rotuloUnidadeAlvorar(r.empresa || ''))}</td><td>${escapeHtml(r.fornecedor || '')}</td>
     <td>${escapeHtml([r.documento, r.numero].filter(Boolean).join(' - '))}</td>
     <td title="${escapeAttr(r.complemento)}">${descTruncada(r.complemento)}</td>
   </tr>`).join('');
@@ -3547,7 +3549,7 @@ function abrirModalRegrasProvisaoParcelasAntigo() {
   const linhas = pendentes.map(item => {
     const busca = normalizarTexto([item.empresa, item.fornecedor, item.plano, item.documento, item.historico].join(' '));
     return `<tr data-search="${escapeAttr(busca)}" data-chave="${escapeAttr(item.chave)}">
-      <td>${escapeHtml(item.empresa || '')}</td>
+      <td>${escapeHtml(rotuloUnidadeAlvorar(item.empresa || ''))}</td>
       <td><strong>${escapeHtml(item.fornecedor || '')}</strong></td>
       <td>${escapeHtml(item.plano || '')}</td>
       <td>${escapeHtml(item.documento || '')}</td>
@@ -3744,7 +3746,9 @@ function dadosCompletosDesconsideradas() {
 
 function adicionarAbaDesconsideradasProvisao(wb) {
   const auditoria = dadosCompletosDesconsideradas();
-  const ws = XLSX.utils.aoa_to_sheet([auditoria.cabecalho, ...auditoria.linhas], { cellDates: true });
+  const linhas = auditoria.linhas.map(linha => linha.map((valor, idx) =>
+    ['empresa', 'centro de custos', 'centro de custo'].includes(normalizarTexto(auditoria.cabecalho[idx])) ? rotuloUnidadeAlvorar(valor) : valor));
+  const ws = XLSX.utils.aoa_to_sheet([auditoria.cabecalho, ...linhas], { cellDates: true });
   const ultimaColuna = XLSX.utils.encode_col(Math.max(0, auditoria.cabecalho.length - 1));
   ws['!autofilter'] = { ref: `A1:${ultimaColuna}${Math.max(1, auditoria.linhas.length + 1)}` };
   ws['!cols'] = auditoria.cabecalho.map((_, indice) => ({ wch: indice === 0 ? 46 : 20 }));
@@ -4229,7 +4233,7 @@ function htmlFechamentoContasDominio(resumo) {
     <td class="col-value ${Math.abs(item.diferencaSaldo) < 0.01 ? 'ok' : 'warn'}">R$ ${fmtValor(item.diferencaSaldo)}</td>
   </tr>`).join('');
   const linhasDivergentes = resumo.divergentes.slice(0, 80).map(item => `<tr>
-    <td>${escapeHtml(item.conta)}</td>
+    <td>${escapeHtml(rotuloContaFinanceiraAlvorar(item.conta))}</td>
     <td class="col-value">R$ ${fmtValor(item.diferencaEntradas)}</td>
     <td class="col-value">R$ ${fmtValor(item.diferencaSaidas)}</td>
     <td class="col-value">R$ ${fmtValor(item.diferencaSaldo)}</td>
@@ -5001,9 +5005,9 @@ function abrirPendenciasRecebimentosNumerarios(tipo) {
     ].join(' '));
     return `<tr data-search="${escapeAttr(busca)}">
       <td style="white-space:nowrap"><strong>${escapeHtml(item.data || '')}</strong></td>
-      <td>${escapeHtml(item.conta || '')}</td>
-      <td>${escapeHtml(item.empresaBanco || '')}</td>
-      <td>${escapeHtml(item.centroCusto || '')}</td>
+      <td>${escapeHtml(rotuloContaFinanceiraAlvorar(item.conta || ''))}</td>
+      <td>${escapeHtml(rotuloUnidadeAlvorar(item.empresaBanco || ''))}</td>
+      <td>${escapeHtml(rotuloUnidadeAlvorar(item.centroCusto || ''))}</td>
       <td><div class="cell-main">${escapeHtml(item.tipo || item.origem || '')}</div><div class="cell-subtle">${escapeHtml(item.plano || '')}</div></td>
       <td title="${escapeAttr(item.historico || '')}">${descTruncada(item.historico || '')}</td>
       <td style="text-align:right;white-space:nowrap"><strong>R$ ${fmtValor(item.valor)}</strong></td>
@@ -5055,11 +5059,11 @@ function renderResumoConciliacaoRecebimentosNumerarios() {
     return `<tr><td><strong>${escapeHtml(rotulo)}</strong></td><td style="text-align:right">R$ ${fmtValor(dados.totalPlanilha)}</td><td style="text-align:right">R$ ${fmtValor(dados.totalExtrato)}</td><td style="text-align:right">R$ ${fmtValor(diferenca)}</td><td>${dados.conciliados} grupo${dados.conciliados !== 1 ? 's' : ''} conciliado${dados.conciliados !== 1 ? 's' : ''} · ${status}</td></tr>`;
   };
   const contas = resumo.contasAusentes.length
-    ? `<div class="alert alert-warn" style="margin-top:10px"><strong>Extratos que ainda faltam:</strong> ${resumo.contasAusentes.map(escapeHtml).join(', ')}. Movimentos de depósito em outra conta não substituem o extrato desta conta/caixa.</div>`
+    ? `<div class="alert alert-warn" style="margin-top:10px"><strong>Extratos que ainda faltam:</strong> ${resumo.contasAusentes.map(c=>escapeHtml(rotuloContaFinanceiraAlvorar(c))).join(', ')}. Movimentos de depósito em outra conta não substituem o extrato desta conta/caixa.</div>`
     : '';
   const divergenciasCartoes = resumo.cartoes.pendentes.slice(0, 5).map(grupo => {
     const dados = grupo.planilha || grupo.extrato || {};
-    return `${escapeHtml(dados.data || '')} · ${escapeHtml(dados.conta || '')} · ${escapeHtml(dados.categoria || 'Cartões')} · diferença R$ ${fmtValor(grupo.diferenca)}`;
+    return `${escapeHtml(dados.data || '')} · ${escapeHtml(rotuloContaFinanceiraAlvorar(dados.conta || ''))} · ${escapeHtml(dados.categoria || 'Cartões')} · diferença R$ ${fmtValor(grupo.diferenca)}`;
   });
   const detalhes = divergenciasCartoes.length
     ? `<div class="conciliacao-note" style="margin-top:10px"><strong>Divergências de cartões:</strong> ${divergenciasCartoes.join('<br>')}</div>`
@@ -5079,7 +5083,7 @@ function bloquearExportacaoRecebimentosSemConciliacao() {
   const partes = [];
   if (resumo.cartoes.pendentes.length) partes.push(`${resumo.cartoes.pendentes.length} grupo(s) de cartões`);
   if (resumo.titulos.pendentes.length) partes.push(`${resumo.titulos.pendentes.length} grupo(s) de títulos`);
-  if (resumo.contasAusentes.length) partes.push(`extrato ausente: ${resumo.contasAusentes.join(', ')}`);
+  if (resumo.contasAusentes.length) partes.push(`extrato ausente: ${resumo.contasAusentes.map(rotuloContaFinanceiraAlvorar).join(', ')}`);
   alert(`A exportação foi pausada porque os recebimentos ainda não batem com o extrato (${partes.join('; ')}).`);
   return true;
 }
@@ -5269,8 +5273,8 @@ function renderRecebimentosSeparados() {
     const pendente = !obterCodigoContaParaDominio(codigosConciliacaoTemp[item.id]);
     return `<tr class="${pendente ? 'sem-codigo' : ''}">
       <td style="white-space:nowrap">${escapeHtml(item.data)}</td>
-      <td>${escapeHtml(item.empresaBanco || '')}</td>
-      <td>${escapeHtml(item.centroCusto || '')}</td>
+      <td>${escapeHtml(rotuloUnidadeAlvorar(item.empresaBanco || ''))}</td>
+      <td>${escapeHtml(rotuloUnidadeAlvorar(item.centroCusto || ''))}</td>
       <td>${escapeHtml(item.tipoRateio === 'TRANSFERENCIA DE NUMERARIOS' ? 'TRANSFERÊNCIA DE NUMERÁRIOS' : 'PRÓPRIO')}</td>
       <td title="${escapeAttr(item.historico || '')}">${descTruncada(item.historico || '')}</td>
       <td style="text-align:right;white-space:nowrap">R$ ${fmtValor(item.total)}</td>
@@ -5574,7 +5578,7 @@ function renderPreviewExtratoBancario() {
   const linhas = extratoBancarioTemp.slice(0, 80).map(m => `
     <tr>
       <td style="white-space:nowrap">${escapeHtml(fmtDate(m.data))}</td>
-      <td>${escapeHtml(m.conta)}</td>
+      <td>${escapeHtml(rotuloContaFinanceiraAlvorar(m.conta))}</td>
       <td style="text-align:right;white-space:nowrap;color:${m.valor < 0 ? '#b91c1c' : '#166534'}">R$ ${fmtValor(m.valor)}</td>
       <td>${escapeHtml(descricaoMovimentoExtrato(m))}</td>
       <td>${escapeHtml(m.documento)}</td>
@@ -5619,7 +5623,7 @@ function resumoContasExtrato(movimentos = extratoBancarioTemp) {
   const contas = contasExtrato(movimentos);
   if (contas.length === 0) return 'Conta não identificada';
   if (contas.length === 1) return contas[0];
-  return `${contas.length} contas: ${contas.slice(0, 3).join(', ')}${contas.length > 3 ? '...' : ''}`;
+  return `${contas.length} contas: ${contas.slice(0, 3).map(rotuloContaFinanceiraAlvorar).join(', ')}${contas.length > 3 ? '...' : ''}`;
 }
 
 function chaveMovimentoExtrato(m) {
@@ -6936,7 +6940,7 @@ function renderSugestoesConciliacao(sugestoes, qtdPagamentos, qtdMovimentos, ent
     <td class="col-value">${r.transferenciaContas ? `R$ ${fmtValor(r.total)}` : '-'}</td>
     <td><span style="color:#991b1b;font-weight:600">Preencher conta de numerários na janela de pendências</span></td>
     <td><span class="conciliacao-status warn">de-para</span></td>
-    <td class="col-secondary">${escapeHtml(r.empresaBanco || r.empresa)} x ${escapeHtml(r.centroCusto || '')}</td>
+    <td class="col-secondary">${escapeHtml(rotuloUnidadeAlvorar(r.empresaBanco || r.empresa))} x ${escapeHtml(rotuloUnidadeAlvorar(r.centroCusto || ''))}</td>
   </tr>`).join('');
   const renderLinhaSaidaExtra = (r, compacta = false) => {
     const codigo = obterCodigoContaParaDominio(codigosConciliacaoTemp[r.id]);
@@ -7070,6 +7074,7 @@ function labelMovimentoConciliacao(item) {
 
 function textoBuscaPendenciaConciliacao(item) {
   return normalizarTexto([
+    rotuloUnidadeAlvorar(item.empresa), rotuloUnidadeAlvorar(item.empresaBanco), rotuloUnidadeAlvorar(item.centroCusto),
     labelMovimentoConciliacao(item),
     item.data,
     item.tipo,
@@ -7214,8 +7219,8 @@ function exportarPendenciasConciliacao() {
       : item.plano || item.tipo || '';
     const tipo = numerario ? `NUMERARIO ${natureza.toUpperCase()}`
       : item.rateioRecebimento ? tipoRateioOperacao(item.empresaBanco || item.empresa, item.centroCusto, true) : '';
-    return [grupoAtivo, labelMovimentoConciliacao(item), tipo || naturezaPendenciaAlvorar(item)?.label || '', item.empresaBanco || item.empresa || '',
-      item.centroCusto || item.empresaLancamento || '', item.conta || '', origem, item.naturezaAlvorar?.contaEsperada || esperada, item.historico || '',
+    return [grupoAtivo, labelMovimentoConciliacao(item), tipo || naturezaPendenciaAlvorar(item)?.label || '', rotuloUnidadeAlvorar(item.empresaBanco || item.empresa || ''),
+      rotuloUnidadeAlvorar(item.centroCusto || item.empresaLancamento || ''), rotuloContaFinanceiraAlvorar(item.conta || ''), origem, item.naturezaAlvorar?.contaEsperada || esperada, item.historico || '',
       item.data || (item.qtd ? `${item.qtd} movimentos` : ''), item.qtd || '', Number(item.total || 0), item.id || ''];
   });
   const wb = XLSX.utils.book_new();
@@ -7360,8 +7365,8 @@ function abrirModalPendenciasConciliacao() {
         : contaCorrenteFixaAlvorar
           ? `<input type="text" readonly aria-label="Conta interna fixa da ALVORAR" value="${escapeAttr(codigoContaCorrenteItemAlvorar(item))}" placeholder="CNPJ das empresas pendente" style="width:100%">`
           : `<input type="text" class="conta-autocomplete" data-conciliacao-modal-id="${escapeAttr(item.id)}" value="${escapeAttr(valor)}" placeholder="${escapeAttr(placeholderConta)}" oninput="atualizarCodigoConciliacaoModal(this); criarAutocompleteConta(this)" style="width:100%">`;
-    const empresaCol = item.empresaBanco || item.empresa || '';
-    const centroCol = item.centroCusto || item.empresaLancamento || '';
+    const empresaCol = rotuloUnidadeAlvorar(item.empresaBanco || item.empresa || '');
+    const centroCol = rotuloUnidadeAlvorar(item.centroCusto || item.empresaLancamento || '');
     const tipoOperacaoPendencia = ehNumerarioTributario
       ? 'NUMERÁRIO ATIVO'
       : ehNumerarioPendencia
@@ -7492,7 +7497,7 @@ function abrirModalPendenciasConciliacao() {
       <div class="pendencias-conteudo" style="padding:16px 22px;overflow:auto">
         ${avisoLimitePendencias}
         <div class="table-wrap table-scroll" style="${modoImportacaoDoGrupo() === 'alvorar' ? 'overflow-x:auto!important' : ''}">
-          <table class="pendencias-conciliacao-table" style="${modoImportacaoDoGrupo() === 'alvorar' ? 'min-width:1100px!important' : ''}">
+          <table class="pendencias-conciliacao-table" style="${modoImportacaoDoGrupo() === 'alvorar' ? 'min-width:1200px!important' : ''}">
             <thead><tr>${cabecalhosModal}</tr></thead>
             <tbody>${linhas || `<tr><td colspan="11" style="text-align:center;color:var(--ok-text);background:var(--ok-bg);padding:24px">Todas as pendências desta janela foram preenchidas.</td></tr>`}</tbody>
           </table>
@@ -8004,7 +8009,8 @@ function lancamentosPagamentosComCodigosFinanceirosSalvos() {
 function atualizarClassificacaoPagamentosAntesExportacao() {
   const precisaAtualizar = lancamentosPagamentosComNumerariosDesatualizados()
     || lancamentosPagamentosComCodigosFinanceirosSalvos()
-    || pagamentosAlvorarComContasCorrentesDesatualizadas();
+    || pagamentosAlvorarComContasCorrentesDesatualizadas()
+    || pagamentosAlvorarComRegrasInternasDesatualizadas();
   if (!precisaAtualizar || linhasImportadas.length === 0) return false;
   gerarLancamentos(linhasImportadas, depara[grupoAtivo] || {});
   return true;
@@ -8991,8 +8997,8 @@ function abrirModalContasBancarias(contas, acaoContinuar = null) {
   const linhas = contas.map(conta => {
     const empresa = empresaDonaBancoPorConta(conta, '') || extrairPrimeiroCodigoEmpresa(conta) || grupoAtivo || '';
     return `<tr>
-      <td><div class="cell-main">${escapeHtml(conta)}</div></td>
-      <td>${escapeHtml(empresa)}</td>
+      <td><div class="cell-main">${escapeHtml(rotuloContaFinanceiraAlvorar(conta))}</div></td>
+      <td>${escapeHtml(rotuloUnidadeAlvorar(empresa))}</td>
       <td><input type="text" class="conta-autocomplete" data-banco-pendente="${escapeAttr(conta)}" placeholder="Código contábil do banco" oninput="criarAutocompleteConta(this)" style="width:100%"></td>
     </tr>`;
   }).join('');
@@ -9322,8 +9328,8 @@ function renderLinhaAjustePar(linha) {
   };
   return `<tr class="ajuste-par-row">
     <td><input type="checkbox" ${selecionado ? 'checked' : ''} onchange="alternarSelecionadasLoteEncoded('${escapeAttr(chavesParEncoded)}', this.checked)"></td>
-    <td title="${escapeAttr(empresa || '')}"><div class="cell-main">${escapeHtml(empresa || '')}</div></td>
-    <td title="${escapeAttr(centroCusto || '')}" style="color:var(--text2)">${escapeHtml(centroCusto || '')}</td>
+    <td title="${escapeAttr(rotuloUnidadeAlvorar(empresa || ''))}"><div class="cell-main">${escapeHtml(rotuloUnidadeAlvorar(empresa || ''))}</div></td>
+    <td title="${escapeAttr(rotuloUnidadeAlvorar(centroCusto || ''))}" style="color:var(--text2)">${escapeHtml(rotuloUnidadeAlvorar(centroCusto || ''))}</td>
     <td title="${escapeAttr(fornecedor)}"><div class="cell-main">${escapeHtml(fornecedor)}</div></td>
     <td title="${escapeAttr(plano)}"><div class="cell-main">${escapeHtml(plano)}</div></td>
     <td title="${escapeAttr([linha.ajuste, historicoExibido].filter(Boolean).join(' - '))}" style="color:var(--text2)">
@@ -9610,8 +9616,8 @@ function renderNovasChaves() {
         : '';
     return `<tr>
       <td><input type="checkbox" data-chave="${escapeAttr(chave)}" ${selecionadasLote.has(chave) ? 'checked' : ''} onchange="alternarSelecionadaLote(this.dataset.chave, this.checked)"></td>
-      <td title="${escapeAttr(empresa || '')}"><div class="cell-main">${escapeHtml(empresa || '')}</div></td>
-      <td title="${escapeAttr(centroCusto || '')}" style="color:var(--text2)">${escapeHtml(centroCusto || '')}</td>
+      <td title="${escapeAttr(rotuloUnidadeAlvorar(empresa || ''))}"><div class="cell-main">${escapeHtml(rotuloUnidadeAlvorar(empresa || ''))}</div></td>
+      <td title="${escapeAttr(rotuloUnidadeAlvorar(centroCusto || ''))}" style="color:var(--text2)">${escapeHtml(rotuloUnidadeAlvorar(centroCusto || ''))}</td>
       <td title="${escapeAttr(fornecedor)}"><div class="cell-main">${escapeHtml(fornecedor)}</div></td>
       <td title="${escapeAttr(plano)}"><div class="cell-main">${escapeHtml(plano)}</div></td>
       ${origemNovasChaves === 'recebimentos' ? '' : `<td title="${escapeAttr(historicoVisual)}" style="color:var(--text2)">
@@ -9660,6 +9666,7 @@ function alternarListaPendentes(btn) {
 
 function textoBuscaNovaChave(item) {
   return normalizarTexto([
+    rotuloUnidadeAlvorar(item.empresa), rotuloUnidadeAlvorar(item.empresaOrigem), rotuloUnidadeAlvorar(item.centroCusto), rotuloUnidadeAlvorar(item.empresaLancamento),
     item.chave,
     item.empresa,
     item.empresaOrigem,
@@ -10059,7 +10066,12 @@ function arredondarMoeda(v) {
 }
 
 function gerarLancamentos(dados, regras) {
-  return executarComCalculosExtratoAlvorar(()=>gerarLancamentosAtual(dados,regras));
+  return executarComCalculosExtratoAlvorar(()=>{
+    const anterior = regrasInternasPagamentosGeradosAlvorar;
+    regrasInternasPagamentosGeradosAlvorar = estadoRegrasInternasPagamentosAlvorar(dados);
+    try { return gerarLancamentosAtual(dados,regras); }
+    catch (erro) { regrasInternasPagamentosGeradosAlvorar = anterior; throw erro; }
+  });
 }
 
 function gerarLancamentosAtual(dados, regras) {
@@ -10384,7 +10396,7 @@ function gerarLancamentosAtual(dados, regras) {
   if (ajustes.length > 0) {
     const listaAjustes = ajustes.map(a => {
       const tipo = a.acrescimoDesconto < 0 ? 'DESCONTO' : 'ACRÉSCIMO';
-      return `<div><strong>${tipo}</strong> · ${escapeHtml(a.empresa)} · ${escapeHtml(a.fornecedor)} · ${escapeHtml(a.plano)} · R$ ${fmtValor(Math.abs(a.acrescimoDesconto))} · líquido: R$ ${fmtValor(a.valorLiq)}</div>`;
+      return `<div><strong>${tipo}</strong> · ${escapeHtml(rotuloUnidadeAlvorar(a.empresa))} · ${escapeHtml(a.fornecedor)} · ${escapeHtml(a.plano)} · R$ ${fmtValor(Math.abs(a.acrescimoDesconto))} · líquido: R$ ${fmtValor(a.valorLiq)}</div>`;
     }).join('');
     aa.innerHTML = `<div class="alert alert-orange alert-pendentes" style="margin-bottom:12px">
       <div class="alert-pendentes-top">
@@ -10418,7 +10430,7 @@ function renderTabelaLancamentosResultado() {
       <td class="mono" style="${l.semCodigo ? 'color:#c2410c;font-style:italic' : ''}">${l.codDebito || 'sem código'}</td>
       <td style="color:var(--text2)">${l.codCredito}</td>
       <td style="text-align:right;white-space:nowrap">${l.valorFmt}</td>
-      <td style="color:var(--text2);white-space:nowrap">${l.empresa}</td>
+      <td style="color:var(--text2);white-space:nowrap">${escapeHtml(rotuloUnidadeAlvorar(l.empresa))}</td>
       <td style="color:var(--text2);white-space:nowrap">${tipoRateioDominioPagamento(l)}</td>
       <td class="resultado-complemento" title="${escapeAttr(l.complemento || '')}">${escapeHtml(l.complemento || '')}</td>
     </tr>
@@ -10482,7 +10494,7 @@ function adicionarAbaDesconsideradosExportacao(wb, usados) {
   if (!lancamentosDesconsideradosExportacao.length) return;
   const cabecalho = ['Motivo', 'Data', 'Empresa', 'Conta', 'Fornecedor', 'Plano de Contas', 'Tipo de Documento', 'Número', 'Parcela', 'Histórico', 'Valor'];
   const linhas = lancamentosDesconsideradosExportacao.map(item => [
-    item.motivo, item.data, item.empresa, item.conta, item.fornecedor, item.plano,
+    item.motivo, item.data, rotuloUnidadeAlvorar(item.empresa), rotuloContaFinanceiraAlvorar(item.conta), item.fornecedor, item.plano,
     item.tipoDoc, item.numero, item.parcela, item.historico, item.valor
   ]);
   const total = arredondarMoeda(lancamentosDesconsideradosExportacao.reduce((s, item) => s + Math.abs(item.valor || 0), 0));

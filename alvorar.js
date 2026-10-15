@@ -5,12 +5,35 @@ const ESTABELECIMENTOS_ALVORAR = {
   SERLOC: ['8016','14384','14518','910301','19123','19124','24503'],
   VALE: ['19024']
 };
+// Identificacoes da relacao Empresas_CNPJ, nunca pela posicao na lista de filiais.
+const NOMES_UNIDADES_ALVORAR = Object.freeze({
+  '8016':'SERLOC MATRIZ', '14384':'SERLOC 02', '14518':'SERLOC 03', '910301':'SERLOC 04',
+  '19123':'SERLOC 05', '19124':'SERLOC 06', '24503':'SERLOC 07',
+  '14155':'PCA MATRIZ', '18228':'PCA 02', '19025':'PCA 03', '22094':'PCA 04', '21280':'PCA 06', '22967':'PCA 08',
+  '3337':'MNN MATRIZ', '5312':'MNN 02', '7337':'MNN 03', '12090':'MNN 04', '12269':'MNN 05',
+  '13215':'MNN 06', '14232':'MNN 07', '14514':'MNN 08', '21119':'MNN 09', '22829':'MNN 10', '23034':'MNN 11',
+  '19024':'VALE DOURADO MATRIZ'
+});
+
+function rotuloUnidadeAlvorar(valor) {
+  if (modoImportacaoDoGrupo() !== 'alvorar') return valor ?? '';
+  const texto = String(valor ?? '');
+  const codigo = texto.trim().match(/^(\d+)(?:\s*[-(]|$)/)?.[1];
+  return NOMES_UNIDADES_ALVORAR[codigo] ? `${codigo} (${NOMES_UNIDADES_ALVORAR[codigo]})` : texto;
+}
+
+function rotuloContaFinanceiraAlvorar(valor) {
+  if (modoImportacaoDoGrupo() !== 'alvorar') return valor ?? '';
+  const texto = String(valor ?? '');
+  return texto.replace(/\b\d+\b(?!\s*\()/g, codigo => NOMES_UNIDADES_ALVORAR[codigo] ? rotuloUnidadeAlvorar(codigo) : codigo);
+}
 let recebimentosAlvorarTemp = [];
 let infoRecebimentosAlvorarTemp = null;
 let cacheRecebimentosAlvorar = null;
 let visaoPendenciasAlvorarTemp = 'contas';
 let cacheFaltasCaixaAlvorar = null;
 let cicloCalculosExtratoAlvorar = null;
+let regrasInternasPagamentosGeradosAlvorar = null;
 
 function executarComCalculosExtratoAlvorar(calcular) {
   if (modoImportacaoDoGrupo() !== 'alvorar' || cicloCalculosExtratoAlvorar) return calcular();
@@ -98,6 +121,14 @@ function contraparteGrupoAlvorar(mov, empresaBanco = codigoEmpresaAlvorar(mov.co
 
 function codigoPagamentoInternoAlvorar(row) {
   if (modoImportacaoDoGrupo() !== 'alvorar') return '';
+  const cache = cacheCalculoExtratoAlvorar('codigos-pagamentos');
+  if (cache?.has(row)) return cache.get(row);
+  const codigo = codigoPagamentoInternoAlvorarAtual(row);
+  if (cache) cache.set(row, codigo);
+  return codigo;
+}
+
+function codigoPagamentoInternoAlvorarAtual(row) {
   if (normalizarTexto(row[COLS.PLANO])==='devolucao de ted (estorno)') return '2098';
   if (normalizarTexto(row[COLS.PLANO])==='falta de caixa'
     && normalizarTexto(row[COLS.FORNECEDOR])==='vendas dinheiro') return '1488';
@@ -109,6 +140,21 @@ function codigoPagamentoInternoAlvorar(row) {
   if(!movimentos.length)return '';
   const acertos=acertosEntreEmpresasAlvorar().movimentos;
   return movimentos.some(m=>acertos.has(m)) ? '1775' : '';
+}
+
+function estadoRegrasInternasPagamentosAlvorar(dados = linhasImportadas) {
+  if (modoImportacaoDoGrupo() !== 'alvorar') return null;
+  return {grupo:grupoAtivo, dados, codigos:dados.map(codigoPagamentoInternoAlvorar).join('|')};
+}
+
+function pagamentosAlvorarComRegrasInternasDesatualizadas() {
+  if (modoImportacaoDoGrupo() !== 'alvorar') return false;
+  return executarComCalculosExtratoAlvorar(() => {
+    const atual = estadoRegrasInternasPagamentosAlvorar();
+    const gerado = regrasInternasPagamentosGeradosAlvorar;
+    // O extrato chega depois dos titulos e pode confirmar ou desfazer a regra interna.
+    return !gerado || gerado.grupo !== atual.grupo || gerado.dados !== atual.dados || gerado.codigos !== atual.codigos;
+  });
 }
 
 function movimentoFolhaAlvorar(mov) {
@@ -676,7 +722,7 @@ function htmlConferenciaRecebimentosAlvorar() {
   const conferencia = conferenciaDivergenciasRecebimentosAlvorar();
   const ausentes = contasRecebimentosSemExtratoAlvorar();
   return `<div class="alert ${conferencia.pendentes.length ? 'alert-warn' : 'alert-ok'}" style="display:block">Recebimentos ALVORAR: ${r.itens.length} parcelas de rateio identificadas · ${conferencia.pendentes.length} divergencias de origem/valor.
-    ${ausentes.length ? `<div><strong>Extratos ausentes:</strong> ${ausentes.map(escapeHtml).join(', ')}</div>` : ''}
+    ${ausentes.length ? `<div><strong>Extratos ausentes:</strong> ${ausentes.map(c=>escapeHtml(rotuloContaFinanceiraAlvorar(c))).join(', ')}</div>` : ''}
     ${conferencia.classificadas.length ? `<span>Saidas de cartoes ja classificadas: ${conferencia.classificadas.length} grupos.</span>` : ''}
     ${r.aceleracoesSemNovaEntrada?.length ? `<span>Aceleracoes sem nova entrada: ${r.aceleracoesSemNovaEntrada.length} grupos.</span>` : ''}
     ${r.cartoesPeloExtrato?.length ? `<span>Cartoes pelo valor do extrato: ${r.cartoesPeloExtrato.length} grupos; diferencas do relatorio apenas para conferencia.</span>` : ''}
@@ -691,13 +737,13 @@ function criarConferenciaRecebimentosAlvorar() {
     ...(cacheRecebimentosAlvorar?.resultado?.cartoesPeloExtrato || []).map(r=>({...r,situacao:'Valor do extrato; diferenca sem lancamento'}))];
   const wb = XLSX.utils.book_new();
   const ws = XLSX.utils.aoa_to_sheet([['Origem','Data','Conta','Planilha','Extrato','Diferenca','Fornecedor','Situacao'],
-    ...rows.map(r => [r.origem,r.data,r.conta,r.planilha,r.extrato,arredondarMoeda(r.planilha-r.extrato),r.fornecedor || '',r.situacao])]);
+    ...rows.map(r => [r.origem,r.data,rotuloContaFinanceiraAlvorar(r.conta),r.planilha,r.extrato,arredondarMoeda(r.planilha-r.extrato),r.fornecedor || '',r.situacao])]);
   ws['!cols'] = [18,16,45,20,20,20,45,30].map(wch => ({wch}));
   XLSX.utils.book_append_sheet(wb,ws,'Divergencias');
   const aceleracoes = cacheRecebimentosAlvorar?.resultado?.aceleracoesSemNovaEntrada || [];
   if (aceleracoes.length) {
     const dados = [['Data','Conta','Empresa da venda','Valor','Tipo','Arquivo origem','Linha origem'],
-      ...aceleracoes.flatMap(g=>g.registros.map(r=>[g.data,g.conta,r.centroCusto,r.valor,r.tipoLancamento,r.arquivoOrigem,r.linhaOrigem]))];
+      ...aceleracoes.flatMap(g=>g.registros.map(r=>[g.data,rotuloContaFinanceiraAlvorar(g.conta),rotuloUnidadeAlvorar(r.centroCusto),r.valor,r.tipoLancamento,r.arquivoOrigem,r.linhaOrigem]))];
     const revisao = XLSX.utils.aoa_to_sheet(dados);
     revisao['!cols']=[16,45,24,20,30,35,18].map(wch=>({wch}));
     XLSX.utils.book_append_sheet(wb,revisao,'Aceleracoes sem nova entrada');
@@ -870,10 +916,10 @@ function htmlConferenciaContasCorrentesAlvorar(resumo, escopo = 'Arquivo final p
     <td class="col-value">${moeda(g.valores[0])}</td><td class="col-value">${moeda(g.valores[3])}</td><td class="col-value">${moeda(g.diferencaDebitos)}</td>
     <td class="col-value">${moeda(g.valores[1])}</td><td class="col-value">${moeda(g.valores[2])}</td><td class="col-value">${moeda(g.diferencaCreditos)}</td>
     <td>${status(g)}</td></tr>`).join('');
-  const detalhes = resumo.flatMap(g => g.empresas.map(({empresa,valores:v}) => `<tr><td>${labels[g.categoria]}</td><td>${escapeHtml(familiaEmpresaAlvorar(empresa) || '')} / ${escapeHtml(empresa || 'Empresa pendente')}</td>
+  const detalhes = resumo.flatMap(g => g.empresas.map(({empresa,valores:v}) => `<tr><td>${labels[g.categoria]}</td><td>${escapeHtml(rotuloUnidadeAlvorar(empresa || 'Empresa pendente'))}</td>
     <td>${g.contas.ATIVO} / ${g.contas.PASSIVO}</td><td class="col-value">${moeda(v[0]-v[1])}</td><td class="col-value">${moeda(v[3]-v[2])}</td></tr>`)).join('');
   const pares = resumo.find(g=>g.categoria==='transferencias')?.pares || [];
-  const quadroPares = pares.length ? `<details class="conciliacao-diff-details" style="margin-top:10px" data-conferencia-pares-caixa-alvorar><summary>Transferencias de caixa por par filial/matriz (597 x 611)</summary><div class="table-wrap"><table style="min-width:800px"><thead><tr><th>Filial de origem</th><th>Matriz destinataria</th><th>Saidas</th><th>D 597</th><th>C 611</th><th>Diferenca</th><th>Status</th></tr></thead><tbody>${pares.map(p=>`<tr><td>${escapeHtml(p.origem || 'Pendente')}</td><td>${escapeHtml(p.destino || 'Pendente')}</td><td>${p.saidas}</td><td class="col-value">${moeda(p.valores[0])}</td><td class="col-value">${moeda(p.valores[3])}</td><td class="col-value">${moeda(p.diferencaDebitos)}</td><td>${p.bate?'Conferido':'Revisar'}</td></tr>`).join('')}</tbody></table></div></details>` : '';
+  const quadroPares = pares.length ? `<details class="conciliacao-diff-details" style="margin-top:10px" data-conferencia-pares-caixa-alvorar><summary>Transferencias de caixa por par filial/matriz (597 x 611)</summary><div class="table-wrap"><table style="min-width:800px"><thead><tr><th>Filial de origem</th><th>Matriz destinataria</th><th>Saidas</th><th>D 597</th><th>C 611</th><th>Diferenca</th><th>Status</th></tr></thead><tbody>${pares.map(p=>`<tr><td>${escapeHtml(rotuloUnidadeAlvorar(p.origem || 'Pendente'))}</td><td>${escapeHtml(rotuloUnidadeAlvorar(p.destino || 'Pendente'))}</td><td>${p.saidas}</td><td class="col-value">${moeda(p.valores[0])}</td><td class="col-value">${moeda(p.valores[3])}</td><td class="col-value">${moeda(p.diferencaDebitos)}</td><td>${p.bate?'Conferido':'Revisar'}</td></tr>`).join('')}</tbody></table></div></details>` : '';
   return `<section class="conciliacao-check-alert" style="margin-top:14px" data-conferencia-contas-correntes-alvorar>
     <div class="conciliacao-check-head"><div><strong>Conferencia de numerarios, emprestimos e transferencias</strong><span>${escapeHtml(escopo)}</span></div></div>
     <div class="table-wrap"><table style="min-width:1050px"><thead><tr><th>Natureza</th><th>Ativo / Passivo</th><th>D ativo</th><th>C passivo</th><th>Diferenca</th><th>C ativo</th><th>D passivo</th><th>Diferenca</th><th>Status</th></tr></thead><tbody>${linhas}</tbody></table></div>
@@ -908,19 +954,19 @@ function adicionarConferenciaNumerariosAlvorar(wb, linhas) {
       if(contas.PASSIVO.has(String(l[2]))) valores[3]+=valor;
     });
     valores.forEach((v,i)=>totals[i]+=v);
-    return [empresa,[...contas.ATIVO].join(', '),valores[0]/100,valores[1]/100,(valores[0]-valores[1])/100,
+    return [rotuloUnidadeAlvorar(empresa),[...contas.ATIVO].join(', '),valores[0]/100,valores[1]/100,(valores[0]-valores[1])/100,
       [...contas.PASSIVO].join(', '),valores[2]/100,valores[3]/100,(valores[2]-valores[3])/100];
   });
   dados.push(['TOTAL','',totals[0]/100,totals[1]/100,(totals[0]-totals[1])/100,'',totals[2]/100,totals[3]/100,(totals[2]-totals[3])/100]);
   const ws = XLSX.utils.aoa_to_sheet([['Estabelecimento','Contas ativo','Debitos ativo','Creditos ativo','Saldo ativo','Contas passivo','Debitos passivo','Creditos passivo','Saldo passivo'],...dados,
     [],['Espelhamento D ativo x C passivo',(totals[0]-totals[3])/100],['Espelhamento C ativo x D passivo',(totals[1]-totals[2])/100]]);
-  ws['!cols']=[22,25,20,20,20,25,20,20,20].map(wch=>({wch}));
+  ws['!cols']=[36,25,20,20,20,25,20,20,20].map(wch=>({wch}));
   XLSX.utils.book_append_sheet(wb,ws,'Numerarios ALVORAR');
   const conferencia = calcularConferenciaContasCorrentesAlvorar(linhas);
   const labels = {pagamentos:'Pagamentos',recebimentos:'Recebimentos',emprestimos:'Emprestimos entre empresas sem vinculo',transferencias:'Transferencias de caixa'};
   const rows = [['Natureza','Estabelecimento','Conta ativo','Conta passivo','Debitos ativo','Creditos ativo','Saldo devedor ativo','Debitos passivo','Creditos passivo','Saldo credor passivo','Dif. D ativo x C passivo','Dif. C ativo x D passivo','Status']];
   conferencia.forEach(g => {
-    g.empresas.forEach(({empresa,valores:v}) => rows.push([labels[g.categoria],empresa,g.contas.ATIVO,g.contas.PASSIVO,
+    g.empresas.forEach(({empresa,valores:v}) => rows.push([labels[g.categoria],rotuloUnidadeAlvorar(empresa),g.contas.ATIVO,g.contas.PASSIVO,
       v[0]/100,v[1]/100,(v[0]-v[1])/100,v[2]/100,v[3]/100,(v[3]-v[2])/100,'','','Saldo do movimento']));
     const v=g.valores;
     rows.push([labels[g.categoria],'TOTAL',g.contas.ATIVO,g.contas.PASSIVO,v[0]/100,v[1]/100,g.saldoAtivo/100,
@@ -928,14 +974,14 @@ function adicionarConferenciaNumerariosAlvorar(wb, linhas) {
       !g.temMovimento?'SEM MOVIMENTO':g.bate?'CONFERIDO':'DIFERENCA']);
   });
   const separado = XLSX.utils.aoa_to_sheet(rows);
-  separado['!cols']=[40,22,18,18,20,20,22,20,20,22,26,26,24].map(wch=>({wch}));
+  separado['!cols']=[40,36,18,18,20,20,22,20,20,22,26,26,24].map(wch=>({wch}));
   XLSX.utils.book_append_sheet(wb,separado,'Conferencia por natureza');
   const pares = conferencia.find(g=>g.categoria==='transferencias').pares;
   if (pares.length) {
     const dadosPares = [['Filial origem','Matriz destino','Saidas de caixa','Debitos 597','Creditos 611','Diferenca','Status'],
-      ...pares.map(p=>[p.origem,p.destino,p.saidas,p.valores[0]/100,p.valores[3]/100,p.diferencaDebitos/100,p.bate?'CONFERIDO':'DIFERENCA'])];
+      ...pares.map(p=>[rotuloUnidadeAlvorar(p.origem),rotuloUnidadeAlvorar(p.destino),p.saidas,p.valores[0]/100,p.valores[3]/100,p.diferencaDebitos/100,p.bate?'CONFERIDO':'DIFERENCA'])];
     const wsPares = XLSX.utils.aoa_to_sheet(dadosPares);
-    wsPares['!cols']=[22,22,20,22,22,22,20].map(wch=>({wch}));
+    wsPares['!cols']=[36,36,20,22,22,22,20].map(wch=>({wch}));
     XLSX.utils.book_append_sheet(wb,wsPares,'Transferencias caixa - pares');
   }
 }
@@ -1001,8 +1047,8 @@ function montarExportacaoPagamentosAlvorar() {
     alert('Nenhum pagamento conciliado para exportar.');
     return null;
   }
-  if (linhas.some(l => !l[1] || !l[2])) {
-    alert('Preencha as contas dos pagamentos, incluindo os numerarios vinculados, antes de exportar.');
+  if (!contasPendentesTitulosExportaveisAlvorar(linhas)) {
+    alert('Preencha as contas do banco e dos numerarios vinculados antes de exportar.');
     return null;
   }
   if (linhas.some(l => !codigoEmpresaAlvorar(l[7])) || bloquearExportacaoPorEmpresaMatrizFilial(linhas)) return null;
@@ -1011,12 +1057,54 @@ function montarExportacaoPagamentosAlvorar() {
     alert(`Exportacao interrompida: ${diferencas.length} diferenca(s) nas saidas dos pagamentos por conta/dia.`);
     return null;
   }
+  if (!confirmarExportacaoTitulosSemContaAlvorar(linhas)) return null;
   return linhas;
 }
 
 function exportarPagamentosAlvorar() {
   const linhas = montarExportacaoPagamentosAlvorar();
   if (linhas) return exportarZipAlvorar(linhas, { somentePagamentos: true });
+}
+
+function contaPendenteDeTituloAlvorar(lancamento) {
+  if (modoImportacaoDoGrupo() !== 'alvorar' || !lancamento || lancamento.origemConciliacao) return false;
+  const row = linhasImportadas[lancamento.idx];
+  if (!row || (lancamento.codDebito && lancamento.codCredito)) return false;
+  const empresa = linhaEhParcelasNumerarios(row) ? centroCustoLinha(row) : empresaLancamentoLinha(row);
+  if (String(lancamento.empresa) !== String(empresa)) return false;
+  if (lancamento.tipoAjuste) return true;
+  // So adiar a conta principal; banco e numerarios continuam obrigatorios.
+  if (codigoPagamentoInternoAlvorar(row)) return false;
+  return lancamento.rateioNegativo
+    ? !!lancamento.codDebito && !lancamento.codCredito
+    : !lancamento.codDebito && !!lancamento.codCredito;
+}
+
+function contasPendentesTitulosExportaveisAlvorar(linhas) {
+  return modoImportacaoDoGrupo() === 'alvorar'
+    && linhas.filter(l => !l[1] || !l[2]).every(l => l.contaPendenteTituloAlvorar === true);
+}
+
+function confirmarExportacaoTitulosSemContaAlvorar(linhas) {
+  const pendentes = linhas.filter(l => !l[1] || !l[2]);
+  if (!pendentes.length) return true;
+  if (!contasPendentesTitulosExportaveisAlvorar(linhas)) return false;
+  return confirm(`${pendentes.length} linha(s) de titulos ainda sem conta contabil. Exportar com essas contas em branco para preenchimento posterior? Os movimentos e valores serao mantidos. Preencha as contas antes de importar no Dominio. A lista estara em Conferencias/Contas_pendentes_titulos.xlsx.`);
+}
+
+function criarConferenciaContasPendentesTitulosAlvorar(linhas) {
+  const pendentes = linhas.filter(l => l.contaPendenteTituloAlvorar && (!l[1] || !l[2]));
+  if (!pendentes.length) return null;
+  const wb = XLSX.utils.book_new();
+  const rows = [['Data','Empresa / unidade','Conta debito','Conta credito','Valor','Historico','Preenchimento pendente'],
+    ...pendentes.map(l => [l[0],rotuloUnidadeAlvorar(l[7]),l[1],l[2],l[3],l[5],
+      [!l[1]?'Debito':'',!l[2]?'Credito':''].filter(Boolean).join(' e ')])];
+  const ws = XLSX.utils.aoa_to_sheet(rows);
+  ws['!cols'] = [16,36,22,22,20,90,26].map(wch => ({wch}));
+  ws['!autofilter'] = {ref:`A1:G${rows.length}`};
+  pendentes.forEach((_,i)=>{const cell=ws[`E${i+2}`];if(cell)cell.z='#,##0.00';});
+  XLSX.utils.book_append_sheet(wb,ws,'Contas a preencher');
+  return wb;
 }
 
 function montarExportacaoFinalAlvorar() {
@@ -1061,9 +1149,9 @@ function adicionarConferenciaContasAlvorar(wb, linhas) {
   const cabecalho = [CABECALHO_DOMINIO[0], CABECALHO_DOMINIO[1], 'Nome Conta Débito',
     CABECALHO_DOMINIO[2], 'Nome Conta Crédito', ...CABECALHO_DOMINIO.slice(3)];
   const dados = linhas.map(l => [l[0], l[1], nomeContaConferenciaAlvorar(l[1]),
-    l[2], nomeContaConferenciaAlvorar(l[2]), ...l.slice(3)]);
+    l[2], nomeContaConferenciaAlvorar(l[2]), ...l.slice(3,7), rotuloUnidadeAlvorar(l[7]), ...l.slice(8)]);
   const ws = XLSX.utils.aoa_to_sheet([cabecalho, ...dados]);
-  ws['!cols'] = [12,18,42,18,42,18,18,65,14,22,22,22,24].map(wch => ({ wch }));
+  ws['!cols'] = [12,18,42,18,42,18,18,65,14,36,22,22,24].map(wch => ({ wch }));
   ws['!autofilter'] = { ref: `A1:M${dados.length + 1}` };
   dados.forEach((_, idx) => { const cell = ws[`F${idx + 2}`]; if (cell) cell.z = '#,##0.00'; });
   XLSX.utils.book_append_sheet(wb, ws, 'Conferencia - nao importar');
@@ -1087,6 +1175,8 @@ async function exportarZipAlvorar(linhas, { somentePagamentos = false, separarMo
     const conferencia = XLSX.utils.book_new();
     adicionarConferenciaNumerariosAlvorar(conferencia,linhas);
     if (conferencia.SheetNames.length) XLSX.CFB.utils.cfb_add(zip,'Conferencias/Numerarios.xlsx',new Uint8Array(XLSX.write(conferencia,{type:'array',bookType:'xlsx'})));
+    const pendenciasTitulos = criarConferenciaContasPendentesTitulosAlvorar(linhas);
+    if (pendenciasTitulos) XLSX.CFB.utils.cfb_add(zip,'Conferencias/Contas_pendentes_titulos.xlsx',new Uint8Array(XLSX.write(pendenciasTitulos,{type:'array',bookType:'xlsx'})));
     if (!somentePagamentos && cacheRecebimentosAlvorar?.resultado) {
       const recebimentos = criarConferenciaRecebimentosAlvorar();
       XLSX.CFB.utils.cfb_add(zip,'Conferencias/Recebimentos.xlsx',new Uint8Array(XLSX.write(recebimentos,{type:'array',bookType:'xlsx'})));
@@ -1095,6 +1185,7 @@ async function exportarZipAlvorar(linhas, { somentePagamentos = false, separarMo
       ? 'SOMENTE PAGAMENTOS CONCILIADOS DA ALVORAR.\nContem titulos pagos vinculados aos extratos, com descontos, acrescimos e numerarios vinculados, e saidas avulsas do extrato com contrapartida preenchida, uma unica vez. Inclui ajustes negativos de cartoes que estejam classificados como saidas avulsas.\nNao contem entradas de recebimentos, depositos caixa/banco nem transferencias, aplicacoes ou resgates gerados pela conciliacao dos extratos. Saidas expressamente marcadas para nao exportar permanecem excluidas.\nBanco, Caixa e Aplicacoes indicam a origem do pagamento; cada familia agrupa matriz e filiais na coluna Codigo Matriz/Filial. Pastas sem pagamentos nao sao geradas.\nA pasta Conferencias nao deve ser importada no Dominio. Este arquivo e parcial: nao representa o fechamento completo de entradas e saidas. Nao importar junto com a exportacao completa do mesmo periodo, para nao duplicar pagamentos.\n'
       : 'Depositos caixa/banco: saida D 51531 / C caixa na pasta Caixa; entrada D banco / C 51531 na pasta Banco. Cada ponta usa a data do proprio extrato, sem pareamento. O saldo em transito pode passar de um mes para outro.\nDemais transferencias: um unico lancamento. Banco tem prioridade sobre Caixa e Aplicacoes; Caixa tem prioridade sobre Aplicacoes.\nFiliais: coluna Codigo Matriz/Filial. A pasta Conferencias nao deve ser importada no Dominio.\nExcluir uma pasta nao remove as contrapartidas de transferencias diretas incluidas em outra. Confira o que ja foi importado pela analista antes de importar arquivos parciais.\n';
     XLSX.CFB.utils.cfb_add(zip,'LEIA-ME.txt',new TextEncoder().encode(texto
+      + (pendenciasTitulos ? '\nATENCAO: existem contas de titulos em branco para preenchimento posterior. Os movimentos foram preservados, sem inventar contas. Consulte Conferencias/Contas_pendentes_titulos.xlsx e preencha os arquivos de lancamentos antes de importar no Dominio. Fechamento financeiro conferido nao significa classificacao contabil completa.\n' : '')
       + (separarMovimentos ? '\nEXPORTACAO FINAL SEPARADA: Pagamentos, Recebimentos e Transferencias. Dentro de cada pasta, Banco/Caixa/Aplicacoes e os arquivos de MNN, PCA, SERLOC e VALE, incluindo filiais. Transferencias proprias, aplicacoes/resgates e depositos em transito ficam somente em Transferencias. Numerarios e ajustes acompanham o pagamento ou recebimento que os originou. Pastas sem movimento nao sao geradas. Importar o conjunto completo para reproduzir o fechamento de todos os extratos; importar apenas uma pasta nao reproduz o fechamento integral.\n' : '')
       + '\nConferencias/Contas: copias para revisao, com os nomes ao lado dos codigos de debito e credito. Nao importar estes arquivos no Dominio. Os arquivos de Banco, Caixa e Aplicacoes mantem o layout original de importacao. Contas numericas ausentes do plano sao sinalizadas; os nomes das contas internas fixas sao usados quando disponiveis.\n'));
     const blob = new Blob([XLSX.CFB.write(zip,{type:'array',fileType:'zip',compression:true})],{type:'application/zip'});
