@@ -460,11 +460,11 @@
     </div>
     <div class="resultado-actions" style="display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin-bottom:16px">
       <button class="btn btn-primary" onclick="mostrarTela('tela-conciliacao-bancaria')">Importar extrato para conciliação bancária</button>
-      <button class="btn btn-blue" onclick="exportarDominioFinal()">⬇ Exportar Domínio final (.xlsx)</button>
+      <button id="btn-exportar-dominio-final" class="btn btn-blue" onclick="exportarDominioFinal()">⬇ Exportar Domínio final (.xlsx)</button>
       <button id="btn-zip-alvorar" class="btn" style="display:none" onclick="exportarDominioFinal(false, true)">Exportar ALVORAR por tipo (.zip)</button>
-      <button class="btn" onclick="exportarDominioPagamentos()">Exportar somente pagamentos (.xlsx)</button>
+      <button id="btn-exportar-pagamentos" class="btn" onclick="exportarDominioPagamentos()">Exportar somente pagamentos (.xlsx)</button>
       <button class="btn" onclick="abrirModalCnpjContas()">Empresa das contas</button>
-      <span class="conciliacao-note">O ideal é exportar o arquivo final após validar a conciliação. Use pagamentos somente quando não for conciliar extrato.</span>
+      <span id="nota-exportacao-resultado" class="conciliacao-note">O ideal é exportar o arquivo final após validar a conciliação. Use pagamentos somente quando não for conciliar extrato.</span>
     </div>
     <div id="resumo-conciliacao-resultado"></div>
     <div id="resumo-numerarios-pagamentos"></div>
@@ -1046,7 +1046,10 @@ function montarPagamentosConciliadosParcelas() {
     if (!sugestao) return [];
     const copia = linha.slice();
     if (!sugestao.movs || sugestao.movs.length === 1) copia[0] = fmtDate(sugestao.mov.data);
-    if (modoImportacaoDoGrupo() === 'alvorar') copia.tipoExtratoAlvorar = tipoContaAlvorar(sugestao.mov.conta);
+    if (modoImportacaoDoGrupo() === 'alvorar') {
+      copia.tipoExtratoAlvorar = tipoContaAlvorar(sugestao.mov.conta);
+      copia.movimentoExportacaoAlvorar = 'Pagamentos';
+    }
     return [copia];
   });
 }
@@ -1479,6 +1482,7 @@ function chaveNumerarioParcelas(empresaPagadora, centroCusto, lado, natureza = '
 }
 
 function codigoNumerarioParcelas(regras, empresaPagadora, centroCusto, lado, natureza = '') {
+  if (modoImportacaoDoGrupo() === 'alvorar') return codigoContaCorrenteAlvorar(empresaPagadora, centroCusto, natureza || naturezaNumerarioPagamento(lado));
   const codigoNovo = obterCodigoContaParaDominio(regras[chaveNumerarioParcelas(empresaPagadora, centroCusto, lado, natureza)] || '');
   if (codigoNovo) return codigoNovo;
   return obterCodigoContaParaDominio(regras[chaveNumerarioParcelas(empresaPagadora, centroCusto, lado)] || '');
@@ -2659,7 +2663,15 @@ function selecionarModoImportacaoPagamentos(modo, layout = layoutImportacaoDoGru
     if (dropTitle) dropTitle.textContent = 'Selecionar movimentos ALVORAR';
   }
   const zipAlvorar = document.getElementById('btn-zip-alvorar');
-  if (zipAlvorar) zipAlvorar.style.display = modoImportacaoPagamentos === 'alvorar' ? '' : 'none';
+  if (zipAlvorar) zipAlvorar.style.display = 'none';
+  const exportarFinal = document.getElementById('btn-exportar-dominio-final');
+  if (exportarFinal) exportarFinal.textContent = modoImportacaoPagamentos === 'alvorar'
+    ? 'Exportar Domínio final (.zip)' : '⬇ Exportar Domínio final (.xlsx)';
+  const notaExportacao = document.getElementById('nota-exportacao-resultado');
+  if (notaExportacao) notaExportacao.style.display = modoImportacaoPagamentos === 'alvorar' ? 'none' : '';
+  const exportarPagamentos = document.getElementById('btn-exportar-pagamentos');
+  if (exportarPagamentos) exportarPagamentos.textContent = modoImportacaoPagamentos === 'alvorar'
+    ? 'Exportar somente pagamentos (.zip)' : 'Exportar somente pagamentos (.xlsx)';
   const tituloExtratos = document.getElementById('titulo-importar-extratos');
   if (tituloExtratos) tituloExtratos.textContent = modoImportacaoPagamentos === 'alvorar' ? 'Extratos de banco, caixa e aplicacao' : 'Importar extrato bancário';
   renderResumoImportacaoAlvorar();
@@ -5098,6 +5110,7 @@ function carregarCodigosItensRecebimentos(itens) {
       codigosConciliacaoTemp[item.id] = obterCodigoContaParaDominio(regrasNumerarios[item.chave] || '');
     }
   });
+  aplicarContasCorrentesFixasAlvorar(itens);
 }
 
 function prepararItensRecebimentosSeparados() {
@@ -6843,6 +6856,7 @@ function renderSugestoesConciliacao(sugestoes, qtdPagamentos, qtdMovimentos, ent
       codigosConciliacaoTemp[item.id] = obterCodigoContaParaDominio((depara[grupoAtivo] || {})[item.chave] || '');
     }
   });
+  aplicarContasCorrentesFixasAlvorar(conciliacaoItensTemp);
   aplicarRegrasNaturezaAlvorar(conciliacaoItensTemp);
   const saidasExtrasPendentes = itensSaidaExtra.filter(r => !obterCodigoContaParaDominio(codigosConciliacaoTemp[r.id]) && !saidasExtratoRevisadasConciliacaoTemp[r.id]);
   const saidasExtrasPreenchidas = itensSaidaExtra.filter(r => !!obterCodigoContaParaDominio(codigosConciliacaoTemp[r.id]));
@@ -7009,6 +7023,7 @@ function coletarCodigosConciliacao() {
   document.querySelectorAll('[data-vinculo-pagamento-id]').forEach(sel => {
     vinculosPagamentoConciliacaoTemp[sel.dataset.vinculoPagamentoId] = sel.value;
   });
+  aplicarContasCorrentesFixasAlvorar(conciliacaoItensTemp);
 }
 
 function labelMovimentoConciliacao(item) {
@@ -7247,6 +7262,7 @@ function abrirModalPendenciasConciliacao() {
       .filter(saida => !valoresConciliacaoIguais(saida.total, item.total) && !idsCentavos.has(String(saida.idxOriginal)))
       .slice(0, 20);
     const ehNumerarioPendencia = item.movimento === 'numerario-rateio';
+    const contaCorrenteFixaAlvorar = ehNumerarioPendencia && modoImportacaoDoGrupo() === 'alvorar';
     const ehRecebimentoPendencia = item.movimento === 'recebimento';
     const ehNumerarioTributario = !!item.numerarioTributarioMatriz;
     const ehSaidaPendente = item.movimento === 'saida-pendente';
@@ -7303,7 +7319,9 @@ function abrirModalPendenciasConciliacao() {
       : ehSaidaPendente
         ? `<input type="text" class="conta-autocomplete" data-conciliacao-modal-id="${escapeAttr(item.id)}" value="${escapeAttr(valor)}" placeholder="${escapeAttr(placeholderConta)}" oninput="atualizarCodigoConciliacaoModal(this); criarAutocompleteConta(this)" style="width:100%">
           ${!grupoParcelasConciliaPorExtrato() || saidaExtratoTemVinculoParcelas(item) ? `<button type="button" class="btn btn-sm" style="margin-top:6px;width:100%" onclick="revisarSaidaExtratoSemExportar('${escapeAttr(item.id)}')">Marcar como já representada / não exportar</button>` : ''}`
-        : `<input type="text" class="conta-autocomplete" data-conciliacao-modal-id="${escapeAttr(item.id)}" value="${escapeAttr(valor)}" placeholder="${escapeAttr(placeholderConta)}" oninput="atualizarCodigoConciliacaoModal(this); criarAutocompleteConta(this)" style="width:100%">`;
+        : contaCorrenteFixaAlvorar
+          ? `<input type="text" readonly aria-label="Conta interna fixa da ALVORAR" value="${escapeAttr(codigoContaCorrenteItemAlvorar(item))}" placeholder="CNPJ das empresas pendente" style="width:100%">`
+          : `<input type="text" class="conta-autocomplete" data-conciliacao-modal-id="${escapeAttr(item.id)}" value="${escapeAttr(valor)}" placeholder="${escapeAttr(placeholderConta)}" oninput="atualizarCodigoConciliacaoModal(this); criarAutocompleteConta(this)" style="width:100%">`;
     const empresaCol = item.empresaBanco || item.empresa || '';
     const centroCol = item.centroCusto || item.empresaLancamento || '';
     const tipoOperacaoPendencia = ehNumerarioTributario
@@ -7703,6 +7721,7 @@ function codigoRegraPagamentoParaSaidaExtrato(movimento = {}) {
 
 function salvarRegrasRecebimentoConciliacao() {
   if (!grupoAtivo) return;
+  aplicarContasCorrentesFixasAlvorar(conciliacaoItensTemp);
   aplicarRegrasNaturezaAlvorar(conciliacaoItensTemp);
   const regras = Object.assign({}, deparaRecebimentos[grupoAtivo] || {});
   const regrasPagamentos = Object.assign({}, depara[grupoAtivo] || {});
@@ -7724,7 +7743,7 @@ function salvarRegrasRecebimentoConciliacao() {
         regras[obterChaveRegraRecebimentoConciliacao(item)] = codigo;
       }
     }
-    if (item.movimento === 'numerario-rateio' && item.chave) {
+    if (item.movimento === 'numerario-rateio' && item.chave && modoImportacaoDoGrupo() !== 'alvorar') {
       regrasPagamentos[item.chave] = codigo;
     }
     if (item.movimento === 'pagamento-pendente' && item.chave) {
@@ -7946,13 +7965,15 @@ function lancamentosPagamentosComCodigosFinanceirosSalvos() {
 
 function atualizarClassificacaoPagamentosAntesExportacao() {
   const precisaAtualizar = lancamentosPagamentosComNumerariosDesatualizados()
-    || lancamentosPagamentosComCodigosFinanceirosSalvos();
+    || lancamentosPagamentosComCodigosFinanceirosSalvos()
+    || pagamentosAlvorarComContasCorrentesDesatualizadas();
   if (!precisaAtualizar || linhasImportadas.length === 0) return false;
   gerarLancamentos(linhasImportadas, depara[grupoAtivo] || {});
   return true;
 }
 
 function codigoNumerarioRecebimento(regras, empresaBanco, centroCusto, lado, natureza = '') {
+  if (modoImportacaoDoGrupo() === 'alvorar') return codigoContaCorrenteAlvorar(empresaBanco, centroCusto, natureza || naturezaNumerarioRecebimento(lado), 'recebimentos');
   return grupoUsaNumerariosParcelas()
     ? codigoNumerarioParcelas(regras, empresaBanco, centroCusto, lado, natureza)
     : codigoNumerarioRateio(regras, empresaBanco, centroCusto, lado, natureza);
@@ -8069,15 +8090,18 @@ function montarLinhasDominioConciliacao({ validarPendencias = true } = {}) {
   }
   salvarRegrasRecebimentoConciliacao();
   const linhas = [];
-  linhas.push(...montarLinhasTransferenciasPareadasDominio());
-  linhas.push(...montarLinhasTransitoParcelas());
+  linhas.push(...marcarMovimentoExportacaoAlvorar(montarLinhasTransferenciasPareadasDominio(), 'Transferencias'));
+  linhas.push(...marcarMovimentoExportacaoAlvorar(montarLinhasTransitoParcelas(), 'Transferencias'));
   const transferenciasPareadas = indicesTransferenciasPareadas(extratoBancarioTemp);
   const regrasNumerarios = depara[grupoAtivo] || {};
   itensRecebimentosNovos.forEach(item => {
     const codigo = obterCodigoContaParaDominio(codigosConciliacaoTemp[item.id]);
     if (item.rateioRecebimento) {
       const rateios = montarLinhasRecebimentoRateioDominio(item, codigo, regrasNumerarios);
-      if (modoImportacaoDoGrupo() === 'alvorar') rateios.forEach(l => { l.tipoExtratoAlvorar = tipoContaAlvorar(item.conta); });
+      if (modoImportacaoDoGrupo() === 'alvorar') rateios.forEach(l => {
+        l.tipoExtratoAlvorar = tipoContaAlvorar(item.conta);
+        l.movimentoExportacaoAlvorar = 'Recebimentos';
+      });
       linhas.push(...rateios);
       linhas.push(...montarAjustesCaixaLiquidosAlvorar(item, codigo));
       return;
@@ -8098,6 +8122,7 @@ function montarLinhasDominioConciliacao({ validarPendencias = true } = {}) {
         empresaBancoConciliacao(item, mov),
         item.numerarioTributarioMatriz ? 'TRANSFERENCIA DE NUMERARIOS' : ''
       ));
+      if (modoImportacaoDoGrupo() === 'alvorar') linhas.at(-1).movimentoExportacaoAlvorar = movimentoEhTransferenciaEntreContas(mov) ? 'Transferencias' : 'Recebimentos';
     });
   });
   itensSaidasExtras.forEach(item => {
@@ -8119,6 +8144,7 @@ function montarLinhasDominioConciliacao({ validarPendencias = true } = {}) {
       empresaBancoConciliacao(item, mov),
       ''
     ));
+    if (modoImportacaoDoGrupo() === 'alvorar') linhas.at(-1).movimentoExportacaoAlvorar = movimentoEhTransferenciaEntreContas(mov) ? 'Transferencias' : 'Pagamentos';
   });
   return linhas;
 }
@@ -9431,7 +9457,8 @@ function configurarTelaNovasChaves() {
       filtroTipo.innerHTML = '<option value="">Todas as formas de recebimento</option>'
         + categorias.map(categoria => `<option value="${escapeAttr(categoria)}">${escapeHtml(categoria)}</option>`).join('');
     } else if (provisoes) {
-      filtroTipo.innerHTML = '<option value="">Todos os tipos</option><option value="PROVISAO">Provisão (débito e crédito)</option>';
+      filtroTipo.innerHTML = '<option value="">Todos os tipos</option>'
+        + (pendenciasDisponiveisParaFiltro('tipoRateio').length ? '<option value="PROVISAO">Provisão (débito e crédito)</option>' : '');
     } else {
       const tiposPossiveis = [
         ['DESPESA', 'Despesa/Fornecedor'],
@@ -9440,8 +9467,10 @@ function configurarTelaNovasChaves() {
         ['DESCONTO', 'Desconto'],
         ['ACRESCIMO', 'Acréscimo']
       ];
+      const tiposPendentes = new Set(pendenciasDisponiveisParaFiltro('tipoRateio').map(categoriaFiltroTipoNovaChave));
       filtroTipo.innerHTML = '<option value="">Todos os tipos</option>'
-        + tiposPossiveis.map(([valor, rotulo]) => `<option value="${valor}">${rotulo}</option>`).join('');
+        + tiposPossiveis.filter(([valor]) => tiposPendentes.has(valor))
+          .map(([valor, rotulo]) => `<option value="${valor}">${rotulo}</option>`).join('');
     }
     const opcoesTipo = [...filtroTipo.options].map(option => option.value);
     if (valorAtual && !opcoesTipo.includes(valorAtual)) filtrosNovasChaves.tipoRateio = '';
@@ -10509,12 +10538,16 @@ function adicionarAbasDominioExportacao(wb, linhas, separarPorEmpresa = false) {
       adicionarAbaDominio(wb, empresa, linhasEmpresa, usados);
     });
   }
-  if (modoImportacaoDoGrupo() === 'alvorar') adicionarConferenciaNumerariosAlvorar(wb,linhas);
+  if (modoImportacaoDoGrupo() === 'alvorar') {
+    adicionarConferenciaNumerariosAlvorar(wb,linhas);
+    adicionarConferenciaContasAlvorar(wb,linhas);
+  }
   else adicionarAbaConferenciaNumerarios(wb, linhas, usados);
   adicionarAbaDesconsideradosExportacao(wb, usados);
 }
 
 function exportarDominioPagamentos(ignorarContasBancarias = false) {
+  if (modoImportacaoDoGrupo() === 'alvorar') return exportarPagamentosAlvorar();
   const linhas = montarLinhasDominioPagamentos();
   if (linhas.length === 0) {
     alert('Gere os lançamentos antes de exportar.');
@@ -10529,6 +10562,7 @@ function exportarDominioPagamentos(ignorarContasBancarias = false) {
 }
 
 function exportarDominioFinal(ignorarContasBancarias = false, zipPorTipo = false) {
+  if (modoImportacaoDoGrupo() === 'alvorar') return exportarDominioFinalAlvorar();
   if (grupoParcelasConciliaPorExtrato() && !extratoBancarioTemp.length) {
     alert('Importe os extratos antes de exportar o arquivo final conciliado.');
     mostrarTela('tela-conciliacao-bancaria');
