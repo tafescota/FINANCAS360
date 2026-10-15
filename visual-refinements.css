@@ -1898,6 +1898,26 @@ input[type=search]:focus {
   width: calc(100vw - 16px) !important;
 }
 
+#modal-pendencias-conciliacao[data-modo-importacao="alvorar"] > div > :not(.pendencias-conteudo) {
+  flex-shrink: 0;
+}
+
+#modal-pendencias-conciliacao[data-modo-importacao="alvorar"] .pendencias-conteudo {
+  flex: 1 1 auto;
+  min-height: 0;
+}
+
+#modal-pendencias-conciliacao[data-modo-importacao="alvorar"] .pendencias-pesquisa {
+  max-height: none !important;
+  overflow: visible !important;
+}
+
+#modal-pendencias-conciliacao[data-modo-importacao="alvorar"] .pendencias-pesquisa > * {
+  min-width: 0;
+  min-height: 36px;
+  width: 100%;
+}
+
 #modal-pendencias-conciliacao [style*="grid-template-columns"] {
   grid-template-columns: minmax(260px, 1fr) minmax(190px, 240px) auto auto !important;
   max-width: 100%;
