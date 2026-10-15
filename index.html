@@ -3715,6 +3715,7 @@ function adicionarAbaOperacionalProvisao(wb, nome, linhas) {
     { wch: 13 }, { wch: 19 }, { wch: 19 }, { wch: 15 }, { wch: 16 }, { wch: 52 }, { wch: 12 }, { wch: 22 }, { wch: 18 },
     { wch: 38 }, { wch: 30 }, { wch: 48 }, { wch: 26 }, { wch: 22 }
   ];
+  formatarUnidadesExcelAlvorar(ws, linhas);
   XLSX.utils.book_append_sheet(wb, ws, nome);
 }
 
@@ -10487,6 +10488,7 @@ function nomeAbaExcelSeguro(nome, usados) {
 
 function adicionarAbaDominio(wb, nome, linhas, usados) {
   const ws = XLSX.utils.aoa_to_sheet([CABECALHO_DOMINIO, ...linhas]);
+  formatarUnidadesExcelAlvorar(ws, linhas);
   XLSX.utils.book_append_sheet(wb, ws, nomeAbaExcelSeguro(nome, usados));
 }
 

@@ -27,6 +27,22 @@ function rotuloContaFinanceiraAlvorar(valor) {
   const texto = String(valor ?? '');
   return texto.replace(/\b\d+\b(?!\s*\()/g, codigo => NOMES_UNIDADES_ALVORAR[codigo] ? rotuloUnidadeAlvorar(codigo) : codigo);
 }
+
+function formatarUnidadesExcelAlvorar(ws, linhas, coluna = 7) {
+  if (modoImportacaoDoGrupo() !== 'alvorar') return;
+  linhas.forEach((linha, idx) => {
+    const nome = NOMES_UNIDADES_ALVORAR[String(linha[coluna] ?? '').trim()];
+    if (!nome) return;
+    const cell = ws[XLSX.utils.encode_cell({r:idx + 1,c:coluna})];
+    if (!cell) return;
+    // Apenas exibicao: preservar valor/tipo e a posicao das colunas do importador.
+    const sufixo = `" (${nome})"`;
+    cell.z = `0${sufixo};-0${sufixo};0${sufixo};@${sufixo}`;
+    delete cell.w;
+  });
+  ws['!cols'] = ws['!cols'] || [];
+  ws['!cols'][coluna] = {...ws['!cols'][coluna],wch:Math.max(36,ws['!cols'][coluna]?.wch || 0)};
+}
 let recebimentosAlvorarTemp = [];
 let infoRecebimentosAlvorarTemp = null;
 let cacheRecebimentosAlvorar = null;
@@ -1089,7 +1105,7 @@ function confirmarExportacaoTitulosSemContaAlvorar(linhas) {
   const pendentes = linhas.filter(l => !l[1] || !l[2]);
   if (!pendentes.length) return true;
   if (!contasPendentesTitulosExportaveisAlvorar(linhas)) return false;
-  return confirm(`${pendentes.length} linha(s) de titulos ainda sem conta contabil. Exportar com essas contas em branco para preenchimento posterior? Os movimentos e valores serao mantidos. Preencha as contas antes de importar no Dominio. A lista estara em Conferencias/Contas_pendentes_titulos.xlsx.`);
+  return confirm(`${pendentes.length} linha(s) de titulos ainda sem conta contabil. Exportar com essas contas em branco para preenchimento posterior? Os movimentos e valores serao mantidos. Preencha as contas antes de importar no Dominio. A lista estara na aba Contas pendentes de Conferencia_ALVORAR.xlsx.`);
 }
 
 function criarConferenciaContasPendentesTitulosAlvorar(linhas) {
@@ -1145,16 +1161,85 @@ function nomeContaConferenciaAlvorar(valor) {
   return fixas[codigo] || (/^\d+$/.test(codigo) ? 'Conta não localizada no plano de contas' : codigo);
 }
 
-function adicionarConferenciaContasAlvorar(wb, linhas) {
+function adicionarConferenciaContasAlvorar(wb, linhas, { nome = 'Conferencia - nao importar', origens = null } = {}) {
   const cabecalho = [CABECALHO_DOMINIO[0], CABECALHO_DOMINIO[1], 'Nome Conta Débito',
     CABECALHO_DOMINIO[2], 'Nome Conta Crédito', ...CABECALHO_DOMINIO.slice(3)];
   const dados = linhas.map(l => [l[0], l[1], nomeContaConferenciaAlvorar(l[1]),
     l[2], nomeContaConferenciaAlvorar(l[2]), ...l.slice(3,7), rotuloUnidadeAlvorar(l[7]), ...l.slice(8)]);
-  const ws = XLSX.utils.aoa_to_sheet([cabecalho, ...dados]);
-  ws['!cols'] = [12,18,42,18,42,18,18,65,14,36,22,22,24].map(wch => ({ wch }));
-  ws['!autofilter'] = { ref: `A1:M${dados.length + 1}` };
-  dados.forEach((_, idx) => { const cell = ws[`F${idx + 2}`]; if (cell) cell.z = '#,##0.00'; });
-  XLSX.utils.book_append_sheet(wb, ws, 'Conferencia - nao importar');
+  const ws = XLSX.utils.aoa_to_sheet(origens
+    ? [['Arquivo de lancamentos', ...cabecalho], ...dados.map((r,i) => [origens[i], ...r])]
+    : [cabecalho, ...dados]);
+  ws['!cols'] = [...(origens ? [52] : []),12,18,42,18,42,18,18,65,14,36,22,22,24].map(wch => ({ wch }));
+  ws['!autofilter'] = { ref: `A1:${origens ? 'N' : 'M'}${dados.length + 1}` };
+  dados.forEach((_, idx) => { const cell = ws[`${origens ? 'G' : 'F'}${idx + 2}`]; if (cell) cell.z = '#,##0.00'; });
+  XLSX.utils.book_append_sheet(wb, ws, nome);
+}
+
+function criarConferenciaUnicaAlvorar(linhas, arquivos, { somentePagamentos = false } = {}) {
+  const wb = XLSX.utils.book_new(), abas = [], usados = new Set(['Resumo']);
+  const resumo = XLSX.utils.aoa_to_sheet([
+    ['Conferencia ALVORAR'],
+    ['Escopo', somentePagamentos ? 'Somente pagamentos' : 'Arquivo final'],
+    ['Uso', 'Somente conferencia. Nao importar este arquivo no Dominio.'],
+    ['Contas dos titulos em branco', linhas.filter(l=>!l[1] || !l[2]).length],
+    ['Observacao', somentePagamentos
+      ? 'Nao inclui recebimentos nem transferencias dos extratos. O espelhamento completo entre empresas deve ser conferido no arquivo final.'
+      : 'Inclui os lancamentos do conjunto exportado, sem duplicar pagamentos, recebimentos ou transferencias.'],
+    [],['Aba','Conteudo','Linhas']
+  ]);
+  XLSX.utils.book_append_sheet(wb,resumo,'Resumo');
+  if(!somentePagamentos && extratoBancarioTemp.length) {
+    const dias = conferirParcelasPorContaDia(linhas,true);
+    const rows = [['Tipo','Unidade','Conta financeira','Data','Entradas extrato','Entradas arquivo','Dif. entradas',
+      'Saidas extrato','Saidas arquivo','Dif. saidas','Dif. saldo','Situacao'],
+      ...dias.map(d=>[tipoContaAlvorar(d.conta),rotuloUnidadeAlvorar(codigoEmpresaAlvorar(d.conta)),rotuloContaFinanceiraAlvorar(d.conta),d.data,
+        d.entradaExtrato/100,d.entradaDominio/100,(d.entradaDominio-d.entradaExtrato)/100,
+        d.saidaExtrato/100,d.saidaDominio/100,(d.saidaDominio-d.saidaExtrato)/100,
+        (d.entradaDominio-d.saidaDominio-d.entradaExtrato+d.saidaExtrato)/100,
+        d.entradaExtrato===d.entradaDominio && d.saidaExtrato===d.saidaDominio ? 'Movimentos conferem' : 'Diferenca'])];
+    const ws = XLSX.utils.aoa_to_sheet(rows);
+    ws['!cols'] = [18,36,55,16,22,22,22,22,22,22,22,26].map(wch=>({wch}));
+    ws['!autofilter'] = {ref:`A1:L${rows.length}`};
+    dias.forEach((_,i)=>{for(let c=4;c<=10;c++){const cell=ws[XLSX.utils.encode_cell({r:i+1,c})];if(cell)cell.z='#,##0.00';}});
+    XLSX.utils.book_append_sheet(wb,ws,'Fechamento');
+    usados.add('Fechamento');
+    abas.push(['Fechamento','Entradas e saidas do arquivo versus extratos, por conta e dia.',dias.length]);
+  }
+  for (const tipo of ['Banco','Caixa','Aplicacoes']) {
+    const dados = [], origens = [];
+    arquivos.forEach((rows,caminho)=>{
+      if(caminho.split('/').at(-2)!==tipo)return;
+      rows.forEach(r=>{dados.push(r);origens.push(caminho);});
+    });
+    if(!dados.length)continue;
+    adicionarConferenciaContasAlvorar(wb,dados,{nome:tipo,origens});
+    usados.add(tipo);
+    abas.push([tipo,'Lancamentos com nome das contas e identificacao das unidades; arquivo de origem na primeira coluna.',dados.length]);
+  }
+  const juntar = (origem, nomes, conteudos) => {
+    origem.SheetNames.forEach(anterior=>{
+      const nome = nomeAbaExcelSeguro(nomes[anterior] || anterior,usados);
+      XLSX.utils.book_append_sheet(wb,origem.Sheets[anterior],nome);
+      abas.push([nome,conteudos[anterior] || 'Detalhamento da conferencia.','']);
+    });
+  };
+  const numerarios = XLSX.utils.book_new();
+  adicionarConferenciaNumerariosAlvorar(numerarios,linhas);
+  juntar(numerarios,{'Numerarios ALVORAR':'Numerarios','Conferencia por natureza':'Por natureza','Transferencias caixa - pares':'Caixa - pares'},
+    {'Numerarios ALVORAR':'Movimentacao de contas correntes por unidade.','Conferencia por natureza':'Pagamentos, recebimentos, emprestimos e transferencias, com os espelhamentos.','Transferencias caixa - pares':'597/611 por filial e matriz.'});
+  if(!somentePagamentos && cacheRecebimentosAlvorar?.resultado) {
+    juntar(criarConferenciaRecebimentosAlvorar(),{'Divergencias':'Ajustes de recebimentos','Aceleracoes sem nova entrada':'Aceleracoes'},
+      {'Divergencias':'Divergencias e ajustes identificados nos recebimentos.','Aceleracoes sem nova entrada':'Aceleracoes que nao geram nova entrada no banco.'});
+  }
+  const pendentes = criarConferenciaContasPendentesTitulosAlvorar(linhas);
+  if(pendentes)juntar(pendentes,{'Contas a preencher':'Contas pendentes'},
+    {'Contas a preencher':'Contas dos titulos que devem ser preenchidas antes da importacao no Dominio.'});
+  const linhasResumo = [...XLSX.utils.sheet_to_json(resumo,{header:1,defval:''}),...abas];
+  const ws = XLSX.utils.aoa_to_sheet(linhasResumo);
+  ws['!cols'] = [34,105,16].map(wch=>({wch}));
+  ws['!merges'] = [{s:{r:0,c:0},e:{r:0,c:2}}];
+  wb.Sheets.Resumo = ws;
+  return wb;
 }
 
 async function exportarZipAlvorar(linhas, { somentePagamentos = false, separarMovimentos = false } = {}) {
@@ -1167,27 +1252,18 @@ async function exportarZipAlvorar(linhas, { somentePagamentos = false, separarMo
       // Um unico conjunto importavel por arquivo; filiais permanecem no Codigo Matriz/Filial.
       adicionarAbaDominio(wb, 'Lancamentos Dominio', dados, new Set());
       XLSX.CFB.utils.cfb_add(zip, caminho, new Uint8Array(XLSX.write(wb,{type:'array',bookType:'xlsx'})));
-      const revisao = XLSX.utils.book_new();
-      adicionarConferenciaContasAlvorar(revisao, dados);
-      XLSX.CFB.utils.cfb_add(zip, `Conferencias/Contas/${caminho}`, new Uint8Array(XLSX.write(revisao,{type:'array',bookType:'xlsx'})));
       await aguardarPinturaInterface();
     }
-    const conferencia = XLSX.utils.book_new();
-    adicionarConferenciaNumerariosAlvorar(conferencia,linhas);
-    if (conferencia.SheetNames.length) XLSX.CFB.utils.cfb_add(zip,'Conferencias/Numerarios.xlsx',new Uint8Array(XLSX.write(conferencia,{type:'array',bookType:'xlsx'})));
-    const pendenciasTitulos = criarConferenciaContasPendentesTitulosAlvorar(linhas);
-    if (pendenciasTitulos) XLSX.CFB.utils.cfb_add(zip,'Conferencias/Contas_pendentes_titulos.xlsx',new Uint8Array(XLSX.write(pendenciasTitulos,{type:'array',bookType:'xlsx'})));
-    if (!somentePagamentos && cacheRecebimentosAlvorar?.resultado) {
-      const recebimentos = criarConferenciaRecebimentosAlvorar();
-      XLSX.CFB.utils.cfb_add(zip,'Conferencias/Recebimentos.xlsx',new Uint8Array(XLSX.write(recebimentos,{type:'array',bookType:'xlsx'})));
-    }
+    const conferencia = criarConferenciaUnicaAlvorar(linhas,arquivos,{somentePagamentos});
+    XLSX.CFB.utils.cfb_add(zip,'Conferencia_ALVORAR.xlsx',new Uint8Array(XLSX.write(conferencia,{type:'array',bookType:'xlsx'})));
+    const pendenciasTitulos = conferencia.SheetNames.includes('Contas pendentes');
     const texto = somentePagamentos
-      ? 'SOMENTE PAGAMENTOS CONCILIADOS DA ALVORAR.\nContem titulos pagos vinculados aos extratos, com descontos, acrescimos e numerarios vinculados, e saidas avulsas do extrato com contrapartida preenchida, uma unica vez. Inclui ajustes negativos de cartoes que estejam classificados como saidas avulsas.\nNao contem entradas de recebimentos, depositos caixa/banco nem transferencias, aplicacoes ou resgates gerados pela conciliacao dos extratos. Saidas expressamente marcadas para nao exportar permanecem excluidas.\nBanco, Caixa e Aplicacoes indicam a origem do pagamento; cada familia agrupa matriz e filiais na coluna Codigo Matriz/Filial. Pastas sem pagamentos nao sao geradas.\nA pasta Conferencias nao deve ser importada no Dominio. Este arquivo e parcial: nao representa o fechamento completo de entradas e saidas. Nao importar junto com a exportacao completa do mesmo periodo, para nao duplicar pagamentos.\n'
-      : 'Depositos caixa/banco: saida D 51531 / C caixa na pasta Caixa; entrada D banco / C 51531 na pasta Banco. Cada ponta usa a data do proprio extrato, sem pareamento. O saldo em transito pode passar de um mes para outro.\nDemais transferencias: um unico lancamento. Banco tem prioridade sobre Caixa e Aplicacoes; Caixa tem prioridade sobre Aplicacoes.\nFiliais: coluna Codigo Matriz/Filial. A pasta Conferencias nao deve ser importada no Dominio.\nExcluir uma pasta nao remove as contrapartidas de transferencias diretas incluidas em outra. Confira o que ja foi importado pela analista antes de importar arquivos parciais.\n';
+      ? 'SOMENTE PAGAMENTOS CONCILIADOS DA ALVORAR.\nContem titulos pagos vinculados aos extratos, com descontos, acrescimos e numerarios vinculados, e saidas avulsas do extrato com contrapartida preenchida, uma unica vez. Inclui ajustes negativos de cartoes que estejam classificados como saidas avulsas.\nNao contem entradas de recebimentos, depositos caixa/banco nem transferencias, aplicacoes ou resgates gerados pela conciliacao dos extratos. Saidas expressamente marcadas para nao exportar permanecem excluidas.\nBanco, Caixa e Aplicacoes indicam a origem do pagamento; cada familia agrupa matriz e filiais na coluna Codigo Matriz/Filial. Pastas sem pagamentos nao sao geradas.\nConferencia_ALVORAR.xlsx nao deve ser importado no Dominio. Este arquivo e parcial: nao representa o fechamento completo de entradas e saidas. Nao importar junto com a exportacao completa do mesmo periodo, para nao duplicar pagamentos.\n'
+      : 'Depositos caixa/banco: saida D 51531 / C caixa na pasta Caixa; entrada D banco / C 51531 na pasta Banco. Cada ponta usa a data do proprio extrato, sem pareamento. O saldo em transito pode passar de um mes para outro.\nDemais transferencias: um unico lancamento. Banco tem prioridade sobre Caixa e Aplicacoes; Caixa tem prioridade sobre Aplicacoes.\nFiliais: coluna Codigo Matriz/Filial. Conferencia_ALVORAR.xlsx nao deve ser importado no Dominio.\nExcluir uma pasta nao remove as contrapartidas de transferencias diretas incluidas em outra. Confira o que ja foi importado pela analista antes de importar arquivos parciais.\n';
     XLSX.CFB.utils.cfb_add(zip,'LEIA-ME.txt',new TextEncoder().encode(texto
-      + (pendenciasTitulos ? '\nATENCAO: existem contas de titulos em branco para preenchimento posterior. Os movimentos foram preservados, sem inventar contas. Consulte Conferencias/Contas_pendentes_titulos.xlsx e preencha os arquivos de lancamentos antes de importar no Dominio. Fechamento financeiro conferido nao significa classificacao contabil completa.\n' : '')
+      + (pendenciasTitulos ? '\nATENCAO: existem contas de titulos em branco para preenchimento posterior. Os movimentos foram preservados, sem inventar contas. Consulte a aba Contas pendentes de Conferencia_ALVORAR.xlsx e preencha os arquivos de lancamentos antes de importar no Dominio. Fechamento financeiro conferido nao significa classificacao contabil completa.\n' : '')
       + (separarMovimentos ? '\nEXPORTACAO FINAL SEPARADA: Pagamentos, Recebimentos e Transferencias. Dentro de cada pasta, Banco/Caixa/Aplicacoes e os arquivos de MNN, PCA, SERLOC e VALE, incluindo filiais. Transferencias proprias, aplicacoes/resgates e depositos em transito ficam somente em Transferencias. Numerarios e ajustes acompanham o pagamento ou recebimento que os originou. Pastas sem movimento nao sao geradas. Importar o conjunto completo para reproduzir o fechamento de todos os extratos; importar apenas uma pasta nao reproduz o fechamento integral.\n' : '')
-      + '\nConferencias/Contas: copias para revisao, com os nomes ao lado dos codigos de debito e credito. Nao importar estes arquivos no Dominio. Os arquivos de Banco, Caixa e Aplicacoes mantem o layout original de importacao. Contas numericas ausentes do plano sao sinalizadas; os nomes das contas internas fixas sao usados quando disponiveis.\n'));
+      + '\nConferencia_ALVORAR.xlsx: arquivo unico de revisao. Comece pela aba Resumo. Banco, Caixa e Aplicacoes reunem os lancamentos com nomes das contas e unidades, e o caminho do arquivo de origem. As demais abas detalham numerarios, espelhamentos, ajustes e contas pendentes quando existirem. Nao importar este arquivo no Dominio. Os arquivos de lancamentos mantem o layout original de importacao.\n'));
     const blob = new Blob([XLSX.CFB.write(zip,{type:'array',fileType:'zip',compression:true})],{type:'application/zip'});
     const url = URL.createObjectURL(blob), a=document.createElement('a');
     a.href=url;a.download=`Dominio_ALVORAR_${somentePagamentos ? 'Somente_Pagamentos_' : separarMovimentos ? 'Final_Separado_' : ''}${new Date().toISOString().slice(0,10)}.zip`;
