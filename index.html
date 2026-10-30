@@ -1146,7 +1146,9 @@ function validarExportacaoParcelasExtrato(linhas) {
     }
   }
   const semVinculo = sugestoesParcelasExtratoTemp.filter(s => !s.mov && vinculosPagamentoConciliacaoTemp[`pag-${s.pag.idx}`] !== VINCULO_PAGAMENTO_SEM_EXTRATO);
-  if (semVinculo.length) { alert(`${semVinculo.length} titulo(s) sem vinculo com o extrato. Revise o movimento ou marque para nao exportar.`); abrirModalPendenciasConciliacao(); return false; }
+  // Só bloqueia se realmente não tiver regra contábil. Com regra pode exportar mesmo sem vínculo individual.
+  const semVinculoSemRegra = semVinculo.filter(s => !codigoRegraPagamentoConciliacao(s.pag));
+  if (semVinculoSemRegra.length) { alert(`${semVinculoSemRegra.length} titulo(s) sem vinculo e sem regra contabil. Revise o movimento ou marque para nao exportar.`); abrirModalPendenciasConciliacao(); return false; }
   const transitoPendente = [...movimentosTransitoParcelas().values()].some(m => !codigoContaTransitoParcelas(m.cnpj));
   if (transitoPendente) { prepararPagamentosImportados(linhasImportadas, true); return false; }
   if (linhas.some(l => !l[1] || !l[2]) && !contasPendentesTitulosExportaveisAlvorar(linhas)) { alert('Preencha as contas contabilizadas antes de exportar.'); return false; }
