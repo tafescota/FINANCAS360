@@ -5493,6 +5493,23 @@ function lerMovimentosExtratoArquivo(file) {
   });
 }
 
+function removerSobreposicaoMovimentosExtrato(resultados, aceitarMovimento = () => true) {
+  const grupos = new Map();
+  resultados.forEach((resultado, indiceArquivo) => {
+    (resultado.movimentos || []).filter(aceitarMovimento).forEach(movimento => {
+      const chave = chaveMovimentoExtrato(movimento);
+      if (!grupos.has(chave)) grupos.set(chave, new Map());
+      const porArquivo = grupos.get(chave);
+      if (!porArquivo.has(indiceArquivo)) porArquivo.set(indiceArquivo, []);
+      porArquivo.get(indiceArquivo).push(movimento);
+    });
+  });
+  return [...grupos.values()].flatMap(porArquivo => {
+    const ocorrencias = [...porArquivo.values()];
+    return ocorrencias.reduce((maior, atual) => atual.length > maior.length ? atual : maior, []);
+  });
+}
+
 async function processarExtratosBancarios(files) {
   const grupoNaLeitura = grupoAtivo;
   const alvorarNaLeitura = modoImportacaoDoGrupo() === 'alvorar';
@@ -5501,8 +5518,14 @@ async function processarExtratosBancarios(files) {
     const resultados = await Promise.all(files.map(lerMovimentosExtratoArquivo));
     if (alvorarNaLeitura && (grupoAtivo !== grupoNaLeitura || modoImportacaoDoGrupo() !== 'alvorar')) throw new Error('Grupo alterado durante a leitura dos extratos. Nada foi aplicado.');
     const movimentosLidos = resultados.flatMap(r => r.movimentos);
-    const novosMovimentos = modoImportacaoDoGrupo() === 'alvorar'
-      ? movimentosLidos.filter(m => codigoPermitidoAlvorar(m.conta)) : movimentosLidos;
+    const aceitarMovimento = modoImportacaoDoGrupo() === 'alvorar'
+      ? movimento => codigoPermitidoAlvorar(movimento.conta)
+      : () => true;
+    const movimentosPermitidos = movimentosLidos.filter(aceitarMovimento);
+    // Arquivos de contas ou periodos diferentes podem repetir a mesma linha.
+    // Mantemos a maior multiplicidade vista em um unico arquivo: uma repeticao real
+    // do banco e preservada, mas a linha sobreposta entre arquivos nao duplica.
+    const novosMovimentos = removerSobreposicaoMovimentosExtrato(resultados, aceitarMovimento);
     const chavesExistentes = new Map();
     extratoBancarioTemp.forEach(m => {
       const chave = chaveMovimentoExtrato(m);
@@ -5516,7 +5539,7 @@ async function processarExtratosBancarios(files) {
       chavesNovasConsumidas.set(chave, consumidos + 1);
       return consumidos >= existentes;
     });
-    const duplicados = novosMovimentos.length - novosNaoImportados.length;
+    const duplicados = movimentosPermitidos.length - novosNaoImportados.length;
     const combinado = [...extratoBancarioTemp, ...novosNaoImportados];
     extratoBancarioTemp = combinado;
     mostrarPreviewExtrato = false;
@@ -6085,6 +6108,35 @@ function autoConciliarGruposDuplicadosClaros(pagamentos, movimentos, usadosMov, 
   });
 }
 
+function autoConciliarPorContaDataValor(pagamentos, indiceDataValor, usadosMov, sugestoesPorPagamento) {
+  const grupos = new Map();
+  pagamentos.filter(pag => !sugestoesPorPagamento.has(pag.idx) && limparTextoECD(pag.conta)).forEach(pag => {
+    const chave = [pag.dataKey, valorConciliacaoEmCentavos(pag.valor), normalizarTexto(pag.conta)].join('\u0001');
+    if (!grupos.has(chave)) grupos.set(chave, []);
+    grupos.get(chave).push(pag);
+  });
+  grupos.forEach(grupoPagamentos => {
+    const referencia = grupoPagamentos[0];
+    const candidatas = (indiceDataValor.get(`${referencia.dataKey}\u0001${valorConciliacaoEmCentavos(referencia.valor)}`) || [])
+      .filter(({ mov, idxMov }) => !usadosMov.has(idxMov)
+        && limparTextoECD(mov.conta)
+        && mesmaContaConciliacao(referencia, mov));
+    if (candidatas.length !== grupoPagamentos.length) return;
+    grupoPagamentos.forEach((pag, indice) => {
+      const candidata = candidatas[indice];
+      usadosMov.add(candidata.idxMov);
+      sugestoesPorPagamento.set(pag.idx, {
+        pag,
+        mov: candidata.mov,
+        idxMov: candidata.idxMov,
+        status: 'conciliado',
+        regra: 'Conta financeira + data + valor',
+        diferenca: 0
+      });
+    });
+  });
+}
+
 function autoConciliarAcumuladosPorFornecedor(pagamentos, movimentosIndexados, usadosMov, sugestoesPorPagamento, agruparPorMes = false) {
   const grupos = new Map();
   pagamentos
@@ -6550,6 +6602,7 @@ function gerarSugestoesConciliacaoAtual(opcoes = {}) {
   });
 
   conciliarBeneficiariosExatosAlvorar(pagamentos, indiceDataValor, usadosMov, sugestoesPorPagamento);
+  autoConciliarPorContaDataValor(pagamentos, indiceDataValor, usadosMov, sugestoesPorPagamento);
   autoConciliarGruposDuplicadosClaros(pagamentos, movimentos, usadosMov, sugestoesPorPagamento, indiceDataValor);
   autoConciliarLotesComDiferencaDeCentavo(pagamentos, movimentos, usadosMov, sugestoesPorPagamento, indiceData);
 
@@ -6943,7 +6996,9 @@ function renderSugestoesConciliacao(sugestoes, qtdPagamentos, qtdMovimentos, ent
   const entradasPreenchidas = itensRecebimento.filter(r => !!codigosConciliacaoTemp[r.id]);
   const entradasPendentes = itensRecebimento.filter(r => !codigosConciliacaoTemp[r.id]);
   const numerariosPendentes = itensNumerario.filter(r => !obterCodigoContaParaDominio(codigosConciliacaoTemp[r.id]));
-  const pagamentosPendentesSemRegra = pendentesPagamento.filter(s => grupoParcelasConciliaPorExtrato() || !codigoRegraPagamentoConciliacao(s.pag));
+  const pagamentosPendentesSemRegra = pendentesPagamento.filter(s => 
+  (grupoParcelasConciliaPorExtrato() && modoImportacaoDoGrupo() !== 'ana_rita') || !codigoRegraPagamentoConciliacao(s.pag)
+);
   const pagamentosPendentesComRegra = pendentesPagamento.filter(s => !grupoParcelasConciliaPorExtrato() && !!codigoRegraPagamentoConciliacao(s.pag));
   const renderLinhaRecebimento = (r, compacta) => {
     const preenchido = !!codigosConciliacaoTemp[r.id];
@@ -7205,10 +7260,11 @@ function saidasDisponiveisParaPagamentoConciliacao(item, saidasPendentes) {
 
 function autoVincularPagamentosPendentesClaros(itens, saidasPendentes) {
   let qtd = 0;
+  const modoAnaRita = modoImportacaoDoGrupo() === 'ana_rita';
   itens
     .filter(item => item.movimento === 'pagamento-pendente' && !vinculosPagamentoConciliacaoTemp[item.id])
     .forEach(item => {
-      const candidatas = saidasDisponiveisParaPagamentoConciliacao(item, saidasPendentes)
+      let candidatas = saidasDisponiveisParaPagamentoConciliacao(item, saidasPendentes)
         .filter(saida => movimentoEhCandidatoClaroPagamento(item, {
           data: saida.data,
           valor: -Math.abs(saida.total),
@@ -7217,6 +7273,10 @@ function autoVincularPagamentosPendentesClaros(itens, saidasPendentes) {
           documento: '',
           tipoConciliacao: saida.tipo
         }));
+      // Para ANA RITA: se a conta já foi identificada e há candidatos com mesma data/valor/conta, auto-vincula o primeiro (evita ficar pendente)
+      if (modoAnaRita && candidatas.length > 1 && obterCodigoContaParaDominio(codigosConciliacaoTemp[item.id])) {
+        candidatas = candidatas.slice(0, 1);
+      }
       if (candidatas.length !== 1) return;
       vinculosPagamentoConciliacaoTemp[item.id] = String(candidatas[0].idxOriginal);
       qtd += 1;
@@ -7228,8 +7288,9 @@ function itensPendentesConciliacao(filtro = filtroPendenciasConciliacaoTemp, nat
   return conciliacaoItensTemp.filter(item => {
     if (item.movimento === 'saida-pendente') return !obterCodigoContaParaDominio(codigosConciliacaoTemp[item.id]) && !saidasExtratoRevisadasConciliacaoTemp[item.id];
     if (item.movimento === 'pagamento-pendente') {
+      const exigeVinculo = grupoParcelasConciliaPorExtrato() && modoImportacaoDoGrupo() !== 'ana_rita';
       return !vinculosPagamentoConciliacaoTemp[item.id]
-        && (grupoParcelasConciliaPorExtrato() || !obterCodigoContaParaDominio(codigosConciliacaoTemp[item.id]));
+        && (exigeVinculo || !obterCodigoContaParaDominio(codigosConciliacaoTemp[item.id]));
     }
     if (item.movimento === 'recebimento' || item.movimento === 'numerario-rateio') return !obterCodigoContaParaDominio(codigosConciliacaoTemp[item.id]);
     return true;
@@ -7492,14 +7553,21 @@ function abrirModalPendenciasConciliacao() {
   const qtdPontasTransferenciaNoModal = itensModal.filter(item => item.transferenciaContas).length;
   const partesAjudaModal = [];
   if (qtdPontasTransferenciaNoModal) partesAjudaModal.push(`${qtdPontasTransferenciaNoModal} ponta${qtdPontasTransferenciaNoModal !== 1 ? 's' : ''} de transferência entre contas precisa${qtdPontasTransferenciaNoModal !== 1 ? 'm' : ''} da conta de numerários.`);
-  if (qtdPagamentosNoModal) partesAjudaModal.push(modoImportacaoDoGrupo() === 'alvorar' ? `${qtdPagamentosNoModal} titulo(s) sem vinculo no extrato (R$ ${fmtValor(totalPagamentosNoModal)}). Informar uma conta nao cria o movimento ausente.` : `${qtdPagamentosNoModal} pagamento${qtdPagamentosNoModal !== 1 ? 's' : ''} sem regra contábil (R$ ${fmtValor(totalPagamentosNoModal)}).`);
+  if (qtdPagamentosNoModal) {
+    const pagamentosSemConta = itensModal.filter(item => item.movimento === 'pagamento-pendente' && !obterCodigoContaParaDominio(codigosConciliacaoTemp[item.id]));
+    const pagamentosSomenteSemVinculo = qtdPagamentosNoModal - pagamentosSemConta.length;
+    const totalSemConta = arredondarMoeda(pagamentosSemConta.reduce((s, item) => s + Number(item.total || 0), 0));
+    if (pagamentosSemConta.length) partesAjudaModal.push(`${pagamentosSemConta.length} pagamento${pagamentosSemConta.length !== 1 ? 's' : ''} sem conta contábil (R$ ${fmtValor(totalSemConta)}).`);
+    if (pagamentosSomenteSemVinculo) partesAjudaModal.push(`${pagamentosSomenteSemVinculo} pagamento${pagamentosSomenteSemVinculo !== 1 ? 's' : ''} já ${pagamentosSomenteSemVinculo !== 1 ? 'possuem' : 'possui'} conta e precisa${pagamentosSomenteSemVinculo !== 1 ? 'm' : ''} apenas do vínculo com o extrato.`);
+    if (modoImportacaoDoGrupo() === 'alvorar') partesAjudaModal.push('Informar uma conta não cria o movimento ausente.');
+  }
   if (qtdSaidasNoModal) partesAjudaModal.push(`${qtdSaidasNoModal} saída${qtdSaidasNoModal !== 1 ? 's' : ''} do extrato sem regra contábil (R$ ${fmtValor(totalSaidasNoModal)}).`);
   if (qtdPagamentosNoModal || qtdSaidasNoModal) partesAjudaModal.push('Estes valores medem somente regras faltantes; não representam a diferença do fechamento.');
   const textoAjudaModal = partesAjudaModal.join(' ');
   const tituloModal = modoImportacaoDoGrupo() === 'alvorar' && visaoPendenciasAlvorarTemp === 'vinculos' ? 'Conferir titulos sem vinculo' : fluxoRecebimentos ? 'Novas regras de recebimentos' : 'Preencher regras não cadastradas';
   const subtituloModal = fluxoRecebimentos
     ? `${itensModal.length} regra${itensModal.length !== 1 ? 's' : ''} nova${itensModal.length !== 1 ? 's' : ''} para preencher. As regras salvas já foram aplicadas automaticamente.`
-    : `${itensModal.length} item${itensModal.length !== 1 ? 's' : ''} sem regra para preencher. Itens que já possuem regra não aparecem novamente. ${textoAjudaModal}`;
+    : `${itensModal.length} pendência${itensModal.length !== 1 ? 's' : ''} para resolver. Contas e vínculos já identificados são aplicados automaticamente. ${textoAjudaModal}`;
   const placeholderPesquisa = fluxoRecebimentos
     ? 'Pesquisar forma de recebimento, empresa, banco, histórico, data ou valor...'
     : 'Pesquisar empresa, centro, fornecedor, histórico, data, valor...';
