@@ -1151,7 +1151,8 @@ function validarExportacaoParcelasExtrato(linhas) {
   if (semVinculoSemRegra.length) { alert(`${semVinculoSemRegra.length} titulo(s) sem vinculo e sem regra contabil. Revise o movimento ou marque para nao exportar.`); abrirModalPendenciasConciliacao(); return false; }
   const transitoPendente = [...movimentosTransitoParcelas().values()].some(m => !codigoContaTransitoParcelas(m.cnpj));
   if (transitoPendente) { prepararPagamentosImportados(linhasImportadas, true); return false; }
-  if (linhas.some(l => !l[1] || !l[2]) && !contasPendentesTitulosExportaveisAlvorar(linhas)) { alert('Preencha as contas contabilizadas antes de exportar.'); return false; }
+  // Bloqueio de contas vazias removido a pedido: exporta mesmo com contas em branco (analista resolve depois).
+  // if (linhas.some(l => !l[1] || !l[2]) && !contasPendentesTitulosExportaveisAlvorar(linhas)) { alert('Preencha as contas contabilizadas antes de exportar.'); return false; }
   const diferencas = conferirParcelasPorContaDia(linhas);
   if (diferencas.length) { alert(`Exportacao interrompida: ${diferencas.length} diferenca(s) por conta/dia. ${diferencas.slice(0,5).map(d => d.conta+' '+d.data).join('; ')}`); return false; }
   if (modoImportacaoDoGrupo() === 'alvorar' && !confirmarExportacaoTitulosSemContaAlvorar(linhas)) return false;
