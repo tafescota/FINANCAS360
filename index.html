@@ -1202,7 +1202,8 @@ function abrirModalCnpjContas() {
     const origem = padraoAnaRita
       ? 'Configuração ANA RITA'
       : conflito ? 'CNPJ conflitante nos titulos/cadastro' : temImportado ? (alvorar ? 'Codigo da empresa nos titulos' : 'Titulos importados') : 'Manual';
-    return linhaFormularioCnpjConta(conta, manual || padraoAnaRita || importado, origem, !!padraoAnaRita || (temImportado && !conflito && !manual));
+    // Sempre editável a pedido: o usuário pode corrigir o CNPJ mesmo quando vem da configuração ANA RITA.
+    return linhaFormularioCnpjConta(conta, manual || padraoAnaRita || importado, origem, false);
   }).join('');
   const modal = document.createElement('div');
   modal.id = 'modal-cnpj-contas';
