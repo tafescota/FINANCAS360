@@ -265,6 +265,7 @@
       <select id="select-modo-grupo" style="margin-bottom:16px">
         <option value="parcelas" selected>Parcelas de Títulos (BOTICARIO)</option>
         <option value="parcelas_numerarios">Parcelas com Numerários (BOTICARIO)</option>
+        <option value="parcelas_numerarios_unificado">Numerários Unificado — Títulos + Extratos (BOTICARIO)</option>
         <option value="cp_simone">CP SIMONE</option>
         <option value="alvorar">ALVORAR</option>
         <option value="rateio">Rateio de Títulos (BOTICARIO)</option>
@@ -272,6 +273,8 @@
         <option value="parcelas__f360_original">Parcelas de Títulos (FINANÇAS 360 - ORIGINAL)</option>
         <option value="alvorar__f360_original">ALVORAR (FINANÇAS 360 - ORIGINAL)</option>
         <option value="parcelas_numerarios__f360_original">Parcelas com Numerários (FINANÇAS 360 - ORIGINAL)</option>
+        <option value="parcelas_numerarios_unificado__f360_original">Numerários Unificado — Títulos + Extratos (FINANÇAS 360 - ORIGINAL)</option>
+        <option value="ana_rita__f360_original">ANA RITA — Numerários Unificado (FINANÇAS 360 - ORIGINAL)</option>
         <option value="rateio__f360_original">Rateio de Títulos (FINANÇAS 360 - ORIGINAL)</option>
       </select>
       <label style="font-size:13px;color:var(--text2);display:block;margin-bottom:6px">Tags</label>
@@ -786,7 +789,15 @@ function tipoAjusteRateioPlano(plano, valor) {
 
 function modoEhParcelasNumerarios(modo = modoImportacaoDoGrupo()) {
   const modoBase = normalizarModoImportacao(modo);
-  return modoBase === 'parcelas_numerarios' || modoBase === 'cp_simone' || modoBase === 'alvorar';
+  return modoBase === 'parcelas_numerarios'
+    || modoBase === 'parcelas_numerarios_unificado'
+    || modoBase === 'ana_rita'
+    || modoBase === 'cp_simone'
+    || modoBase === 'alvorar';
+}
+
+function modoEhNumerariosUnificado(modo = modoImportacaoDoGrupo()) {
+  return ['parcelas_numerarios_unificado', 'ana_rita'].includes(normalizarModoImportacao(modo));
 }
 
 function linhaEhParcelasNumerarios(r) {
@@ -920,7 +931,7 @@ function cnpjContaFinanceira(conta) {
 }
 
 function grupoParcelasConciliaPorExtrato() {
-  return ['parcelas', 'parcelas_numerarios', 'alvorar'].includes(modoImportacaoDoGrupo());
+  return ['parcelas', 'parcelas_numerarios', 'parcelas_numerarios_unificado', 'ana_rita', 'alvorar'].includes(modoImportacaoDoGrupo());
 }
 
 function empresaContaParcelas(conta) {
@@ -1269,6 +1280,10 @@ function nomeModoImportacao(modo, layout = 'boticario') {
   if (modoBase === 'aromas') return 'Aromas';
   if (modoBase === 'cp_simone') return 'CP SIMONE';
   if (modoBase === 'alvorar') return layout === 'f360_original' ? 'ALVORAR (FINANÇAS 360 - ORIGINAL)' : 'ALVORAR';
+  if (modoBase === 'ana_rita') return 'ANA RITA — Numerários Unificado (FINANÇAS 360 - ORIGINAL)';
+  if (modoBase === 'parcelas_numerarios_unificado') {
+    return `Numerários Unificado — Títulos + Extratos (${layout === 'f360_original' ? 'FINANÇAS 360 - ORIGINAL' : 'BOTICARIO'})`;
+  }
   const nome = modoBase === 'parcelas_numerarios'
     ? 'Parcelas com Numerários'
     : modoBase === 'rateio'
@@ -1280,9 +1295,11 @@ function nomeModoImportacao(modo, layout = 'boticario') {
 function normalizarModoImportacao(modo) {
   const texto = normalizarTexto(modo);
   if (texto === 'alvorar' || texto.startsWith('alvorar__') || texto === 'alvorar (financas 360 - original)') return 'alvorar';
+  if (texto === 'ana rita' || texto === 'ana_rita' || texto.startsWith('ana rita ') || texto.startsWith('ana_rita__')) return 'ana_rita';
   if (texto.includes('cp simone') || texto === 'cp_simone') return 'cp_simone';
   if (texto.includes('aromas')) return 'aromas';
   if (texto.includes('rateio')) return 'rateio';
+  if (texto.includes('numerario') && texto.includes('unificado')) return 'parcelas_numerarios_unificado';
   if (modo === 'parcelas_numerarios' || texto.includes('numerario')) return 'parcelas_numerarios';
   return 'parcelas';
 }
@@ -2654,6 +2671,10 @@ function selecionarModoImportacaoPagamentos(modo, layout = layoutImportacaoDoGru
         ? 'Usa o formato exclusivo da CP Simone: lê Parcelas de Títulos, gera numerários quando a unidade da despesa for diferente da dona da conta bancária e aplica somente as exceções próprias deste formato.'
       : modoImportacaoPagamentos === 'alvorar'
         ? 'Usa o formato exclusivo ALVORAR, com leitura de Parcelas de Títulos e configurações do próprio grupo.'
+      : modoImportacaoPagamentos === 'ana_rita'
+        ? 'Usa o fluxo unificado da ANA RITA para as três empresas. Importa títulos e extratos juntos, gera numerários internamente e separa a exportação em ANA RITA (matriz e filial) e CAMILLE.'
+      : modoImportacaoPagamentos === 'parcelas_numerarios_unificado'
+        ? 'Usa um único fluxo de Numerários: importa Parcelas de Títulos e trata entradas, saídas e transferências pelos extratos de banco, caixa e aplicação. Não exige uma planilha separada de recebimentos.'
       : modoImportacaoPagamentos === 'parcelas_numerarios'
         ? 'Usa Parcelas de Títulos com numerários: quando a unidade da despesa for diferente da dona da conta bancária, gera uma ponta de numerário ativo e outra de numerário passivo. Recebimentos ficam fora deste módulo.'
         : layoutImportacaoPagamentos === 'f360_original'
@@ -4347,16 +4368,20 @@ function renderConciliacaoBancariaCalculando() {
 
 function grupoPodeRecebimentosRateio() {
   const modo = modoImportacaoDoGrupo();
-  if (modo === 'cp_simone' || modo === 'alvorar') return false;
+  if (modo === 'cp_simone' || modo === 'alvorar' || modoEhNumerariosUnificado(modo)) return false;
   return modoUsaFluxoRateio(modo) || modoEhParcelasNumerarios(modo);
 }
 
 function grupoPodeRecebimentosSeparados() {
-  return !['cp_simone', 'alvorar'].includes(modoImportacaoDoGrupo()) && modoEhParcelasNumerarios();
+  return !['cp_simone', 'alvorar'].includes(modoImportacaoDoGrupo())
+    && !modoEhNumerariosUnificado()
+    && modoEhParcelasNumerarios();
 }
 
 function conciliacaoUsaRecebimentosDoExtrato() {
-  return ['cp_simone', 'alvorar'].includes(modoImportacaoDoGrupo()) || !grupoUsaNumerariosParcelas();
+  return ['cp_simone', 'alvorar'].includes(modoImportacaoDoGrupo())
+    || modoEhNumerariosUnificado()
+    || !grupoUsaNumerariosParcelas();
 }
 
 function normalizarCabecalhoRecebimentosNumerarios(valor) {
@@ -8311,8 +8336,8 @@ function renderGrupos() {
           <button class="btn btn-sm" onclick="mostrarTela('tela-regras')">📋 Regras</button>
           <button class="btn btn-sm" onclick="mostrarTela('tela-plano-contas')">📑 Plano de Contas</button>
           <button class="btn btn-sm" onclick="abrirModalCnpjContas()">Empresa das contas</button>
-          ${modoGrupo === 'cp_simone' || modoGrupo === 'alvorar'
-            ? `<button class="btn btn-sm btn-pagamentos-numerarios" onclick="mostrarTela('tela-importar')">⬇ ${modoGrupo === 'alvorar' ? 'Movimentos e extratos' : 'Pagamentos e extratos'}</button>`
+          ${modoGrupo === 'cp_simone' || modoGrupo === 'alvorar' || modoEhNumerariosUnificado(modoGrupo)
+            ? `<button class="btn btn-sm btn-pagamentos-numerarios" onclick="mostrarTela('tela-importar')">⬇ ${modoGrupo === 'alvorar' ? 'Movimentos e extratos' : modoEhNumerariosUnificado(modoGrupo) ? 'Títulos e extratos' : 'Pagamentos e extratos'}</button>`
             : modoEhParcelasNumerarios(modoGrupo)
             ? `<button class="btn btn-sm btn-pagamentos-numerarios" onclick="mostrarTela('tela-importar')">⬇ Pagamentos</button>
                <button class="btn btn-sm btn-recebimentos-numerarios" onclick="mostrarTela('tela-recebimentos')">⬆ Recebimentos</button>`
@@ -8338,7 +8363,7 @@ function editarGrupoCadastro(g) {
     if (!nomeLimpo) { showMsg('Nome do grupo não pode ficar em branco.', 'warn'); return; }
     if (nomeLimpo !== atual && grupos.includes(nomeLimpo)) { showMsg('Já existe um grupo com esse nome.', 'warn'); return; }
     const modoAtual = valorOpcaoFormatoGrupo(atual);
-    const novoModoRaw = prompt('Formato do grupo: use parcelas, parcelas_numerarios, cp_simone, alvorar, rateio ou aromas. Para o layout original, acrescente __f360_original.', modoAtual);
+    const novoModoRaw = prompt('Formato do grupo: use parcelas, parcelas_numerarios, parcelas_numerarios_unificado, ana_rita, cp_simone, alvorar, rateio ou aromas. Para o layout original, acrescente __f360_original.', modoAtual);
     if (novoModoRaw === null) return;
     const novoFormato = interpretarOpcaoFormatoPagamento(novoModoRaw);
     if (nomeLimpo !== atual) {
@@ -10589,9 +10614,17 @@ function adicionarAbasDominioExportacao(wb, linhas, separarPorEmpresa = false) {
     const porEmpresa = new Map();
     linhas.forEach(linha => {
       const empresa = limparTextoExportacaoDominio(linha[7] || 'Sem empresa') || 'Sem empresa';
-      if (!porEmpresa.has(empresa)) porEmpresa.set(empresa, []);
+      const codigoEmpresa = extrairPrimeiroCodigoEmpresa(empresa);
+      const grupoExportacao = modoImportacaoDoGrupo() === 'ana_rita'
+        ? ['5227', '18837'].includes(codigoEmpresa)
+          ? 'ANA RITA - MATRIZ E FILIAL'
+          : codigoEmpresa === '8362'
+            ? 'CAMILLE'
+            : 'REVISAR - OUTRAS EMPRESAS'
+        : empresa;
+      if (!porEmpresa.has(grupoExportacao)) porEmpresa.set(grupoExportacao, []);
       const copia = linha.slice();
-      porEmpresa.get(empresa).push(copia);
+      porEmpresa.get(grupoExportacao).push(copia);
     });
 
     porEmpresa.forEach((linhasEmpresa, empresa) => {
