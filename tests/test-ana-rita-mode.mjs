@@ -66,5 +66,13 @@ if (JSON.stringify(resultado.nomes) !== JSON.stringify(esperadas)) {
 if (resultado.linhasAnaRita !== 3 || resultado.linhasCamille !== 2) {
   throw new Error(`A quantidade de linhas nas abas está incorreta: ${JSON.stringify(resultado)}.`);
 }
+const cnpjs = vm.runInContext(`JSON.stringify([
+  cnpjContaFinanceira('BANCO DO BRASIL - LOJA BERIMBAU (5227)'),
+  cnpjContaFinanceira('ITAU - VD BERIMBAU'),
+  cnpjContaFinanceira('BANCO DO BRASIL - LOJA IRARÁ (8362)')
+])`, contexto);
+if (cnpjs !== JSON.stringify(['42130732000146', '42130732000227', '05422140000171'])) {
+  throw new Error(`Os CNPJs automáticos da ANA RITA estão incorretos: ${cnpjs}.`);
+}
 
 console.log(JSON.stringify(resultado, null, 2));

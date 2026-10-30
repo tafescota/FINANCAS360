@@ -871,6 +871,16 @@ function normalizarCnpjConta(valor) {
   return /^\d{14}$/.test(digitos) ? digitos : '';
 }
 
+function cnpjContaAnaRita(conta) {
+  if (modoImportacaoDoGrupo() !== 'ana_rita') return '';
+  const texto = normalizarTexto(limparTextoECD(conta));
+  const codigo = extrairPrimeiroCodigoEmpresa(conta);
+  if (codigo === '5227' || texto.includes('loja berimbau')) return '42130732000146';
+  if (codigo === '18837' || texto.includes('vd berimbau')) return '42130732000227';
+  if (codigo === '8362' || texto.includes('irara')) return '05422140000171';
+  return '';
+}
+
 function codigoEmpresaAlvorar(valor) {
   const candidatos = [...new Set((String(valor ?? '').match(/\d+/g) || [])
     .filter(codigo => codigosEmpresasAlvorar.has(codigo)))];
@@ -913,6 +923,8 @@ function registrarMapaCnpjContasImportadas(dados) {
 function cnpjContaFinanceira(conta) {
   const chave = normalizarTexto(limparTextoECD(conta));
   const manual = normalizarCnpjConta(configGrupos[grupoAtivo]?.cnpjContasFinanceiras?.[chave]);
+  const padraoAnaRita = cnpjContaAnaRita(conta);
+  if (manual || padraoAnaRita) return manual || padraoAnaRita;
   if (modoImportacaoDoGrupo() === 'alvorar' && grupoMapaCnpjContasImportadas === grupoAtivo) {
     const codigo = codigoEmpresaAlvorar(conta);
     if (codigo && Object.hasOwn(mapaCnpjEmpresasAlvorar, codigo)) {
@@ -1183,8 +1195,11 @@ function abrirModalCnpjContas() {
     const importado = temImportado ? mapaImportado[chaveImportada] : '';
     const manual = normalizarCnpjConta(manuais[chave]);
     const conflito = temImportado && (!importado || (manual && manual !== importado));
-    const origem = conflito ? 'CNPJ conflitante nos titulos/cadastro' : temImportado ? (alvorar ? 'Codigo da empresa nos titulos' : 'Titulos importados') : 'Manual';
-    return linhaFormularioCnpjConta(conta, importado || manual, origem, temImportado && !manual);
+    const padraoAnaRita = cnpjContaAnaRita(conta);
+    const origem = padraoAnaRita
+      ? 'Configuração ANA RITA'
+      : conflito ? 'CNPJ conflitante nos titulos/cadastro' : temImportado ? (alvorar ? 'Codigo da empresa nos titulos' : 'Titulos importados') : 'Manual';
+    return linhaFormularioCnpjConta(conta, manual || padraoAnaRita || importado, origem, !!padraoAnaRita || (temImportado && !conflito && !manual));
   }).join('');
   const modal = document.createElement('div');
   modal.id = 'modal-cnpj-contas';
@@ -8964,7 +8979,7 @@ function contasBancariasUsadasSessao() {
     ...linhasImportadas.map(r => limparTextoECD(r?.[COLS.CONTA])),
     ...extratoBancarioTemp.map(m => limparTextoECD(m?.conta)),
     ...recebimentosRateioTemp.map(r => limparTextoECD(r?.conta))
-  ].filter(Boolean);
+  ].filter(conta => conta && normalizarTexto(conta) !== 'implantacao f360');
   const unicas = new Map();
   contas.forEach(conta => {
     const chave = normalizarTexto(conta);
