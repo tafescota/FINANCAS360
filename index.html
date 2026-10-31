@@ -5170,7 +5170,8 @@ function carregarCodigosItensRecebimentos(itens) {
           item.tipo,
           item.historico,
           item.escopoRegra || '',
-          origemRegraRecebimento(item)
+          origemRegraRecebimento(item),
+          item
         ));
     }
     if (item.movimento === 'numerario-rateio' && !codigosConciliacaoTemp[item.id]) {
@@ -6781,7 +6782,7 @@ function escopoRecebimentoAlvorar(item) {
 function codigoRecebimentoAlvorar(item, regras) {
   const chave = item.naturezaAlvorar?.chave;
   return (chave && regras[chave]) || encontrarCodigoRegraRecebimentoConciliacao(regras, item.tipo,
-    item.historico, escopoRecebimentoAlvorar(item), origemRegraRecebimento(item));
+    item.historico, escopoRecebimentoAlvorar(item), origemRegraRecebimento(item), item);
 }
 
 function aplicarRegrasNaturezaAlvorar(itens) {
@@ -6973,7 +6974,8 @@ function renderSugestoesConciliacao(sugestoes, qtdPagamentos, qtdMovimentos, ent
           item.tipo,
           item.historico,
           item.escopoRegra || '',
-          origemRegraRecebimento(item)
+          origemRegraRecebimento(item),
+          item
         ));
       if (item.numerarioTributarioMatriz && codigosConciliacaoTemp[item.id] && item.chaveNumerarioTributario) {
         if (!depara[grupoAtivo]) depara[grupoAtivo] = {};
@@ -7398,6 +7400,7 @@ function abrirModalPendenciasConciliacao() {
     const ehNumerarioPendencia = item.movimento === 'numerario-rateio';
     const contaCorrenteFixaAlvorar = ehNumerarioPendencia && modoImportacaoDoGrupo() === 'alvorar';
     const ehRecebimentoPendencia = item.movimento === 'recebimento';
+    const naturezaAnaRita = ehRecebimentoPendencia ? naturezaRecebimentoAnaRita(item) : null;
     const ehNumerarioTributario = !!item.numerarioTributarioMatriz;
     const ehSaidaPendente = item.movimento === 'saida-pendente';
     const ehPagamentoPendente = item.movimento === 'pagamento-pendente';
@@ -7407,7 +7410,7 @@ function abrirModalPendenciasConciliacao() {
       : ehNumerarioPendencia
       ? `Numerários ${naturezaConta}`
       : ehRecebimentoPendencia
-        ? 'Conta do cliente/recebimento'
+        ? naturezaAnaRita?.contaEsperada || 'Conta do cliente/recebimento'
         : ehSaidaPendente
           ? 'Conta de débito da saída'
           : ehPagamentoPendente
@@ -7418,7 +7421,7 @@ function abrirModalPendenciasConciliacao() {
       : ehNumerarioPendencia
       ? `Informe a conta de ${contaAlvo}`
       : ehRecebimentoPendencia
-        ? 'Informe a conta do cliente/recebimento'
+        ? `Informe a ${naturezaAnaRita?.contaEsperada?.toLowerCase() || 'conta do cliente/recebimento'}`
         : ehSaidaPendente
           ? 'Informe a conta de débito'
           : ehPagamentoPendente
@@ -7467,21 +7470,21 @@ function abrirModalPendenciasConciliacao() {
       ? `NUMERÁRIO ${String(item.naturezaNumerario || item.tipo || '').toUpperCase()}`
       : item.rateioRecebimento
         ? tipoRateioOperacao(item.empresaBanco || item.empresa, item.centroCusto, true)
-        : naturezaPendenciaAlvorar(item)?.label || '';
+        : naturezaAnaRita?.label || naturezaPendenciaAlvorar(item)?.label || '';
     const classeTipoOperacao = tipoOperacaoPendencia === 'PROPRIO' ? 'badge-blue' : '';
     let fornecedorCol = ehNumerarioTributario
       ? 'Numerários tributários da matriz'
       : ehNumerarioPendencia
       ? (item.pontaNumerario === 'EMPRESA DO BANCO' ? 'Numerários da empresa do banco' : 'Numerários da unidade da despesa')
       : fluxoRecebimentos && ehRecebimentoPendencia
-        ? (item.tipo || '')
+        ? (naturezaAnaRita?.label || item.tipo || '')
         : (item.fornecedor || item.descricao || item.historico || '');
     if (item.transferenciaContas) {
       fornecedorCol = item.pontaTransferencia === 'origem'
         ? 'Numerários da conta de origem'
         : 'Numerários da conta de destino';
     }
-    const planoCol = item.naturezaAlvorar?.contaEsperada || (ehNumerarioTributario
+    const planoCol = item.naturezaAlvorar?.contaEsperada || naturezaAnaRita?.contaEsperada || (ehNumerarioTributario
       ? contaAlvo
       : ehNumerarioPendencia
       ? contaAlvo
@@ -7495,7 +7498,9 @@ function abrirModalPendenciasConciliacao() {
       : ehNumerarioPendencia
       ? `Preencha ${contaAlvo}. Não é banco nem cliente.`
       : ehRecebimentoPendencia
-        ? 'Preencha a conta do cliente/recebimento. O banco vem do extrato.'
+        ? naturezaAnaRita
+          ? `Informe ${naturezaAnaRita.contaEsperada.toLowerCase()} uma vez para esta empresa. A regra sera aplicada aos recebimentos da mesma natureza.`
+          : 'Preencha a conta do cliente/recebimento. O banco vem do extrato.'
       : ehSaidaPendente
         ? grupoParcelasConciliaPorExtrato()
           ? 'Este valor ja consta no extrato. Informe a contrapartida contabil; esta saida bancaria deve aparecer uma unica vez no arquivo final.'
@@ -7516,7 +7521,7 @@ function abrirModalPendenciasConciliacao() {
         : orientacaoItem;
     }
     const historicoItem = ehRecebimentoPendencia
-      ? `<div class="pendencia-orientacao">${escapeHtml(orientacaoItem)}</div>${item.naturezaAlvorar?.chave ? `<span style="color:var(--text2)">${escapeHtml(item.historico || '')}</span>` : `<div class="historico-regra-label">Clique nas palavras da regra:</div>${renderPalavrasRecebimentoConciliacao(item)}`}`
+      ? `<div class="pendencia-orientacao">${escapeHtml(orientacaoItem)}</div>${item.naturezaAlvorar?.chave || naturezaAnaRita ? `<span style="color:var(--text2)">${escapeHtml(item.historico || '')}</span>` : `<div class="historico-regra-label">Clique nas palavras da regra:</div>${renderPalavrasRecebimentoConciliacao(item)}`}`
       : ehNumerarioPendencia
         ? `<div class="pendencia-orientacao">${escapeHtml(orientacaoItem)}</div><span style="color:var(--text2)">${escapeHtml(item.historico || '')}</span>`
         : ehSaidaPendente
@@ -7721,7 +7726,68 @@ function montarChaveRecebimentoPorForma(tipo, escopo = '', origem = '') {
   return `${prefixoEscopo}RECEBIMENTO | ${limparTextoECD(tipo || 'Recebimento')} | FORMA_DE_RECEBIMENTO${sufixoOrigem}`;
 }
 
+function naturezaRecebimentoAnaRita(item = {}) {
+  if (modoImportacaoDoGrupo() !== 'ana_rita') return null;
+  const movimentos = item.movimentos?.length ? item.movimentos : [item];
+  const texto = normalizarTexto([
+    item.historico,
+    item.tipo,
+    ...movimentos.flatMap(mov => [mov.historico, mov.complemento, mov.documento, mov.tipoConciliacao])
+  ].filter(Boolean).join(' '));
+  const tipo = normalizarTexto(item.tipo || movimentos[0]?.tipoConciliacao || '');
+  const conta = normalizarTexto(item.conta || movimentos[0]?.conta || '');
+  let categoria = 'OUTROS_RECEBIMENTOS';
+
+  // A ordem e importante: PIX da operadora continua sendo cartao, enquanto
+  // um PIX recebido diretamente do cliente fica na conta de clientes.
+  if (tipo.includes('transferencia entre contas')) categoria = 'TRANSFERENCIA_ENTRE_CONTAS';
+  else if (conta.includes('aplicacao') || /\b(rendimento|rend pago|remuneracao|juros|aplic aut|resgate automatico)\b/.test(texto)) categoria = 'RENDIMENTOS_APLICACAO';
+  else if (tipo.includes('parcelas de cartoes') || /\b(mooz|hagana|cielo|getnet|stone|redecard|pagseguro)\b/.test(texto)) categoria = 'CARTOES';
+  else if (/\b(pix devolvido|dev pix)\b/.test(texto)) categoria = 'PIX_DEVOLVIDO';
+  else if (/\bboleto devolvido\b/.test(texto)) categoria = 'BOLETO_DEVOLVIDO';
+  else if (/\b(pix recebido|entrada pix|credito pix|recebimento pix)\b/.test(texto)) categoria = 'PIX_CLIENTES';
+  else if (/\b(boleto|cobranca)\b/.test(texto)) categoria = 'BOLETO_CLIENTES';
+  else if (tipo.includes('parcelas de titulos')) categoria = 'RECEBIMENTOS_TITULOS';
+  else if (tipo.includes('conciliacao mista')) categoria = 'CONCILIACAO_MISTA';
+
+  const labels = {
+    CARTOES: 'Cartoes', PIX_CLIENTES: 'Clientes - PIX', BOLETO_CLIENTES: 'Clientes - boleto',
+    RENDIMENTOS_APLICACAO: 'Rendimentos / aplicacao', TRANSFERENCIA_ENTRE_CONTAS: 'Transferencia entre contas',
+    PIX_DEVOLVIDO: 'PIX devolvido', BOLETO_DEVOLVIDO: 'Boleto devolvido',
+    RECEBIMENTOS_TITULOS: 'Clientes / titulos', CONCILIACAO_MISTA: 'Conciliacao mista',
+    OUTROS_RECEBIMENTOS: 'Outros recebimentos'
+  };
+  const contasEsperadas = {
+    CARTOES: 'Conta de cartoes / recebiveis', PIX_CLIENTES: 'Conta de clientes', BOLETO_CLIENTES: 'Conta de clientes',
+    RENDIMENTOS_APLICACAO: 'Conta de rendimentos ou aplicacao', TRANSFERENCIA_ENTRE_CONTAS: 'Contrapartida da transferencia',
+    PIX_DEVOLVIDO: 'Contrapartida do PIX devolvido', BOLETO_DEVOLVIDO: 'Contrapartida do boleto devolvido',
+    RECEBIMENTOS_TITULOS: 'Conta de clientes / titulos', CONCILIACAO_MISTA: 'Contrapartida contabil',
+    OUTROS_RECEBIMENTOS: 'Contrapartida contabil'
+  };
+  return { categoria, label: labels[categoria], contaEsperada: contasEsperadas[categoria] };
+}
+
+function empresaRegraRecebimentoAnaRita(item = {}) {
+  if (modoImportacaoDoGrupo() !== 'ana_rita') return '';
+  const primeiroMovimento = item.movimentos?.[0] || item;
+  const conta = item.conta || primeiroMovimento.conta || '';
+  return cnpjContaFinanceira(conta)
+    || extrairPrimeiroCodigoEmpresa(empresaBancoConciliacao(item, primeiroMovimento))
+    || limparTextoECD(empresaBancoConciliacao(item, primeiroMovimento))
+    || limparTextoECD(conta);
+}
+
+function chaveRegraRecebimentoAnaRita(item = {}) {
+  const natureza = naturezaRecebimentoAnaRita(item);
+  const empresa = empresaRegraRecebimentoAnaRita(item);
+  if (!natureza || !empresa) return '';
+  return `ANA RITA | RECEBIMENTO | EMPRESA | ${limparTextoECD(empresa)} | NATUREZA | ${natureza.categoria}`;
+}
+
 function obterChaveRegraRecebimentoConciliacao(item) {
+  if (modoImportacaoDoGrupo() === 'ana_rita') {
+    return chaveRegraRecebimentoAnaRita(item);
+  }
   if (modoImportacaoDoGrupo() === 'alvorar') {
     if (item.naturezaAlvorar?.chave) return item.naturezaAlvorar.chave;
     if (item.naturezaAlvorar?.categoria === 'CARTOES') {
@@ -7739,9 +7805,15 @@ function obterChaveRegraRecebimentoConciliacao(item) {
   return montarChaveRecebimentoConciliacao(item.tipo, trecho, normalizarTexto(trecho) === normalizarTexto(historico), item.escopoRegra || '');
 }
 
-function encontrarCodigoRegraRecebimentoConciliacao(regras, tipo, historico, escopo = '', origem = '') {
+function encontrarCodigoRegraRecebimentoConciliacao(regras, tipo, historico, escopo = '', origem = '', item = null) {
   const historicoLimpo = limparTextoECD(historico);
   const tipoLimpo = limparTextoECD(tipo || 'Recebimento');
+  if (modoImportacaoDoGrupo() === 'ana_rita') {
+    const chaveAnaRita = item?.movimento === 'recebimento' ? chaveRegraRecebimentoAnaRita(item) : '';
+    // As regras antigas da ANA RITA juntavam naturezas diferentes da mesma
+    // conta. Elas permanecem salvas, mas nao podem mais ser reaplicadas.
+    return chaveAnaRita ? regras[chaveAnaRita] || '' : '';
+  }
   if (grupoUsaNumerariosParcelas() && modoImportacaoDoGrupo() !== 'alvorar') {
     const origemLimpa = limparTextoECD(origem);
     const porForma = regras[montarChaveRecebimentoPorForma(tipoLimpo, escopo, origemLimpa)];
@@ -7768,6 +7840,10 @@ function encontrarCodigoRegraRecebimentoConciliacao(regras, tipo, historico, esc
 
 function recebimentoAtendeRegra(item, itemRegra) {
   if (!item || !itemRegra || item.movimento !== 'recebimento') return false;
+  if (modoImportacaoDoGrupo() === 'ana_rita') {
+    const chaveItem = chaveRegraRecebimentoAnaRita(item);
+    return !!chaveItem && chaveItem === chaveRegraRecebimentoAnaRita(itemRegra);
+  }
   if (modoImportacaoDoGrupo() === 'alvorar') {
     if (normalizarTexto(origemRegraRecebimento(item)) !== normalizarTexto(origemRegraRecebimento(itemRegra))) return false;
     if (item.naturezaAlvorar?.categoria !== itemRegra.naturezaAlvorar?.categoria) return false;
