@@ -71,4 +71,28 @@ assert.equal(resultado.regra, 'Conta financeira + data + valor');
 assert.equal(resultado.incompletosConciliados, 0);
 assert.match(html, /já .*possui.* apenas do vínculo com o extrato/u);
 
-console.log(JSON.stringify(resultado, null, 2));
+const filas = vm.runInContext(`(() => {
+  grupoAtivo = 'ANA RITA';
+  configGrupos[grupoAtivo] = { modoImportacaoPagamentos: 'ana_rita' };
+  origemModalPendencias = 'conciliacao';
+  filtroPendenciasConciliacaoTemp = '';
+  filtroNaturezaPendenciasAlvorarTemp = '';
+  conciliacaoItensTemp = [
+    { id: 'pagamento-preenchido', movimento: 'pagamento-pendente', total: 94.58 },
+    { id: 'pagamento-sem-conta', movimento: 'pagamento-pendente', total: 50 },
+    { id: 'recebimento-sem-conta', movimento: 'recebimento', total: 25 }
+  ];
+  codigosConciliacaoTemp = { 'pagamento-preenchido': '898' };
+  vinculosPagamentoConciliacaoTemp = {};
+  const pendentes = itensPendentesConciliacao();
+  visaoPendenciasConciliacaoTemp = 'contas';
+  const contas = filtrarVisaoPendenciasConciliacao(pendentes).map(item => item.id);
+  visaoPendenciasConciliacaoTemp = 'vinculos';
+  const vinculos = filtrarVisaoPendenciasConciliacao(pendentes).map(item => item.id);
+  return { contas, vinculos };
+})()`, contexto);
+
+assert.deepEqual(JSON.parse(JSON.stringify(filas.contas)), ['pagamento-sem-conta', 'recebimento-sem-conta']);
+assert.deepEqual(JSON.parse(JSON.stringify(filas.vinculos)), ['pagamento-preenchido', 'pagamento-sem-conta']);
+
+console.log(JSON.stringify({ conciliacao: resultado, filas }, null, 2));

@@ -82,3 +82,47 @@ assert.equal(resultado.codigoAntigo, '');
 assert.equal(resultado.codigoNovo, '6');
 
 console.log(JSON.stringify(resultado, null, 2));
+
+const resultadoGeral = vm.runInContext(`(() => {
+  grupoAtivo = 'GRUPO GERAL';
+  configGrupos = { 'GRUPO GERAL': { modoImportacaoPagamentos: 'parcelas' } };
+  const item = (id, conta, tipo, historico, total) => ({
+    id, movimento: 'recebimento', conta, tipo, historico, total, qtd: 1,
+    empresa: '1001 - EMPRESA TESTE',
+    movimentos: [{ conta, tipoConciliacao: tipo, historico, complemento: '', documento: '', valor: total, empresa: '1001 - EMPRESA TESTE' }]
+  });
+  const pixA = item('pix-a', 'BANCO A', 'Parcelas de Titulos', 'PIX RECEBIDO CLIENTE A', 10);
+  const pixB = item('pix-b', 'BANCO B', 'Parcelas de Titulos', 'ENTRADA PIX CLIENTE B', 20);
+  const cartao = item('cartao', 'BANCO A', 'Parcelas de Cartoes', 'CREDITO CIELO', 30);
+  const agrupados = agruparPendenciasRecebimentosInteligentes([pixA, pixB, cartao]);
+  const chavePixA = obterChaveRegraRecebimentoConciliacao(pixA);
+  const chavePixB = obterChaveRegraRecebimentoConciliacao(pixB);
+  const chaveLegada = montarChaveRecebimentoConciliacao(pixA.tipo, pixA.historico, true, '');
+  conciliacaoItensTemp = [pixA, pixB, cartao];
+  codigosConciliacaoTemp = {};
+  aplicarRegraRecebimentoConciliacao('pix-a', '1152');
+  aplicarContasCorrentesFixasAlvorar = function() {};
+  aplicarRegrasNaturezaAlvorar = function() {};
+  salvarRegrasRecebimentoConciliacao();
+  return {
+    quantidadeTipos: agrupados.length,
+    pixMesmaRegra: chavePixA === chavePixB,
+    pixAplicadoA: codigosConciliacaoTemp['pix-a'],
+    pixAplicadoB: codigosConciliacaoTemp['pix-b'],
+    cartaoNaoMisturado: codigosConciliacaoTemp.cartao || '',
+    regraInteligenteSalva: deparaRecebimentos[grupoAtivo]?.[chavePixA] || '',
+    regraLegadaPreservada: encontrarCodigoRegraRecebimentoConciliacao(
+      { [chaveLegada]: '77' }, pixA.tipo, pixA.historico, '', origemRegraRecebimento(pixA), pixA
+    )
+  };
+})()`, contexto);
+
+assert.equal(resultadoGeral.quantidadeTipos, 2);
+assert.equal(resultadoGeral.pixMesmaRegra, true);
+assert.equal(resultadoGeral.pixAplicadoA, '1152');
+assert.equal(resultadoGeral.pixAplicadoB, '1152');
+assert.equal(resultadoGeral.cartaoNaoMisturado, '');
+assert.equal(resultadoGeral.regraInteligenteSalva, '1152');
+assert.equal(resultadoGeral.regraLegadaPreservada, '77');
+
+console.log(JSON.stringify(resultadoGeral, null, 2));
