@@ -367,7 +367,9 @@ function apurarFaltasCaixaLiquidasAlvorar() {
 function montarAjustesCaixaLiquidosAlvorar(item, codigoRecebimento) {
   if (modoImportacaoDoGrupo() !== 'alvorar') return [];
   return (item.faltasCaixaLiquidasAlvorar || []).map(({ row, valor }) => {
-    const linha = linhaDominio(fmtDate(row[COLS.LIQUIDACAO]), '1488', '2098', valor,
+    // A venda permanece pelo valor bruto. A falta compoe a contrapartida da receita,
+    // sem criar uma segunda saida na conta caixa que ja recebeu o valor liquido.
+    const linha = linhaDominio(fmtDate(row[COLS.LIQUIDACAO]), '1488', codigoRecebimento, valor,
       'Falta de caixa ja descontada da entrada - ' + row[COLS.CONTA], item.centroCusto, 'PROPRIO');
     linha.tipoExtratoAlvorar = 'Caixa';
     linha.movimentoExportacaoAlvorar = 'Recebimentos';

@@ -925,7 +925,6 @@ function cnpjContaFinanceira(conta) {
   const chave = normalizarTexto(limparTextoECD(conta));
   const manual = normalizarCnpjConta(configGrupos[grupoAtivo]?.cnpjContasFinanceiras?.[chave]);
   const padraoAnaRita = cnpjContaAnaRita(conta);
-  if (manual || padraoAnaRita) return manual || padraoAnaRita;
   if (modoImportacaoDoGrupo() === 'alvorar' && grupoMapaCnpjContasImportadas === grupoAtivo) {
     const codigo = codigoEmpresaAlvorar(conta);
     if (codigo && Object.hasOwn(mapaCnpjEmpresasAlvorar, codigo)) {
@@ -934,6 +933,8 @@ function cnpjContaFinanceira(conta) {
     }
     return manual;
   }
+  // Fora da ALVORAR, preservar exatamente o comportamento historico dos demais grupos.
+  if (manual || padraoAnaRita) return manual || padraoAnaRita;
   if (grupoMapaCnpjContasImportadas === grupoAtivo && Object.hasOwn(mapaCnpjContasImportadas, chave)) {
     const importado = mapaCnpjContasImportadas[chave];
     // Uma conta com empresas conflitantes nos titulos nao permite inferencia.
