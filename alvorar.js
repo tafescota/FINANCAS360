@@ -109,8 +109,13 @@ function codigoContaCorrenteAlvorar(empresaBanco, empresaMovimento, natureza, or
   if (modoImportacaoDoGrupo() !== 'alvorar' || grupoMapaCnpjContasImportadas !== grupoAtivo) return '';
   const banco = codigoEmpresaAlvorar(empresaBanco), empresa = codigoEmpresaAlvorar(empresaMovimento);
   if (!banco || !empresa || banco === empresa) return '';
-  const cnpjBanco = normalizarCnpjConta(mapaCnpjEmpresasAlvorar[banco]);
-  const cnpjEmpresa = normalizarCnpjConta(mapaCnpjEmpresasAlvorar[empresa]);
+  // CNPJ dos titulos do mes. So quando a unidade NAO tem titulo proprio no mes usa a lista fixa de estabelecimentos;
+  // CNPJ conflitante nos titulos (valor vazio no mapa) continua bloqueando, sem reserva.
+  const cnpjDe = codigo => Object.hasOwn(mapaCnpjEmpresasAlvorar, codigo)
+    ? normalizarCnpjConta(mapaCnpjEmpresasAlvorar[codigo])
+    : normalizarCnpjConta(typeof CNPJS_ESTABELECIMENTOS_ALVORAR === 'object' ? CNPJS_ESTABELECIMENTOS_ALVORAR[codigo] : '');
+  const cnpjBanco = cnpjDe(banco);
+  const cnpjEmpresa = cnpjDe(empresa);
   if (!cnpjBanco || !cnpjEmpresa) return '';
   // A raiz define o vinculo matriz/filiais, nao a titularidade de uma transferencia.
   const categoria = cnpjBanco.slice(0, 8) === cnpjEmpresa.slice(0, 8) ? origem : 'emprestimos';
@@ -415,8 +420,46 @@ function montarAjustesCaixaLiquidosAlvorar(item, codigoRecebimento) {
   });
 }
 
+// 16/11/2026 (somente ALVORAR): titulo pago pelo CAIXA segue a planilha de pagamentos e e lancado
+// mesmo sem movimento no extrato do caixa (o extrato do caixa serve so de confronto).
+function tituloCaixaPelaPlanilhaAlvorar(s) {
+  return modoImportacaoDoGrupo() === 'alvorar' && !!s && !s.mov
+    && tipoContaAlvorar(s.pag?.conta || linhasImportadas[s.pag?.idx]?.[COLS.CONTA] || '') === 'Caixa';
+}
+
+// 16/11/2026 (somente ALVORAR): fechamento do CAIXA pelas planilhas, e nao pelo extrato do caixa.
+// Entradas esperadas = RECEBIDAS CX + transferencias que entraram no caixa (extrato);
+// Saidas esperadas = titulos pagos pelo caixa (CONTAS PAGAS) + depositos/transferencias que sairam do caixa (extrato).
+function fechamentoCaixaPelasPlanilhasAlvorar(linhas = []) {
+  if (modoImportacaoDoGrupo() !== 'alvorar') return null;
+  const chave = c => normalizarTexto(limparTextoExportacaoDominio(c || ''));
+  const contas = new Set();
+  recebimentosAlvorarTemp.forEach(r => { if (tipoContaAlvorar(r.conta) === 'Caixa') contas.add(chave(r.conta)); });
+  linhasImportadas.forEach(row => { if (tipoContaAlvorar(row?.[COLS.CONTA]) === 'Caixa') contas.add(chave(row[COLS.CONTA])); });
+  extratoBancarioTemp.forEach(m => { if (tipoContaAlvorar(m.conta) === 'Caixa') contas.add(chave(m.conta)); });
+  const centavos = v => Math.round(Math.abs(Number(v) || 0) * 100);
+  let planilhaEntradas = 0, planilhaSaidas = 0, dominioEntradas = 0, dominioSaidas = 0;
+  recebimentosAlvorarTemp.forEach(r => { if (tipoContaAlvorar(r.conta) === 'Caixa') planilhaEntradas += Math.round((Number(r.valor) || 0) * 100); });
+  linhasImportadas.forEach(row => {
+    if (tipoContaAlvorar(row?.[COLS.CONTA]) === 'Caixa' && normalizarTexto(row[COLS.TIPO]) === 'conta a pagar') planilhaSaidas += centavos(numeroMoeda(row[COLS.VALOR_LIQ]));
+  });
+  extratoBancarioTemp.forEach(m => {
+    if (tipoContaAlvorar(m.conta) !== 'Caixa' || normalizarTexto(m.tipoConciliacao) === 'parcelas de titulos') return;
+    if (m.valor > 0) planilhaEntradas += centavos(m.valor); else planilhaSaidas += centavos(m.valor);
+  });
+  linhas.forEach(l => {
+    if (contas.has(chave(l[1]))) dominioEntradas += centavos(l[3]);
+    if (contas.has(chave(l[2]))) dominioSaidas += centavos(l[3]);
+  });
+  const r = v => arredondarMoeda(v / 100);
+  return { tipo: 'CAIXA (planilhas)', extratoEntradas: r(planilhaEntradas), dominioEntradas: r(dominioEntradas),
+    extratoSaidas: r(planilhaSaidas), dominioSaidas: r(dominioSaidas),
+    diferencaEntradas: r(dominioEntradas - planilhaEntradas), diferencaSaidas: r(dominioSaidas - planilhaSaidas),
+    diferencaSaldo: r((dominioEntradas - dominioSaidas) - (planilhaEntradas - planilhaSaidas)) };
+}
+
 function resumoVinculosAlvorar() {
-  const titulos = sugestoesParcelasExtratoTemp.filter(s => !s.mov
+  const titulos = sugestoesParcelasExtratoTemp.filter(s => !s.mov && !tituloCaixaPelaPlanilhaAlvorar(s)
     && vinculosPagamentoConciliacaoTemp['pag-' + s.pag.idx] !== VINCULO_PAGAMENTO_SEM_EXTRATO);
   return { quantidade: titulos.length, valor: arredondarMoeda(titulos.reduce((s, t) => s + Math.abs(t.pag.valor), 0)) };
 }
@@ -828,28 +871,33 @@ function conciliarRecebimentosCompletosAlvorar(entradas) {
     else resultado.divergencias.push({origem:'titulos',data:r.dataKey,conta:r.conta,planilha:soma(rows)/100,
       extrato:soma(moves)/100,fornecedor:r.fornecedor});
   });
-  // 16/11/2026 (somente ALVORAR): caixas sem extrato seguem a planilha de recebimentos,
-  // com o recebimento do mes lancado no ultimo dia do mes (rateio pela planilha).
-  const contasExtrato = new Set(extratoBancarioTemp.map(m => contaNormalizadaAlvorar(m.conta)));
-  const caixaSemExtrato = r => !contasExtrato.has(contaNormalizadaAlvorar(r.conta)) && tipoContaAlvorar(r.conta) === 'Caixa';
-  const linhasCaixa = recebimentosAlvorarTemp.filter(r => caixaSemExtrato(r) && !linhasAceitas.has(r) && !titulosAceitos.has(r)
+  // 16/11/2026 (somente ALVORAR): CAIXA segue a planilha de recebimentos, na data de cada venda
+  // (acumulada por dia, unidade e tipo), com ou sem extrato do caixa. As entradas de titulos do extrato
+  // do caixa nao sao lancadas de novo: servem so de confronto. Depositos/transferencias do caixa seguem o extrato.
+  const ehCaixa = r => tipoContaAlvorar(r.conta) === 'Caixa';
+  const linhasCaixa = recebimentosAlvorarTemp.filter(r => ehCaixa(r) && !linhasAceitas.has(r) && !titulosAceitos.has(r)
     && /^\d{2}\/\d{2}\/\d{4}$/.test(String(r.dataKey)));
+  const contasCaixaPlanilha = new Set(recebimentosAlvorarTemp.filter(ehCaixa).map(r => contaNormalizadaAlvorar(r.conta)));
+  resultado.divergencias = resultado.divergencias.filter(d => !(ehCaixa(d) && contasCaixaPlanilha.has(contaNormalizadaAlvorar(d.conta))));
+  const resumoCaixa = new Map();
+  const somarResumoCaixa = (conta, dataRef, campo, valor) => {
+    const mes = String(dataRef).slice(3), chaveCaixa = JSON.stringify([mes, contaNormalizadaAlvorar(conta)]);
+    if (!resumoCaixa.has(chaveCaixa)) resumoCaixa.set(chaveCaixa, { mes, conta, data: 'na data de cada venda', valor: 0, linhas: 0, extrato: 0 });
+    const resumo = resumoCaixa.get(chaveCaixa);
+    resumo[campo] = arredondarMoeda(resumo[campo] + valor);
+    if (campo === 'valor') resumo.linhas++;
+  };
+  recebimentosAlvorarTemp.filter(ehCaixa).forEach(r => somarResumoCaixa(r.conta, r.dataKey, 'valor', r.valor));
   if (linhasCaixa.length) {
-    resultado.divergencias = resultado.divergencias.filter(d => !caixaSemExtrato(d));
-    const resumoCaixa = new Map();
-    const copias = linhasCaixa.map(r => {
-      const mes = String(r.dataKey).slice(3), ultimo = ultimoDiaMesAlvorar(mes);
-      const chaveCaixa = JSON.stringify([mes, contaNormalizadaAlvorar(r.conta)]);
-      if (!resumoCaixa.has(chaveCaixa)) resumoCaixa.set(chaveCaixa, { mes, conta: r.conta, data: ultimo, valor: 0, linhas: 0 });
-      const resumo = resumoCaixa.get(chaveCaixa);
-      resumo.valor = arredondarMoeda(resumo.valor + r.valor);
-      resumo.linhas++;
-      return { ...r, data: ultimo, dataKey: ultimo, caixaPelaPlanilhaAlvorar: true };
-    });
-    aceitar(copias, []);
+    aceitar(linhasCaixa.map(r => ({ ...r, caixaPelaPlanilhaAlvorar: true })), []);
     linhasCaixa.forEach(r => linhasAceitas.add(r));
-    resultado.caixaPelaPlanilha.push(...resumoCaixa.values());
   }
+  entradas.filter(m => m.valor > 0 && ehCaixa(m) && normalizarTexto(m.tipoConciliacao) === 'parcelas de titulos'
+    && contasCaixaPlanilha.has(contaNormalizadaAlvorar(m.conta))).forEach(m => {
+      if (!resultado.usados.has(m)) somarResumoCaixa(m.conta, dataKey(m.data), 'extrato', m.valor);
+      resultado.usados.add(m);
+    });
+  resultado.caixaPelaPlanilha.push(...resumoCaixa.values());
   resultado.itens = consolidarRecebimentosAlvorarPorDia(resultado.itens);
   cacheRecebimentosAlvorar = { extrato: extratoBancarioTemp, recebimentos: recebimentosAlvorarTemp, pagamentos: linhasImportadas, qtd: entradas.length, resultado };
   return resultado;
@@ -900,7 +948,7 @@ function bloquearRecebimentosAlvorar() {
   if (!resumo || conferencia.pendentes.length) {
     // 16/11/2026: deixa de travar. Os grupos nao confirmados NAO sao rateados (sem aproximacao):
     // a entrada do banco sai pela empresa dona da conta e, sem regra, com a contrapartida em branco.
-    const seguir = confirm(`${conferencia.pendentes.length || 'Ha'} grupo(s) de recebimentos sem titularidade/valor confirmado com o extrato.${ausentes.length ? '\n\nExtratos ausentes ('+ausentes.length+'): '+ausentes.join(', ')+'.' : ''}\n\nOK = exportar mesmo assim. Esses recebimentos NAO serao rateados entre as unidades: o que esta no extrato sai pela empresa dona da conta, e o que nao tiver conta sai com a conta EM BRANCO para preencher depois. Caixas sem extrato seguem a planilha de recebimentos, lancadas no ultimo dia do mes. Entradas de cartao que nao fecham no dia sao confrontadas pelo mes, e a diferenca vai para AJUSTE CARTAO DIFERENCA (2098).\n\nCancelar = voltar e exportar a conferencia para revisar.`);
+    const seguir = confirm(`${conferencia.pendentes.length || 'Ha'} grupo(s) de recebimentos sem titularidade/valor confirmado com o extrato.${ausentes.length ? '\n\nExtratos ausentes ('+ausentes.length+'): '+ausentes.join(', ')+'.' : ''}\n\nOK = exportar mesmo assim. Esses recebimentos NAO serao rateados entre as unidades: o que esta no extrato sai pela empresa dona da conta, e o que nao tiver conta sai com a conta EM BRANCO para preencher depois. Caixas seguem a planilha de recebimentos e de pagamentos, na data de cada movimento; o extrato do caixa serve so de confronto (depositos seguem o extrato). Entradas de cartao que nao fecham no dia sao confrontadas pelo mes, e a diferenca vai para AJUSTE CARTAO DIFERENCA (2098).\n\nCancelar = voltar e exportar a conferencia para revisar.`);
     return !seguir;
   }
   return false;
@@ -952,8 +1000,8 @@ function criarConferenciaRecebimentosAlvorar() {
   }
   const caixas = cacheRecebimentosAlvorar?.resultado?.caixaPelaPlanilha || [];
   if (caixas.length) {
-    const dados = [['Mes','Conta caixa','Linhas da planilha','Valor lancado','Data do lancamento'],
-      ...caixas.map(c=>[c.mes,rotuloContaFinanceiraAlvorar(c.conta),c.linhas,c.valor,c.data])];
+    const dados = [['Mes','Conta caixa','Linhas da planilha','Recebimentos pela planilha','Entradas no extrato do caixa (nao conciliadas)','Data do lancamento'],
+      ...caixas.map(c=>[c.mes,rotuloContaFinanceiraAlvorar(c.conta),c.linhas,c.valor,c.extrato || 0,c.data])];
     const ws3 = XLSX.utils.aoa_to_sheet(dados);
     ws3['!cols']=[12,45,18,20,18].map(wch=>({wch}));
     XLSX.utils.book_append_sheet(wb,ws3,'Caixas pela planilha');
@@ -1220,8 +1268,9 @@ function conferirSaidasExportacaoPagamentosAlvorar(linhas, avulsas) {
     const chave = JSON.stringify([normalizarTexto(m.conta), dataKey(m.data)]);
     esperados.set(chave, (esperados.get(chave) || 0) + Math.round(Math.abs(m.valor) * 100));
   });
-  return conferirParcelasPorContaDia(linhas, true).filter(d => d.entradaDominio !== 0
-    || d.saidaDominio !== (esperados.get(JSON.stringify([normalizarTexto(d.conta), d.data])) || 0));
+  // Caixa segue a planilha: diferenca de caixa com o extrato e apenas informativa.
+  return conferirParcelasPorContaDia(linhas, true).filter(d => tipoContaAlvorar(d.conta) !== 'Caixa' && (d.entradaDominio !== 0
+    || d.saidaDominio !== (esperados.get(JSON.stringify([normalizarTexto(d.conta), d.data])) || 0)));
 }
 
 function montarExportacaoPagamentosAlvorar() {
@@ -1230,7 +1279,7 @@ function montarExportacaoPagamentosAlvorar() {
     return null;
   }
   gerarSugestoesConciliacao({ redirecionarSeOk: false });
-  const semVinculo = sugestoesParcelasExtratoTemp.filter(s => !s.mov
+  const semVinculo = sugestoesParcelasExtratoTemp.filter(s => !s.mov && !tituloCaixaPelaPlanilhaAlvorar(s)
     && vinculosPagamentoConciliacaoTemp['pag-' + s.pag.idx] !== VINCULO_PAGAMENTO_SEM_EXTRATO);
   if (semVinculo.length) {
     alert(`${semVinculo.length} titulo(s) de pagamento sem vinculo com o extrato. Revise antes de exportar.`);
