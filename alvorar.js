@@ -392,18 +392,49 @@ function agruparPendenciasRecebimentosAlvorar(itens) {
   if (modoImportacaoDoGrupo() !== 'alvorar') return itens;
   const grupos = new Map(), resultado = [];
   itens.forEach(item => {
-    const chave = item.titularidadeAlvorar && item.movimento === 'recebimento' ? item.naturezaAlvorar?.chave : '';
-    if (!chave) { resultado.push(item); return; }
+    const chaveRegra = item.titularidadeAlvorar && item.movimento === 'recebimento' ? item.naturezaAlvorar?.chave : '';
+    if (!chaveRegra) { resultado.push(item); return; }
+    const chaveDia = JSON.stringify([chaveRegra, dataKey(item.data), contaNormalizadaAlvorar(item.conta), item.empresaBanco, item.centroCusto]);
+    if (!grupos.has(chaveDia)) {
+      const grupo = { ...item, total: 0, qtd: 0, movimentos: [], diferencaClientesAlvorar: 0 };
+      grupos.set(chaveDia, grupo);
+      resultado.push(grupo);
+    }
+    const grupo = grupos.get(chaveDia);
+    grupo.total = arredondarMoeda(grupo.total + item.total);
+    grupo.qtd += item.qtd || 1;
+    grupo.movimentos.push(...(item.movimentos?.length ? item.movimentos : [item]));
+    grupo.diferencaClientesAlvorar = arredondarMoeda(grupo.diferencaClientesAlvorar + Number(item.diferencaClientesAlvorar || 0));
+    grupo.data = dataKey(item.data);
+  });
+  return resultado;
+}
+
+function consolidarRecebimentosAlvorarPorDia(itens) {
+  if (modoImportacaoDoGrupo() !== 'alvorar') return itens;
+  const grupos = new Map(), resultado = [];
+  itens.forEach(item => {
+    const codigoFixo = obterCodigoContaParaDominio(codigoRecebimentoInternoAlvorar(item)
+      || codigoContrapartidaFixaCartoesAlvorar(item));
+    const regraSegura = codigoFixo || item.naturezaAlvorar?.chave || '';
+    if (!regraSegura || item.movimento !== 'recebimento') { resultado.push(item); return; }
+    const chave = JSON.stringify([dataKey(item.data), contaNormalizadaAlvorar(item.conta), item.empresaBanco,
+      item.centroCusto, item.origem, regraSegura, Math.sign(item.total || 0), !!item.intercompany,
+      item.contraparteInterempresaAlvorar || '']);
     if (!grupos.has(chave)) {
-      const grupo = { ...item, total: 0, qtd: 0, datasAgrupadasAlvorar: new Set() };
+      const grupo = { ...item, id: 'rec-alvorar-dia-' + encodeURIComponent(chave), total: 0, qtd: 0,
+        movimentos: [], diferencaClientesAlvorar: 0, faltasCaixaLiquidasAlvorar: [] };
       grupos.set(chave, grupo);
       resultado.push(grupo);
     }
     const grupo = grupos.get(chave);
-    grupo.total = arredondarMoeda(grupo.total + item.total);
+    grupo.total = arredondarMoeda(grupo.total + Number(item.total || 0));
     grupo.qtd += item.qtd || 1;
-    grupo.datasAgrupadasAlvorar.add(item.data);
-    grupo.data = `${grupo.datasAgrupadasAlvorar.size} dia(s) / ${grupo.qtd} movimentos`;
+    grupo.movimentos.push(...(item.movimentos?.length ? item.movimentos : [item]));
+    grupo.diferencaClientesAlvorar = arredondarMoeda(grupo.diferencaClientesAlvorar + Number(item.diferencaClientesAlvorar || 0));
+    grupo.faltasCaixaLiquidasAlvorar.push(...(item.faltasCaixaLiquidasAlvorar || []));
+    grupo.data = dataKey(item.data);
+    if (grupo.qtd > 1) grupo.historico = `${grupo.qtd} recebimentos consolidados no dia`;
   });
   return resultado;
 }
@@ -627,17 +658,18 @@ function conciliarRecebimentosCompletosAlvorar(entradas) {
       } else if (g.extrato.length && g.extrato.every(m=>m.valor>0)
         && g.extrato.every(m=>codigoPermitidoAlvorar(m.conta))
         && /^mooz(cartoes|boleto)/.test(categoriaRecebimentoAlvorar(g.extrato[0].complemento))) {
-        // Divergencias nao sao rateadas: cada entrada pertence a dona da conta e mantem o valor do banco.
+        // Divergencias nao sao rateadas: a entrada pertence a dona da conta e mantem o total diario do banco.
         const codigo = /boleto/.test(categoriaRecebimentoAlvorar(g.extrato[0].complemento)) ? '1783' : '1782';
-        g.extrato.forEach(m=>{
-          const empresa = codigoEmpresaAlvorar(m.conta);
-          const fonte = {data:m.data,dataKey:dataKey(m.data),conta:m.conta,empresaBanco:empresa,centroCusto:empresa,
-            valor:m.valor,origem:'cartoes',tipo:m.complemento,plano:'Cartoes pelo extrato',historico:descricaoMovimentoExtrato(m),
-            adquirente:m.complemento,cartaoPeloExtratoAlvorar:true,codigoCartaoExtratoAlvorar:codigo};
-          aceitar([fonte],[m]);
-        });
+        const m = g.extrato[0], empresa = codigoEmpresaAlvorar(m.conta);
+        const valorPlanilha = soma(g.planilha)/100, valorExtrato = soma(g.extrato)/100;
+        const fonte = {data:m.data,dataKey:dataKey(m.data),conta:m.conta,empresaBanco:empresa,centroCusto:empresa,
+          valor:valorExtrato,origem:'cartoes',tipo:m.complemento,plano:'Cartoes pelo extrato',
+          historico:`${g.extrato.length} recebimento(s) consolidado(s) pelo extrato`, adquirente:m.complemento,
+          cartaoPeloExtratoAlvorar:true,codigoCartaoExtratoAlvorar:codigo,
+          diferencaClientesAlvorar:arredondarMoeda(valorPlanilha-valorExtrato),codigoDiferencaClientesAlvorar:'2098'};
+        aceitar([fonte],g.extrato);
         resultado.cartoesPeloExtrato.push({chave:key,origem:'cartoes',conta:g.extrato[0].conta,data:dataKey(g.extrato[0].data),
-          planilha:soma(g.planilha)/100,extrato:soma(g.extrato)/100,codigo,registros:g.planilha});
+          planilha:valorPlanilha,extrato:valorExtrato,codigo,registros:g.planilha});
       } else resultado.divergencias.push({ chave: key, origem: 'cartoes', conta: (g.planilha[0] || g.extrato[0]).conta,
         data: dataKey((g.planilha[0] || g.extrato[0]).data), planilha: soma(g.planilha)/100, extrato: soma(g.extrato)/100 });
     }
@@ -678,6 +710,7 @@ function conciliarRecebimentosCompletosAlvorar(entradas) {
     else resultado.divergencias.push({origem:'titulos',data:r.dataKey,conta:r.conta,planilha:soma(rows)/100,
       extrato:soma(moves)/100,fornecedor:r.fornecedor});
   });
+  resultado.itens = consolidarRecebimentosAlvorarPorDia(resultado.itens);
   cacheRecebimentosAlvorar = { extrato: extratoBancarioTemp, recebimentos: recebimentosAlvorarTemp, pagamentos: linhasImportadas, qtd: entradas.length, resultado };
   return resultado;
 }
@@ -743,7 +776,7 @@ function htmlConferenciaRecebimentosAlvorar() {
     ${ausentes.length ? `<div><strong>Extratos ausentes:</strong> ${ausentes.map(c=>escapeHtml(rotuloContaFinanceiraAlvorar(c))).join(', ')}</div>` : ''}
     ${conferencia.classificadas.length ? `<span>Saidas de cartoes ja classificadas: ${conferencia.classificadas.length} grupos.</span>` : ''}
     ${r.aceleracoesSemNovaEntrada?.length ? `<span>Aceleracoes sem nova entrada: ${r.aceleracoesSemNovaEntrada.length} grupos.</span>` : ''}
-    ${r.cartoesPeloExtrato?.length ? `<span>Cartoes pelo valor do extrato: ${r.cartoesPeloExtrato.length} grupos; diferencas do relatorio apenas para conferencia.</span>` : ''}
+    ${r.cartoesPeloExtrato?.length ? `<span>Cartoes pelo valor do extrato: ${r.cartoesPeloExtrato.length} grupos; diferencas identificadas como ajuste para Clientes (2098).</span>` : ''}
     ${faltas.indices.size ? `<span>Faltas ja refletidas na entrada liquida: ${faltas.indices.size} / R$ ${fmtValor(totalFaltas)}. Sem nova saida de caixa.</span>` : ''}
     <button class="btn btn-sm" onclick="exportarConferenciaRecebimentosAlvorar()">Exportar conferencia</button></div>`;
 }
@@ -752,7 +785,7 @@ function criarConferenciaRecebimentosAlvorar() {
   const conferencia = conferenciaDivergenciasRecebimentosAlvorar();
   const rows = [...conferencia.pendentes.map(r=>({...r,situacao:'Pendente'})),
     ...conferencia.classificadas.map(r=>({...r,situacao:'Saida ja classificada'})),
-    ...(cacheRecebimentosAlvorar?.resultado?.cartoesPeloExtrato || []).map(r=>({...r,situacao:'Valor do extrato; diferenca sem lancamento'}))];
+    ...(cacheRecebimentosAlvorar?.resultado?.cartoesPeloExtrato || []).map(r=>({...r,situacao:'Valor do extrato; diferenca para Clientes (2098)'}))];
   const wb = XLSX.utils.book_new();
   const ws = XLSX.utils.aoa_to_sheet([['Origem','Data','Conta','Planilha','Extrato','Diferenca','Fornecedor','Situacao'],
     ...rows.map(r => [r.origem,r.data,rotuloContaFinanceiraAlvorar(r.conta),r.planilha,r.extrato,arredondarMoeda(r.planilha-r.extrato),r.fornecedor || '',r.situacao])]);

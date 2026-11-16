@@ -7008,11 +7008,14 @@ function renderSugestoesConciliacao(sugestoes, qtdPagamentos, qtdMovimentos, ent
     const preenchido = !!codigosConciliacaoTemp[r.id];
     const status = preenchido ? 'preenchido' : 'de-para';
     const statusClasse = preenchido ? 'ok' : 'mid';
+    const ajusteClientes = arredondarMoeda(Number(r.diferencaClientesAlvorar || 0));
+    const detalheClientes = ajusteClientes
+      ? `<div style="margin-top:4px;color:#92400e;font-weight:700">Ajuste para Clientes (2098): R$ ${fmtValor(Math.abs(ajusteClientes))}</div>` : '';
     if (compacta) {
       return `<tr class="conciliacao-row-compact">
         <td><span class="badge badge-blue">${r.rateioRecebimento ? 'Recebimento rateio' : 'Recebimento'}</span></td>
         <td class="col-secondary">${r.qtd} movimento${r.qtd !== 1 ? 's' : ''}</td>
-        <td>${descTruncada(`${r.tipo} - ${r.historico}`)}</td>
+        <td>${descTruncada(`${r.tipo} - ${r.historico}`)}${detalheClientes}</td>
         <td class="col-value">R$ ${fmtValor(r.total)}</td>
         <td><span class="mono">${escapeHtml(codigosConciliacaoTemp[r.id])}</span></td>
         <td><span class="conciliacao-status ${statusClasse}">${status}</span></td>
@@ -7022,7 +7025,7 @@ function renderSugestoesConciliacao(sugestoes, qtdPagamentos, qtdMovimentos, ent
     return `<tr class="${preenchido ? 'conciliacao-row-filled' : ''}">
       <td><span class="badge badge-blue">${r.rateioRecebimento ? 'Recebimento rateio' : 'Recebimento'}</span></td>
       <td class="col-secondary">${r.qtd} movimento${r.qtd !== 1 ? 's' : ''}</td>
-      <td><strong>${escapeHtml(r.tipo)}</strong><br>${descTruncada(r.historico, 'muted-line')}</td>
+      <td><strong>${escapeHtml(r.tipo)}</strong><br>${descTruncada(r.historico, 'muted-line')}${detalheClientes}</td>
       <td class="col-value">R$ ${fmtValor(r.total)}</td>
       <td>${preenchido ? `<span class="mono">${escapeHtml(codigosConciliacaoTemp[r.id])}</span>` : '<span style="color:#1d4ed8;font-weight:600">Preencher na janela de pendências</span>'}</td>
       <td><span class="conciliacao-status ${statusClasse}">${status}</span></td>
@@ -7558,7 +7561,8 @@ function abrirModalPendenciasConciliacao() {
         : categoria === 'CAIXA' ? 'Informe a contrapartida deste deposito de caixa. Nao sera criada uma segunda movimentacao de caixa sem o extrato correspondente.'
         : categoria === 'REPASSE' ? 'Confira a natureza deste repasse. Mercadorias, clientes e numerarios nao sao equivalentes.'
         : categoria === 'CARTOES' ? (ehSaidaPendente ? 'Saida de cartoes confirmada no extrato. Informe a contrapartida do ajuste; nao sera criada outra saida.'
-          : 'Informe a conta desta operadora e modalidade nesta conta bancaria. Cada recebimento preserva sua data e seu valor.')
+          : item.diferencaClientesAlvorar ? `Recebimentos consolidados neste dia. A diferenca de R$ ${fmtValor(Math.abs(item.diferencaClientesAlvorar))} sera ajustada automaticamente em Clientes (2098), sem alterar o banco.`
+          : 'Informe a conta desta operadora e modalidade nesta conta bancaria. Os recebimentos compativeis sao consolidados dentro do mesmo dia.')
         : orientacaoItem;
     }
     const historicoItem = ehRecebimentoPendencia
@@ -8379,6 +8383,17 @@ function montarLinhasRecebimentoRateioDominio(item, codigoRecebimento, regrasNum
     linhas.push(linhaDominio(fmtDate(item.data || primeiroMovimento.data), codigoRecebimento, banco, valor, complemento, centroCusto, 'PROPRIO'));
   } else {
     linhas.push(linhaDominio(fmtDate(item.data || primeiroMovimento.data), banco, codigoRecebimento, valor, complemento, centroCusto, 'PROPRIO'));
+  }
+  const diferencaClientes = arredondarMoeda(Number(item.diferencaClientesAlvorar || 0));
+  if (modoImportacaoDoGrupo() === 'alvorar' && diferencaClientes) {
+    const codigoClientes = obterCodigoContaParaDominio(item.codigoDiferencaClientesAlvorar || '2098');
+    const historicoAjuste = `Ajuste diario de recebimentos - Clientes - ${item.tipo || primeiroMovimento.tipo || ''}`;
+    linhas.push(diferencaClientes > 0
+      ? linhaDominio(fmtDate(item.data || primeiroMovimento.data), codigoClientes, codigoRecebimento,
+        Math.abs(diferencaClientes), historicoAjuste, centroCusto, 'PROPRIO')
+      : linhaDominio(fmtDate(item.data || primeiroMovimento.data), codigoRecebimento, codigoClientes,
+        Math.abs(diferencaClientes), historicoAjuste, centroCusto, 'PROPRIO'));
+    linhas.at(-1).ajusteClientesAlvorar = true;
   }
   return linhas;
 }
