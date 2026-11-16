@@ -428,8 +428,10 @@ function tituloCaixaPelaPlanilhaAlvorar(s) {
 }
 
 // 16/11/2026 (somente ALVORAR): fechamento do CAIXA pelas planilhas, e nao pelo extrato do caixa.
-// Entradas esperadas = RECEBIDAS CX + transferencias que entraram no caixa (extrato);
-// Saidas esperadas = titulos pagos pelo caixa (CONTAS PAGAS) + depositos/transferencias que sairam do caixa (extrato).
+// Entradas esperadas = RECEBIDAS CX liquidas das faltas comprovadamente embutidas + contas sem
+// RECEBIDAS CX que so existem no extrato + transferencias que entraram no caixa (extrato);
+// Saidas esperadas = titulos pagos pelo caixa (CONTAS PAGAS), sem os ajustes convertidos em
+// recebimento, + saidas avulsas do extrato + depositos/transferencias que sairam do caixa.
 function fechamentoCaixaPelasPlanilhasAlvorar(linhas = []) {
   if (modoImportacaoDoGrupo() !== 'alvorar') return null;
   const chave = c => normalizarTexto(limparTextoExportacaoDominio(c || ''));
@@ -439,9 +441,24 @@ function fechamentoCaixaPelasPlanilhasAlvorar(linhas = []) {
   extratoBancarioTemp.forEach(m => { if (tipoContaAlvorar(m.conta) === 'Caixa') contas.add(chave(m.conta)); });
   const centavos = v => Math.round(Math.abs(Number(v) || 0) * 100);
   let planilhaEntradas = 0, planilhaSaidas = 0, dominioEntradas = 0, dominioSaidas = 0;
+  const contasRecebimentos = new Set(recebimentosAlvorarTemp.filter(r => tipoContaAlvorar(r.conta) === 'Caixa').map(r => chave(r.conta)));
+  const faltasLiquidas = apurarFaltasCaixaLiquidasAlvorar();
+  const faltasSemExtrato = new Set(faltasSemExtratoCaixaAlvorar().map(f => f.idx));
   recebimentosAlvorarTemp.forEach(r => { if (tipoContaAlvorar(r.conta) === 'Caixa') planilhaEntradas += Math.round((Number(r.valor) || 0) * 100); });
-  linhasImportadas.forEach(row => {
-    if (tipoContaAlvorar(row?.[COLS.CONTA]) === 'Caixa' && normalizarTexto(row[COLS.TIPO]) === 'conta a pagar') planilhaSaidas += centavos(numeroMoeda(row[COLS.VALOR_LIQ]));
+  faltasLiquidas.grupos.forEach(grupo => { planilhaEntradas -= grupo.faltaCentavos; });
+  linhasImportadas.forEach((row, idx) => {
+    if (tipoContaAlvorar(row?.[COLS.CONTA]) === 'Caixa' && normalizarTexto(row[COLS.TIPO]) === 'conta a pagar'
+      && !faltasLiquidas.indices.has(idx) && !faltasSemExtrato.has(idx)) planilhaSaidas += centavos(numeroMoeda(row[COLS.VALOR_LIQ]));
+  });
+  // Se a conta nao veio em RECEBIDAS CX, o proprio extrato do caixa e a unica base para as entradas.
+  extratoBancarioTemp.forEach(m => {
+    if (m.valor > 0 && tipoContaAlvorar(m.conta) === 'Caixa' && normalizarTexto(m.tipoConciliacao) === 'parcelas de titulos'
+      && !contasRecebimentos.has(chave(m.conta))) planilhaEntradas += centavos(m.valor);
+  });
+  // Saidas avulsas sao movimentos do extrato sem titulo correspondente e entram no arquivo final.
+  saidasAvulsasPagamentosAlvorar().forEach(item => {
+    const mov = extratoBancarioTemp[item.idxOriginal];
+    if (mov && tipoContaAlvorar(mov.conta) === 'Caixa') planilhaSaidas += centavos(mov.valor);
   });
   extratoBancarioTemp.forEach(m => {
     if (tipoContaAlvorar(m.conta) !== 'Caixa' || normalizarTexto(m.tipoConciliacao) === 'parcelas de titulos') return;

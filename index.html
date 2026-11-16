@@ -1163,10 +1163,12 @@ function resumoFechamentoParcelasExtrato() {
   const diferencasDia=dias.filter(r=>(r.entradaExtrato!==r.entradaDominio||r.saidaExtrato!==r.saidaDominio)&&!(alvorarCaixa&&tipoContaAlvorar(r.conta)==='Caixa'));
   const divergentes=detalhes.filter(r=>diferencasDia.some(d=>d.conta===r.conta));
   const caixaPlanilhasAlvorar=alvorarCaixa&&typeof fechamentoCaixaPelasPlanilhasAlvorar==='function'?fechamentoCaixaPelasPlanilhasAlvorar(linhas):null;
+  const caixaBateAlvorar=!caixaPlanilhasAlvorar||['diferencaEntradas','diferencaSaidas','diferencaSaldo']
+    .every(campo=>Math.abs(Number(caixaPlanilhasAlvorar[campo])||0)<0.005);
   const pendentes=conciliacaoItensTemp.filter(i=>['recebimento','numerario-rateio','saida-pendente'].includes(i.movimento)&&!obterCodigoContaParaDominio(codigosConciliacaoTemp[i.id])).length
     + [...movimentosTransitoParcelas().values()].filter(m=>!codigoContaTransitoParcelas(m.cnpj)).length
     + sugestoesParcelasExtratoTemp.filter(s=>!s.mov&&!(typeof tituloCaixaPelaPlanilhaAlvorar==='function'&&tituloCaixaPelaPlanilhaAlvorar(s))&&vinculosPagamentoConciliacaoTemp['pag-'+s.pag.idx]!==VINCULO_PAGAMENTO_SEM_EXTRATO).length;
-  return {disponivel:true,bate:!divergentes.length,prontoExportar:!divergentes.length&&!pendentes,detalhes,divergentes,diferencasDia,pendentes,caixaPlanilhasAlvorar,
+  return {disponivel:true,bate:!divergentes.length&&caixaBateAlvorar,prontoExportar:!divergentes.length&&caixaBateAlvorar&&!pendentes,detalhes,divergentes,diferencasDia,pendentes,caixaPlanilhasAlvorar,
     ...(modoImportacaoDoGrupo()==='alvorar'?{contasCorrentesAlvorar:calcularConferenciaContasCorrentesAlvorar(linhas)}:{})};
 }
 
@@ -4367,7 +4369,7 @@ function htmlFechamentoContasDominio(resumo) {
     ${alvorar && resumo.caixaPlanilhasAlvorar?.baixasPeloBanco?.qtd ? `<div class="conciliacao-note" style="margin-top:6px">Baixa automatica pelo banco: ${resumo.caixaPlanilhasAlvorar.baixasPeloBanco.qtd} deposito(s) de caixas sem extrato de caixa, R$ ${fmtValor(resumo.caixaPlanilhasAlvorar.baixasPeloBanco.valor)} (D 51531 / C caixa na data do deposito).</div>` : ''}
     ${alvorar && resumo.caixaPlanilhasAlvorar?.baixasPorSaldo51531?.qtd ? `<div class="conciliacao-note" style="margin-top:6px"><strong>Baixa de caixa pelo saldo da 51531:</strong> ${resumo.caixaPlanilhasAlvorar.baixasPorSaldo51531.qtd} caixa(s), R$ ${fmtValor(resumo.caixaPlanilhasAlvorar.baixasPorSaldo51531.valor)}, no ultimo dia do mes. ${resumo.caixaPlanilhasAlvorar.baixasPorSaldo51531.itens.map(escapeHtml).join('; ')}</div>` : ''}
     ${alvorar && resumo.caixaPlanilhasAlvorar?.depositosSemCaixa?.qtd ? `<div class="alert alert-warn" style="margin-top:6px;display:block"><strong>Depositos de caixa sem baixa na caixa:</strong> ${resumo.caixaPlanilhasAlvorar.depositosSemCaixa.qtd} / R$ ${fmtValor(resumo.caixaPlanilhasAlvorar.depositosSemCaixa.valor)}. A 51531 fica com saldo ate a baixa ser lancada.<br>${resumo.caixaPlanilhasAlvorar.depositosSemCaixa.itens.map(escapeHtml).join('<br>')}</div>` : ''}
-    ${alvorar && resumo.caixaPlanilhasAlvorar ? '<div class="conciliacao-note" style="margin-top:6px">CAIXA (planilhas): as colunas de extrato mostram o esperado pelas planilhas &mdash; entradas = RECEBIDAS CX + transferências para o caixa; saídas = títulos pagos pelo caixa (CONTAS PAGAS) + depósitos/transferências do caixa. Diferenças de faltas de caixa se compensam no saldo.</div>' : ''}
+    ${alvorar && resumo.caixaPlanilhasAlvorar ? '<div class="conciliacao-note" style="margin-top:6px">CAIXA (planilhas): as colunas de extrato mostram o esperado pelas planilhas. Entradas = RECEBIDAS CX líquidas das faltas já descontadas + caixas que só vieram no extrato + transferências para o caixa. Saídas = títulos pagos pelo caixa, sem ajustes já convertidos + saídas avulsas e depósitos/transferências do caixa.</div>' : ''}
     ${detalhe}
   </div>`;
 }
