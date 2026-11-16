@@ -3354,3 +3354,20 @@ td.col-value, th.col-value, .pendencia-valor, .mpa-valor { white-space: nowrap !
 #modal-pendencias-conciliacao .pendencia-detalhes { overflow-wrap: anywhere !important; }
 #modal-pendencias-conciliacao .pendencia-movimento .badge,
 #modal-pendencias-conciliacao .pendencia-tipo .badge { padding: 4px 7px !important; font-size: 10.5px !important; overflow-wrap: normal !important; }
+
+/* Topo da tela "Lancamentos gerados": titulo, etiqueta do grupo e acoes em uma linha; menu Exportar (16/11/2026) */
+.resultado-topbar { display: flex; align-items: center; justify-content: space-between; gap: 16px; flex-wrap: wrap; margin-bottom: 18px; }
+.resultado-titulo { display: flex; align-items: center; gap: 12px; min-width: 0; }
+.resultado-titulo h2 { margin: 0; }
+.resultado-grupo-tag { background: #eaf2ff; color: #1d4ed8; font-size: 12px; font-weight: 700; padding: 4px 10px; border-radius: 999px; white-space: nowrap; }
+.resultado-actions { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin: 0; }
+.resultado-link { background: none; border: 0; color: #334155; font-size: 13px; font-weight: 600; padding: 8px 10px; border-radius: 8px; cursor: pointer; }
+.resultado-link:hover { background: #f1f5f9; color: #0f172a; }
+.resultado-actions-divider { width: 1px; height: 24px; background: #e2e8f0; margin: 0 4px; }
+.resultado-export-wrap { position: relative; }
+.resultado-export-menu { display: none; position: absolute; right: 0; top: calc(100% + 6px); z-index: 60; min-width: 240px; background: #fff; border: 1px solid #e2e8f0; border-radius: 10px; box-shadow: 0 12px 32px rgba(15, 23, 42, 0.14); padding: 6px; }
+.resultado-export-menu.aberto { display: block; }
+.resultado-export-menu button { display: block; width: 100%; text-align: left; background: none; border: 0; padding: 9px 12px; border-radius: 8px; font-size: 13px; color: #0f172a; cursor: pointer; }
+.resultado-export-menu button:hover { background: #eff6ff; color: #1d4ed8; }
+.resultado-export-menu button strong { display: block; }
+@media (max-width: 760px) { .resultado-topbar { align-items: flex-start; } .resultado-export-menu { left: 0; right: auto; } }
