@@ -447,6 +447,9 @@ function fechamentoCaixaPelasPlanilhasAlvorar(linhas = []) {
     if (tipoContaAlvorar(m.conta) !== 'Caixa' || normalizarTexto(m.tipoConciliacao) === 'parcelas de titulos') return;
     if (m.valor > 0) planilhaEntradas += centavos(m.valor); else planilhaSaidas += centavos(m.valor);
   });
+  // Depositos de caixas sem extrato: a saida da caixa vem do deposito que chegou no banco.
+  const semExtrato = depositosCaixaSemExtratoAlvorar();
+  semExtrato.gerados.forEach(d => { planilhaSaidas += centavos(d.mov.valor); });
   linhas.forEach(l => {
     if (contas.has(chave(l[1]))) dominioEntradas += centavos(l[3]);
     if (contas.has(chave(l[2]))) dominioSaidas += centavos(l[3]);
@@ -455,7 +458,10 @@ function fechamentoCaixaPelasPlanilhasAlvorar(linhas = []) {
   return { tipo: 'CAIXA (planilhas)', extratoEntradas: r(planilhaEntradas), dominioEntradas: r(dominioEntradas),
     extratoSaidas: r(planilhaSaidas), dominioSaidas: r(dominioSaidas),
     diferencaEntradas: r(dominioEntradas - planilhaEntradas), diferencaSaidas: r(dominioSaidas - planilhaSaidas),
-    diferencaSaldo: r((dominioEntradas - dominioSaidas) - (planilhaEntradas - planilhaSaidas)) };
+    diferencaSaldo: r((dominioEntradas - dominioSaidas) - (planilhaEntradas - planilhaSaidas)),
+    baixasPeloBanco: { qtd: semExtrato.gerados.length, valor: r(semExtrato.gerados.reduce((s, d) => s + centavos(d.mov.valor), 0)) },
+    depositosSemCaixa: { qtd: semExtrato.semCaixa.length, valor: r(semExtrato.semCaixa.reduce((s, d) => s + centavos(d.mov.valor), 0)),
+      itens: semExtrato.semCaixa.slice(0, 20).map(d => `${dataKey(d.mov.data)} ${d.mov.conta} R$ ${fmtValor(Math.abs(d.mov.valor))} - ${d.motivo}`) } };
 }
 
 function resumoVinculosAlvorar() {
@@ -1056,12 +1062,40 @@ function titularidadeDepositoCaixaAlvorar(deposito) {
   return {origem, destino, cnpjOrigem, cnpjDestino, contas};
 }
 
+// 16/11/2026 (somente ALVORAR): deposito que chegou no banco vindo de uma caixa SEM extrato de caixa.
+// A baixa da caixa (D 51531 / C caixa, ou 597/611 entre filial e matriz) e gerada pelo proprio deposito do banco.
+function depositosCaixaSemExtratoAlvorar() {
+  if (modoImportacaoDoGrupo() !== 'alvorar') return { gerados: [], semCaixa: [] };
+  const contasComExtrato = new Set(extratoBancarioTemp.map(m => contaNormalizadaAlvorar(m.conta)));
+  // So caixas com movimento nas planilhas do mes (vendas ou pagamentos): evita baixar de novo um deposito
+  // cuja saida da caixa ja ocorreu no mes anterior.
+  const contasCaixaPlanilhas = new Set([
+    ...recebimentosAlvorarTemp.filter(r => tipoContaAlvorar(r.conta) === 'Caixa').map(r => contaNormalizadaAlvorar(r.conta)),
+    ...linhasImportadas.filter(row => tipoContaAlvorar(row?.[COLS.CONTA]) === 'Caixa').map(row => contaNormalizadaAlvorar(row[COLS.CONTA]))]);
+  const gerados = [], semCaixa = [];
+  movimentosTransitoParcelas().forEach(deposito => {
+    const { mov, outraConta } = deposito;
+    if (!(mov.valor > 0) || tipoContaAlvorar(mov.conta) !== 'Banco') return;
+    if (!outraConta || tipoContaAlvorar(outraConta) !== 'Caixa') { semCaixa.push({ mov, motivo: 'Caixa de origem nao identificada' }); return; }
+    if (contasComExtrato.has(contaNormalizadaAlvorar(outraConta))) return;
+    if (!contasCaixaPlanilhas.has(contaNormalizadaAlvorar(outraConta))) { semCaixa.push({ mov, motivo: 'Caixa ' + outraConta + ' sem extrato e sem movimento nas planilhas do mes' }); return; }
+    const espelho = { mov: { ...mov, conta: outraConta, valor: -Math.abs(mov.valor), historico: mov.conta, baixaPeloBancoAlvorar: true }, outraConta: mov.conta };
+    const titular = titularidadeDepositoCaixaAlvorar(espelho);
+    if (titular.pendente) { semCaixa.push({ mov, motivo: 'Empresa da caixa ' + outraConta + ' nao identificada' }); return; }
+    gerados.push(espelho);
+  });
+  return { gerados, semCaixa };
+}
+
 function montarDepositosCaixaAlvorar() {
-  return [...movimentosTransitoParcelas().values()].flatMap(deposito => {
+  const semExtrato = depositosCaixaSemExtratoAlvorar().gerados;
+  return [...movimentosTransitoParcelas().values(), ...semExtrato].flatMap(deposito => {
     const {mov, outraConta} = deposito;
     const data = fmtDate(mov.data), valor = Math.abs(mov.valor);
     const conta = codigoBancoConciliacao(mov.conta);
-    const historico = `Deposito em transito - ${mov.conta} / ${outraConta} - ${descricaoMovimentoExtrato(mov)}`;
+    const historico = mov.baixaPeloBancoAlvorar
+      ? `Deposito em transito (baixa da caixa pelo deposito no banco; caixa sem extrato) - ${mov.conta} / ${outraConta} - ${descricaoMovimentoExtrato(mov)}`
+      : `Deposito em transito - ${mov.conta} / ${outraConta} - ${descricaoMovimentoExtrato(mov)}`;
     if (mov.valor > 0) {
       const linha = linhaDominio(data, conta, '51531', valor, historico, codigoEmpresaAlvorar(mov.conta), 'PROPRIO');
       linha.tipoExtratoAlvorar = 'Banco';
