@@ -1702,7 +1702,48 @@ function montarExportacaoFinalAlvorar() {
   // saem em branco, com confirmacao e listadas na aba "Contas pendentes" do ZIP.
   linhas.filter(l => !l[1] || !l[2]).forEach(l => { l.contaPendenteTituloAlvorar = true; });
   if (!validarExportacaoParcelasExtrato(linhas) || bloquearExportacaoPorEmpresaMatrizFilial(linhas)) return null;
+  linhas.push(...montarResgatesAutomaticosAlvorar(linhas));
   return linhas;
+}
+
+// 16/11/2026 (somente ALVORAR): o F360 trata a aplicacao automatica como parte da conta (Itau AutMais, CDB Bradesco),
+// mas o Dominio separa em outra conta. Como o banco, faz POR DIA, por conta e empresa: dia com saida liquida ->
+// RESGATE (D banco / C aplicacao automatica); dia com entrada liquida -> APLICACAO (D aplicacao / C banco).
+// A conta corrente fica parada e nunca negativa; nao entra na conferencia contra o extrato.
+const APLICACAO_AUTOMATICA_ALVORAR = Object.freeze([
+  { banco: /\bitau\b/, conta: '2034', nome: 'Itau AutMais' },
+  { banco: /\bbradesco\b/, conta: '51279', nome: 'CDB Bradesco' }
+]);
+
+function montarResgatesAutomaticosAlvorar(linhas) {
+  if (modoImportacaoDoGrupo() !== 'alvorar') return [];
+  const dias = new Map();
+  linhas.forEach(l => [1, 2].forEach(col => {
+    const conta = String(l[col] || '').trim();
+    const data = String(l[0] || '');
+    if (!conta || /^\d+$/.test(conta) || tipoContaAlvorar(conta) !== 'Banco' || !/^\d{2}\/\d{2}\/\d{4}$/.test(data)) return;
+    const regra = APLICACAO_AUTOMATICA_ALVORAR.find(r => r.banco.test(normalizarTexto(conta)));
+    const empresa = String(l[7] || '');
+    if (!regra || !empresa) return;
+    const chave = JSON.stringify([normalizarTexto(conta), empresa, data]);
+    if (!dias.has(chave)) dias.set(chave, { conta, empresa, data, regra, centavos: 0 });
+    dias.get(chave).centavos += (col === 1 ? 1 : -1) * Math.round(Number(l[3] || 0) * 100);
+  }));
+  const ordenar = d => d.split('/').reverse().join('');
+  const movimentos = [];
+  [...dias.values()].sort((a, b) => ordenar(a.data).localeCompare(ordenar(b.data))).forEach(d => {
+    if (!d.centavos) return;
+    const valor = Math.abs(d.centavos) / 100;
+    const resgate = d.centavos < 0;
+    const linha = resgate
+      ? linhaDominio(d.data, d.conta, d.regra.conta, valor, `Resgate automatico ${d.regra.nome} - ${d.conta}`, d.empresa, 'PROPRIO')
+      : linhaDominio(d.data, d.regra.conta, d.conta, valor, `Aplicacao automatica ${d.regra.nome} - ${d.conta}`, d.empresa, 'PROPRIO');
+    linha.tipoExtratoAlvorar = 'Banco';
+    linha.movimentoExportacaoAlvorar = 'Transferencias';
+    linha.resgateAutomaticoAlvorar = true;
+    movimentos.push(linha);
+  });
+  return movimentos;
 }
 
 async function exportarDominioFinalAlvorar() {
