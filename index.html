@@ -8509,7 +8509,26 @@ function montarLinhasDominioConciliacao({ validarPendencias = true } = {}) {
       : movimentoEhSaidaCaixaParaBancoCpSimone(mov)
       ? CODIGO_CLIENTES_CP_SIMONE
       : obterCodigoContaParaDominio(codigosConciliacaoTemp[item.id]);
-    if (!codigoDebito) return;
+    if (!codigoDebito) {
+      // A conta pendente bloqueia a exportacao, mas nao pode criar uma diferenca
+      // financeira ficticia na conferencia. Na projecao, preserve somente o lado
+      // da conta bancaria; a contrapartida continua vazia e pendente para o usuario.
+      if (modoImportacaoDoGrupo() === 'alvorar' && !validarPendencias
+        && !saidasExtratoRevisadasConciliacaoTemp[item.id]) {
+        const linhaPendente = linhaDominio(
+          fmtDate(mov.data || item.data),
+          '',
+          codigoBancoConciliacao(mov.conta || item.conta || infoExtratoBancarioTemp?.conta || ''),
+          Math.abs(mov.valor || item.total),
+          descricaoMovimentoExtrato(mov) || item.historico,
+          empresaBancoConciliacao(item, mov),
+          ''
+        );
+        linhaPendente.somenteConferenciaPendencia = true;
+        linhas.push(linhaPendente);
+      }
+      return;
+    }
     const idxMov = extratoBancarioTemp.indexOf(mov);
     if (idxMov >= 0 && transferenciasPareadas.has(idxMov)) return;
     linhas.push(linhaDominio(
