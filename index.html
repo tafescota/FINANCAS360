@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Conciliação F360</title>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
-<script src="alvorar.js?v=20261116-20-caixa"></script>
+<script src="alvorar.js?v=20261116-21-transf"></script>
 <style>
   :root {
     --bg: #ffffff; --bg2: #f4f6f9; --bg3: #eef0f3;
@@ -8634,6 +8634,7 @@ function montarLinhasDominioConciliacao({ validarPendencias = true, permitirCont
         item.numerarioTributarioMatriz ? 'TRANSFERENCIA DE NUMERARIOS' : ''
       ));
       if (modoImportacaoDoGrupo() === 'alvorar') linhas.at(-1).movimentoExportacaoAlvorar = movimentoEhTransferenciaEntreContas(mov) || movimentoResgateXpAlvorar(mov) ? 'Transferencias' : 'Recebimentos';
+      if (modoImportacaoDoGrupo() === 'alvorar' && typeof outraPontaTransferenciaAlvorar === 'function') linhas.push(...outraPontaTransferenciaAlvorar(mov, codigoCredito, linhas.at(-1)));
     });
   });
   if (modoImportacaoDoGrupo() === 'alvorar' && typeof montarAjustesMensaisCartoesAlvorar === 'function') {
@@ -8679,6 +8680,7 @@ function montarLinhasDominioConciliacao({ validarPendencias = true, permitirCont
       ''
     ));
     if (modoImportacaoDoGrupo() === 'alvorar') linhas.at(-1).movimentoExportacaoAlvorar = movimentoEhTransferenciaEntreContas(mov) ? 'Transferencias' : 'Pagamentos';
+    if (modoImportacaoDoGrupo() === 'alvorar' && typeof outraPontaTransferenciaAlvorar === 'function') linhas.push(...outraPontaTransferenciaAlvorar(mov, codigoDebito, linhas.at(-1)));
   });
   // Linhas com conta em branco autorizadas: liberam a validacao e entram na aba "Contas a preencher".
   if (exportarContasEmBrancoAlvorar) linhas.filter(l => !l[1] || !l[2]).forEach(l => { l.contaPendenteTituloAlvorar = true; });
