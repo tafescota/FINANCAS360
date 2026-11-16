@@ -1963,3 +1963,19 @@ function abrirPendenciasResultadoAlvorar() {
   filtroNaturezaPendenciasAlvorarTemp = '';
   alterarVisaoPendenciasAlvorar('contas');
 }
+
+// ---- Menu "Exportar ▾" da tela de lancamentos gerados (16/11/2026) ----
+function alternarMenuExportacaoResultado(evento) {
+  evento?.stopPropagation?.();
+  document.getElementById('menu-exportacao-resultado')?.classList.toggle('aberto');
+}
+
+function fecharMenuExportacaoResultado() {
+  document.getElementById('menu-exportacao-resultado')?.classList.remove('aberto');
+}
+
+if (typeof document !== 'undefined' && typeof document.addEventListener === 'function') {
+  document.addEventListener('click', evento => {
+    if (!evento?.target?.closest?.('.resultado-export-wrap')) fecharMenuExportacaoResultado();
+  });
+}
