@@ -1982,6 +1982,34 @@ function abrirPendenciasResultadoAlvorar() {
   alterarVisaoPendenciasAlvorar('contas');
 }
 
+// ---- Outra ponta da transferencia para conta SEM extrato importado (16/11/2026, somente ALVORAR) ----
+// Ex.: caixa -> TESOURARIA, banco -> APLI. Alem de D 51540 / C origem, cria D destino / C 51540 (ou o inverso
+// na entrada), para a 51540 zerar. Nao cria quando o destino tem extrato importado (o banco ficaria diferente
+// do extrato) nem quando o destino e de outra empresa (nao inventa empresa).
+function outraPontaTransferenciaAlvorar(mov, contaContrapartida, linhaBase) {
+  if (modoImportacaoDoGrupo() !== 'alvorar' || !mov || !linhaBase) return [];
+  const contra = String(obterCodigoContaParaDominio(contaContrapartida) || contaContrapartida || '').trim();
+  if (contra !== CODIGO_TRANSFERENCIA_ENTRE_CONTAS_ALVORAR || !movimentoEhTransferenciaEntreContas(mov)) return [];
+  const importadas = new Set(extratoBancarioTemp.map(m => contaNormalizadaAlvorar(m.conta)));
+  const propria = contaNormalizadaAlvorar(mov.conta);
+  const destino = [mov.complemento, mov.historico].map(v => limparTextoECD(v || '')).find(v => v
+    && contaNormalizadaAlvorar(v) !== propria
+    && /\b(tesouraria|caixa|apli|aplicacao|banco|itau|sicoob|sicred|sicredi|bradesco|santander|basa|cef|xp)\b/.test(normalizarTexto(v)));
+  if (!destino || importadas.has(contaNormalizadaAlvorar(destino))) return [];
+  const empresa = String(linhaBase[7] || '');
+  const codigoDestino = codigoEmpresaAlvorar(destino);
+  if (!empresa || (codigoDestino && codigoDestino !== empresa)) return [];
+  const historico = `Outra ponta da transferencia (conta sem extrato importado) - ${limparTextoECD(mov.conta)} / ${destino}`;
+  const contaDestino = codigoBancoConciliacao(destino);
+  const linha = Number(mov.valor) < 0
+    ? linhaDominio(linhaBase[0], contaDestino, CODIGO_TRANSFERENCIA_ENTRE_CONTAS_ALVORAR, linhaBase[3], historico, empresa, '')
+    : linhaDominio(linhaBase[0], CODIGO_TRANSFERENCIA_ENTRE_CONTAS_ALVORAR, contaDestino, linhaBase[3], historico, empresa, '');
+  linha.tipoExtratoAlvorar = linhaBase.tipoExtratoAlvorar || tipoContaAlvorar(mov.conta);
+  linha.movimentoExportacaoAlvorar = 'Transferencias';
+  linha.outraPontaTransferenciaAlvorar = true;
+  return [linha];
+}
+
 // ---- Menu "Exportar ▾" da tela de lancamentos gerados (16/11/2026) ----
 function alternarMenuExportacaoResultado(evento) {
   evento?.stopPropagation?.();
