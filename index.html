@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Conciliação F360</title>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
-<script src="alvorar.js?v=20261116-17-caixa-layout"></script>
+<script src="alvorar.js?v=20261116-18-menu"></script>
 <style>
   :root {
     --bg: #ffffff; --bg2: #f4f6f9; --bg3: #eef0f3;
@@ -215,7 +215,7 @@
   .tela { display: none; }
   .tela.ativa { display: block; }
 </style>
-<link rel="stylesheet" href="visual-refinements.css?v=20261116-17-caixa-layout">
+<link rel="stylesheet" href="visual-refinements.css?v=20261116-18-menu">
 </head>
 <body>
 
@@ -2806,9 +2806,11 @@ function selecionarModoImportacaoPagamentos(modo, layout = layoutImportacaoDoGru
   if (abrirPendenciasResultado) abrirPendenciasResultado.style.display = modoImportacaoPagamentos === 'alvorar' ? '' : 'none';
   const exportarPagamentos = document.getElementById('btn-exportar-pagamentos');
   if (exportarPagamentos) exportarPagamentos.textContent = modoImportacaoPagamentos === 'alvorar'
-    ? 'Exportar somente pagamentos (.zip)' : 'Exportar somente pagamentos (.xlsx)';
+    ? 'Somente pagamentos (.zip)' : 'Somente pagamentos (.xlsx)';
   const exportarRecebimentos = document.getElementById('btn-exportar-recebimentos-alvorar');
   if (exportarRecebimentos) exportarRecebimentos.style.display = modoImportacaoPagamentos === 'alvorar' ? '' : 'none';
+  const grupoTag = document.getElementById('resultado-grupo-tag');
+  if (grupoTag) { grupoTag.textContent = grupoAtivo ? 'Grupo ' + grupoAtivo : ''; grupoTag.style.display = grupoAtivo ? '' : 'none'; }
   const tituloExtratos = document.getElementById('titulo-importar-extratos');
   if (tituloExtratos) tituloExtratos.textContent = modoImportacaoPagamentos === 'alvorar' ? 'Extratos de banco, caixa e aplicacao' : 'Importar extrato bancário';
   renderResumoImportacaoAlvorar();
