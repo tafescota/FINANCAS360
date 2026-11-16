@@ -1795,6 +1795,53 @@ function adicionarConferenciaContasAlvorar(wb, linhas, { nome = 'Conferencia - n
   XLSX.utils.book_append_sheet(wb, ws, nome);
 }
 
+// Resumo da conferencia (16/11/2026): entradas e saidas por tipo de conta (Banco, Caixa, Aplicacoes) e por
+// movimento (Pagamentos, Recebimentos, Transferencias). Conta financeira = conta exportada pelo NOME
+// (o analista troca pelo codigo) ou aplicacao automatica (2034 AutMais / 51279 CDB).
+function tipoContaFinanceiraResumoAlvorar(conta) {
+  const c = String(conta || '').trim();
+  if (!c) return '';
+  if (/^\d+$/.test(c)) return APLICACAO_AUTOMATICA_ALVORAR.some(r => r.conta === c) ? 'Aplicacoes' : '';
+  return normalizarTexto(c).includes('tesouraria') ? 'Caixa' : tipoContaAlvorar(c);
+}
+
+function quadroResumoMovimentosAlvorar(linhas, dias) {
+  const tipos = ['Banco','Caixa','Aplicacoes'], movs = ['Pagamentos','Recebimentos','Transferencias'];
+  const tot = new Map(), chave = (t, m) => `${t}|${m}`;
+  const somar = (t, m, campo, v) => { const k = chave(t, m); if (!tot.has(k)) tot.set(k, { e: 0, s: 0 }); tot.get(k)[campo] += v; };
+  linhas.forEach(l => {
+    const v = Math.round(Number(l[3] || 0) * 100), m = movs.includes(l.movimentoExportacaoAlvorar) ? l.movimentoExportacaoAlvorar : 'Outros';
+    const td = tipoContaFinanceiraResumoAlvorar(l[1]), tc = tipoContaFinanceiraResumoAlvorar(l[2]);
+    if (td) somar(td, m, 'e', v);
+    if (tc) somar(tc, m, 's', v);
+  });
+  const rows = [[], ['MOVIMENTO DO ARQUIVO POR TIPO DE CONTA'], ['Tipo de conta','Movimento','Entradas','Saidas','Liquido (entradas - saidas)']];
+  let ge = 0, gs = 0;
+  tipos.forEach(t => {
+    let te = 0, ts = 0;
+    [...movs, 'Outros'].forEach(m => {
+      const x = tot.get(chave(t, m)); if (!x) return;
+      te += x.e; ts += x.s;
+      rows.push([t, m, x.e / 100, x.s / 100, (x.e - x.s) / 100]);
+    });
+    if (te || ts) rows.push([`Total ${t}`, '', te / 100, ts / 100, (te - ts) / 100]);
+    ge += te; gs += ts;
+  });
+  rows.push(['TOTAL GERAL', '', ge / 100, gs / 100, (ge - gs) / 100]);
+  if (dias?.length) {
+    rows.push([], ['ARQUIVO x EXTRATOS (sem resgate/aplicacao automatica)'],
+      ['Tipo de conta','Entradas extrato','Entradas arquivo','Saidas extrato','Saidas arquivo','Situacao']);
+    tipos.forEach(t => {
+      const ds = dias.filter(d => tipoContaAlvorar(d.conta) === t); if (!ds.length) return;
+      const s = k => ds.reduce((a, d) => a + (d[k] || 0), 0);
+      const [ee, ed, se, sd] = ['entradaExtrato','entradaDominio','saidaExtrato','saidaDominio'].map(s);
+      rows.push([t, ee / 100, ed / 100, se / 100, sd / 100, ee === ed && se === sd ? 'Confere'
+        : t === 'Caixa' ? 'Caixa segue as planilhas (ver aba Fechamento)' : `Diferenca de R$ ${fmtValor((ed - sd - ee + se) / 100)}`]);
+    });
+  }
+  return rows;
+}
+
 function criarConferenciaUnicaAlvorar(linhas, arquivos, { somentePagamentos = false, somenteRecebimentos = false } = {}) {
   const wb = XLSX.utils.book_new(), abas = [], usados = new Set(['Resumo']);
   const resumo = XLSX.utils.aoa_to_sheet([
@@ -1810,8 +1857,10 @@ function criarConferenciaUnicaAlvorar(linhas, arquivos, { somentePagamentos = fa
     [],['Aba','Conteudo','Linhas']
   ]);
   XLSX.utils.book_append_sheet(wb,resumo,'Resumo');
+  let diasResumo = null;
   if(!somentePagamentos && !somenteRecebimentos && extratoBancarioTemp.length) {
     const dias = conferirParcelasPorContaDia(linhas,true);
+    diasResumo = dias;
     const rows = [['Tipo','Unidade','Conta financeira','Data','Entradas extrato','Entradas arquivo','Dif. entradas',
       'Saidas extrato','Saidas arquivo','Dif. saidas','Dif. saldo','Situacao'],
       ...dias.map(d=>[tipoContaAlvorar(d.conta),rotuloUnidadeAlvorar(codigoEmpresaAlvorar(d.conta)),rotuloContaFinanceiraAlvorar(d.conta),d.data,
@@ -1858,9 +1907,16 @@ function criarConferenciaUnicaAlvorar(linhas, arquivos, { somentePagamentos = fa
   const pendentes = criarConferenciaContasPendentesTitulosAlvorar(linhas);
   if(pendentes)juntar(pendentes,{'Contas a preencher':'Contas pendentes'},
     {'Contas a preencher':'Contas dos titulos que devem ser preenchidas antes da importacao no Dominio.'});
-  const linhasResumo = [...XLSX.utils.sheet_to_json(resumo,{header:1,defval:''}),...abas];
+  const quadro = quadroResumoMovimentosAlvorar(linhas, diasResumo);
+  // Quadro logo apos o cabecalho (antes da lista de abas), para ser a primeira coisa vista.
+  const cabecalhoResumo = XLSX.utils.sheet_to_json(resumo,{header:1,defval:''});
+  const inicioQuadro = cabecalhoResumo.length - 2;
+  const linhasResumo = [...cabecalhoResumo.slice(0, inicioQuadro),...quadro,...cabecalhoResumo.slice(inicioQuadro),...abas];
   const ws = XLSX.utils.aoa_to_sheet(linhasResumo);
-  ws['!cols'] = [34,105,16].map(wch=>({wch}));
+  for (let r = inicioQuadro; r < inicioQuadro + quadro.length; r++) for (let c = 1; c <= 4; c++) {
+    const cell = ws[XLSX.utils.encode_cell({r,c})]; if (cell && typeof cell.v === 'number') cell.z = '#,##0.00';
+  }
+  ws['!cols'] = [34,105,18,18,18,40].map(wch=>({wch}));
   ws['!merges'] = [{s:{r:0,c:0},e:{r:0,c:2}}];
   wb.Sheets.Resumo = ws;
   return wb;
@@ -1900,7 +1956,10 @@ async function exportarZipAlvorar(linhas, { somentePagamentos = false, somenteRe
     await aguardarPinturaInterface();
     const arquivos = particionarExportacaoAlvorar(linhas, { separarMovimentos });
     const consolidados = separarMovimentos ? consolidarExportacaoFinalPorMatrizAlvorar(linhas) : new Map();
-    const arquivosZip = new Map([...arquivos, ...consolidados]);
+    // Exportacao final: Pagamentos/Recebimentos/Transferencias ficam dentro de "Separado por tipo".
+    const arquivosSeparados = separarMovimentos
+      ? new Map([...arquivos].map(([caminho, dados]) => [`Separado por tipo/${caminho}`, dados])) : arquivos;
+    const arquivosZip = new Map([...arquivosSeparados, ...consolidados]);
     const zip = XLSX.CFB.utils.cfb_new();
     let nArquivo = 0;
     for (const [caminho, dados] of arquivosZip) {
@@ -1916,7 +1975,7 @@ async function exportarZipAlvorar(linhas, { somentePagamentos = false, somenteRe
     }
     etapaProgressoExportacaoAlvorar(84, 'Montando Conferencia_ALVORAR.xlsx...');
     await aguardarPinturaInterface();
-    const conferencia = criarConferenciaUnicaAlvorar(linhas,arquivos,{somentePagamentos,somenteRecebimentos});
+    const conferencia = criarConferenciaUnicaAlvorar(linhas,arquivosSeparados,{somentePagamentos,somenteRecebimentos});
     XLSX.CFB.utils.cfb_add(zip,'Conferencia_ALVORAR.xlsx',new Uint8Array(XLSX.write(conferencia,{type:'array',bookType:'xlsx'})));
     const pendenciasTitulos = conferencia.SheetNames.includes('Contas pendentes');
     const texto = somenteRecebimentos
@@ -1926,7 +1985,7 @@ async function exportarZipAlvorar(linhas, { somentePagamentos = false, somenteRe
       : 'Depositos caixa/banco: saida D 51531 / C caixa na pasta Caixa; entrada D banco / C 51531 na pasta Banco. Cada ponta usa a data do proprio extrato, sem pareamento. O saldo em transito pode passar de um mes para outro.\nDemais transferencias: um unico lancamento. Banco tem prioridade sobre Caixa e Aplicacoes; Caixa tem prioridade sobre Aplicacoes.\nFiliais: coluna Codigo Matriz/Filial. Conferencia_ALVORAR.xlsx nao deve ser importado no Dominio.\nExcluir uma pasta nao remove as contrapartidas de transferencias diretas incluidas em outra. Confira o que ja foi importado pela analista antes de importar arquivos parciais.\n';
     XLSX.CFB.utils.cfb_add(zip,'LEIA-ME.txt',new TextEncoder().encode(texto
       + (pendenciasTitulos ? '\nATENCAO: existem contas de titulos em branco para preenchimento posterior. Os movimentos foram preservados, sem inventar contas. Consulte a aba Contas pendentes de Conferencia_ALVORAR.xlsx e preencha os arquivos de lancamentos antes de importar no Dominio. Fechamento financeiro conferido nao significa classificacao contabil completa.\n' : '')
-      + (separarMovimentos ? '\nEXPORTACAO FINAL SEPARADA: Pagamentos, Recebimentos e Transferencias. Dentro de cada pasta, Banco/Caixa/Aplicacoes e os arquivos de MNN, PCA, SERLOC e VALE, incluindo filiais. Transferencias proprias, aplicacoes/resgates e depositos em transito ficam somente em Transferencias. Numerarios e ajustes acompanham o pagamento ou recebimento que os originou. Pastas sem movimento nao sao geradas.\n\nIMPORTACAO FINAL: alternativa consolidada, com um arquivo por familia/matriz (MNN, PCA, SERLOC e VALE) reunindo todos os pagamentos, recebimentos e transferencias daquela familia. Importe OU a pasta Importacao Final OU as pastas separadas. Nunca importe os dois conjuntos, pois possuem os mesmos lancamentos e causariam duplicidade.\n' : '')
+      + (separarMovimentos ? '\nEXPORTACAO FINAL SEPARADA (pasta "Separado por tipo"): Pagamentos, Recebimentos e Transferencias. Dentro de cada pasta, Banco/Caixa/Aplicacoes e os arquivos de MNN, PCA, SERLOC e VALE, incluindo filiais. Transferencias proprias, aplicacoes/resgates e depositos em transito ficam somente em Transferencias. Numerarios e ajustes acompanham o pagamento ou recebimento que os originou. Pastas sem movimento nao sao geradas.\n\nIMPORTACAO FINAL: alternativa consolidada, com um arquivo por familia/matriz (MNN, PCA, SERLOC e VALE) reunindo todos os pagamentos, recebimentos e transferencias daquela familia. Importe OU a pasta Importacao Final OU as pastas separadas. Nunca importe os dois conjuntos, pois possuem os mesmos lancamentos e causariam duplicidade.\n' : '')
       + '\nConferencia_ALVORAR.xlsx: arquivo unico de revisao. Comece pela aba Resumo. Banco, Caixa e Aplicacoes reunem os lancamentos com nomes das contas e unidades, e o caminho do arquivo de origem. As demais abas detalham numerarios, espelhamentos, ajustes e contas pendentes quando existirem. Nao importar este arquivo no Dominio. Os arquivos de lancamentos mantem o layout original de importacao.\n'));
     etapaProgressoExportacaoAlvorar(93, 'Compactando o arquivo .zip...');
     await aguardarPinturaInterface();
@@ -2080,7 +2139,8 @@ function outraPontaTransferenciaAlvorar(mov, contaContrapartida, linhaBase) {
   const empresa = String(linhaBase[7] || '');
   const codigoDestino = codigoEmpresaAlvorar(destino);
   if (!empresa || (codigoDestino && codigoDestino !== empresa)) return [];
-  const historico = `Outra ponta da transferencia (conta sem extrato importado) - ${limparTextoECD(mov.conta)} / ${destino}`;
+  // Historico igual ao da primeira ponta (vai para o Dominio; nada de texto tecnico).
+  const historico = String(linhaBase[5] || '').trim() || `Transferencia ${limparTextoECD(mov.conta)} / ${destino}`;
   const contaDestino = codigoBancoConciliacao(destino);
   const linha = Number(mov.valor) < 0
     ? linhaDominio(linhaBase[0], contaDestino, CODIGO_TRANSFERENCIA_ENTRE_CONTAS_ALVORAR, linhaBase[3], historico, empresa, '')
