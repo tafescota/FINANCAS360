@@ -6729,6 +6729,7 @@ function naturezaMovimentoAlvorar(mov = {}) {
   const complemento = normalizarTexto(mov.complemento || '');
   const historico = normalizarTexto(mov.historico || '');
   const tipo = normalizarTexto(mov.tipoConciliacao || '');
+  const textoMovimento = [complemento, historico, tipo].join(' ');
   const empresa = codigoEmpresaAlvorar(mov.conta);
   const outraEmpresa = codigoEmpresaAlvorar(mov.complemento);
   const entrada = Number(mov.valor) > 0;
@@ -6745,6 +6746,11 @@ function naturezaMovimentoAlvorar(mov = {}) {
       identidade = JSON.stringify([complemento, modalidade]);
       descricao = `${limparTextoECD(mov.complemento)} - ${modalidade}`;
     }
+  } else if (/(?:rendimento|rendimentos|rentabilidade|remuneracao)/.test(textoMovimento)
+    && /(?:\bapli\b|aplicacao|rende facil|investimento|\bcdb\b|\brdb\b|fundo)/.test(textoMovimento)) {
+    categoria = 'RENDIMENTO_APLICACAO';
+    identidade = textoMovimento;
+    descricao = limparTextoECD(mov.complemento || mov.historico);
   } else if (/\bapli\b|aplicacao|rende facil/.test(complemento)) {
     categoria = 'APLICACAO';
     if (empresa && empresa === outraEmpresa) {
@@ -6760,9 +6766,10 @@ function naturezaMovimentoAlvorar(mov = {}) {
   } else if (tipo === 'transferencia entre contas' || (empresa && outraEmpresa && empresa !== outraEmpresa)) {
     categoria = 'REPASSE';
   }
-  const labels = { CARTOES: 'Cartoes', APLICACAO: 'Aplicacao / resgate', CAIXA: 'Deposito de caixa',
+  const labels = { CARTOES: 'Cartoes', APLICACAO: 'Aplicacao / resgate', RENDIMENTO_APLICACAO: 'Rendimento de aplicacao', CAIXA: 'Deposito de caixa',
     REPASSE: 'Repasse / transferencia a conferir', OUTROS_RECEBIMENTOS: 'Outros recebimentos', OUTRAS_SAIDAS: 'Outras saidas' };
-  const contaEsperada = categoria === 'APLICACAO' ? 'Conta da aplicacao correspondente'
+  const contaEsperada = categoria === 'RENDIMENTO_APLICACAO' ? 'Conta de rendimentos de aplicacao'
+    : categoria === 'APLICACAO' ? 'Conta da aplicacao correspondente'
     : categoria === 'CAIXA' ? 'Contrapartida do deposito de caixa'
     : categoria === 'CARTOES' ? (entrada ? 'Conta de recebiveis da operadora / modalidade' : 'Contrapartida do ajuste de cartoes')
     : categoria === 'REPASSE' ? 'Contrapartida do repasse a conferir' : 'Contrapartida contabil';
@@ -6777,6 +6784,18 @@ function naturezaPendenciaAlvorar(item) {
   if (modoImportacaoDoGrupo() !== 'alvorar') return null;
   if (item.movimento === 'numerario-rateio') return { categoria: 'NUMERARIOS', label: 'Numerarios' };
   return item.naturezaAlvorar || null;
+}
+
+function unidadeOperacaoPendencia(item = {}) {
+  const linhaPagamento = Number.isInteger(item.idxPagamento) ? linhasImportadas[item.idxPagamento] : null;
+  const unidade = item.centroCusto
+    || item.empresaLancamento
+    || (linhaPagamento ? centroCustoLinha(linhaPagamento) || empresaLancamentoLinha(linhaPagamento) : '')
+    || item.empresaRecebimento
+    || item.empresaBanco
+    || item.empresa
+    || '';
+  return rotuloUnidadeAlvorar(unidade);
 }
 
 function escopoRecebimentoAlvorar(item) {
@@ -6911,7 +6930,9 @@ function renderSugestoesConciliacao(sugestoes, qtdPagamentos, qtdMovimentos, ent
     idxMov: idxOriginal,
     idxOriginal
   }));
-  const itensPagamentoPendente = sugestoes.filter(s => !s.mov).map(s => ({
+  const itensPagamentoPendente = sugestoes.filter(s => !s.mov).map(s => {
+    const linhaPagamento = linhasImportadas[s.pag.idx];
+    return {
     id: `pag-${s.pag.idx}`,
     movimento: 'pagamento-pendente',
     tipo: 'Pagamento sem vínculo individual',
@@ -6927,12 +6948,14 @@ function renderSugestoesConciliacao(sugestoes, qtdPagamentos, qtdMovimentos, ent
     data: fmtDate(s.pag.data),
     conta: s.pag.conta,
     idxPagamento: s.pag.idx,
-    empresa: empresaOrigemLinha(linhasImportadas[s.pag.idx]) || '',
-    plano: s.pag.plano || '',
+    empresa: empresaOrigemLinha(linhaPagamento) || '',
+    centroCusto: centroCustoLinha(linhaPagamento) || '',
+    empresaLancamento: empresaLancamentoLinha(linhaPagamento) || '',
     tipoDoc: s.pag.tipoDoc || '',
     escopoRegra: s.pag.escopoRegra || '',
     chave: s.pag.chave || ''
-  }));
+    };
+  });
   conciliacaoItensTemp = [...itensPagamentoPendente, ...itensSaidaExtra, ...itensRecebimento, ...itensNumerario];
   conciliacaoAplicadaTemp = false;
   conciliacaoItensTemp.forEach(item => {
@@ -7334,7 +7357,7 @@ function exportarPendenciasConciliacao() {
   );
   if (!itens.length) { alert('Nenhuma pendencia para exportar nesta selecao.'); return; }
   const recebimentos = ['recebimentos', 'recebimentos-extrato'].includes(origemModalPendencias);
-  const cabecalho = ['Grupo', 'Movimento', 'Tipo', 'Empresa do banco', 'Unidade / empresa do recebimento',
+  const cabecalho = ['Grupo', 'Movimento', 'Tipo', 'Empresa do banco', 'Unidade da operacao',
     'Conta financeira / extrato', 'Origem / regra', 'Conta esperada', 'Historico', 'Data / Grupo', 'Quantidade de movimentos', 'Valor', 'ID'];
   const dados = itens.map(item => {
     const numerario = item.movimento === 'numerario-rateio';
@@ -7354,7 +7377,7 @@ function exportarPendenciasConciliacao() {
     const tipo = numerario ? `NUMERARIO ${natureza.toUpperCase()}`
       : item.rateioRecebimento ? tipoRateioOperacao(item.empresaBanco || item.empresa, item.centroCusto, true) : '';
     return [grupoAtivo, labelMovimentoConciliacao(item), tipo || naturezaRecebimento?.label || naturezaPendenciaAlvorar(item)?.label || '', rotuloUnidadeAlvorar(item.empresaBanco || item.empresa || ''),
-      rotuloUnidadeAlvorar(item.centroCusto || item.empresaLancamento || ''), rotuloContaFinanceiraAlvorar(item.conta || ''), origem, item.naturezaAlvorar?.contaEsperada || esperada, item.historico || '',
+      unidadeOperacaoPendencia(item), rotuloContaFinanceiraAlvorar(item.conta || ''), origem, item.naturezaAlvorar?.contaEsperada || esperada, item.historico || '',
       item.data || (item.qtd ? `${item.qtd} movimentos` : ''), item.qtd || '', Number(item.total || 0), item.id || ''];
   });
   const wb = XLSX.utils.book_new();
@@ -7448,6 +7471,7 @@ function abrirModalPendenciasConciliacao() {
     const ehNumerarioTributario = !!item.numerarioTributarioMatriz;
     const ehSaidaPendente = item.movimento === 'saida-pendente';
     const ehPagamentoPendente = item.movimento === 'pagamento-pendente';
+    const contaEsperadaNatureza = item.naturezaAlvorar?.contaEsperada || '';
     const naturezaConta = (item.naturezaNumerario || item.tipo || '').toString().toLowerCase();
     const contaAlvo = ehNumerarioTributario
       ? 'Numerários ativo'
@@ -7456,7 +7480,7 @@ function abrirModalPendenciasConciliacao() {
       : ehRecebimentoPendencia
         ? naturezaRecebimento?.contaEsperada || 'Conta do cliente/recebimento'
         : ehSaidaPendente
-          ? 'Conta de débito da saída'
+          ? contaEsperadaNatureza || 'Conta de débito da saída'
           : ehPagamentoPendente
             ? 'Conta do de-para do pagamento'
             : 'Conciliação com extrato';
@@ -7467,7 +7491,7 @@ function abrirModalPendenciasConciliacao() {
       : ehRecebimentoPendencia
         ? `Informe a ${naturezaRecebimento?.contaEsperada?.toLowerCase() || 'conta do cliente/recebimento'}`
         : ehSaidaPendente
-          ? 'Informe a conta de débito'
+          ? `Informe a ${String(contaEsperadaNatureza || 'conta de débito').toLowerCase()}`
           : ehPagamentoPendente
             ? 'Informe a conta do pagamento'
             : 'Digite código ou conta';
@@ -7507,7 +7531,7 @@ function abrirModalPendenciasConciliacao() {
           ? `<input type="text" readonly aria-label="Conta interna fixa da ALVORAR" value="${escapeAttr(codigoContaCorrenteItemAlvorar(item))}" placeholder="CNPJ das empresas pendente" style="width:100%">`
           : `<input type="text" class="conta-autocomplete" data-conciliacao-modal-id="${escapeAttr(item.id)}" value="${escapeAttr(valor)}" placeholder="${escapeAttr(placeholderConta)}" oninput="atualizarCodigoConciliacaoModal(this); criarAutocompleteConta(this)" style="width:100%">`;
     const empresaCol = rotuloUnidadeAlvorar(item.empresaBanco || item.empresa || '');
-    const centroCol = rotuloUnidadeAlvorar(item.centroCusto || item.empresaLancamento || '');
+    const centroCol = unidadeOperacaoPendencia(item);
     const tipoOperacaoPendencia = ehNumerarioTributario
       ? 'NUMERÁRIO ATIVO'
       : ehNumerarioPendencia
@@ -7557,7 +7581,8 @@ function abrirModalPendenciasConciliacao() {
     }
     if (item.naturezaAlvorar) {
       const categoria = item.naturezaAlvorar.categoria;
-      orientacaoItem = categoria === 'APLICACAO' ? 'Informe a conta da aplicacao correspondente. O movimento do banco permanece na data e no valor do extrato.'
+      orientacaoItem = categoria === 'RENDIMENTO_APLICACAO' ? 'INFORME A CONTA DE RENDIMENTOS DE APLICAÇÃO. O banco permanece na data e no valor do extrato.'
+        : categoria === 'APLICACAO' ? 'Informe a conta da aplicação correspondente. O movimento do banco permanece na data e no valor do extrato.'
         : categoria === 'CAIXA' ? 'Informe a contrapartida deste deposito de caixa. Nao sera criada uma segunda movimentacao de caixa sem o extrato correspondente.'
         : categoria === 'REPASSE' ? 'Confira a natureza deste repasse. Mercadorias, clientes e numerarios nao sao equivalentes.'
         : categoria === 'CARTOES' ? (ehSaidaPendente ? 'Saida de cartoes confirmada no extrato. Informe a contrapartida do ajuste; nao sera criada outra saida.'
@@ -7566,27 +7591,27 @@ function abrirModalPendenciasConciliacao() {
         : orientacaoItem;
     }
     const historicoItem = ehRecebimentoPendencia
-      ? `<div class="pendencia-orientacao">${escapeHtml(orientacaoItem)}</div>${item.naturezaAlvorar?.chave || naturezaRecebimento ? `<span style="color:var(--text2)">${escapeHtml(item.historico || '')}</span>` : `<div class="historico-regra-label">Clique nas palavras da regra:</div>${renderPalavrasRecebimentoConciliacao(item)}`}`
+      ? `<div class="pendencia-orientacao">${escapeHtml(orientacaoItem)}</div>${item.naturezaAlvorar?.chave || naturezaRecebimento ? `<div class="pendencia-historico-original"><strong>Lançamento:</strong> ${escapeHtml(item.historico || '')}</div>` : `<div class="historico-regra-label">Lançamento / regra:</div>${renderPalavrasRecebimentoConciliacao(item)}`}`
       : ehNumerarioPendencia
-        ? `<div class="pendencia-orientacao">${escapeHtml(orientacaoItem)}</div><span style="color:var(--text2)">${escapeHtml(item.historico || '')}</span>`
+        ? `<div class="pendencia-orientacao">${escapeHtml(orientacaoItem)}</div><div class="pendencia-historico-original"><strong>Lançamento:</strong> ${escapeHtml(item.historico || '')}</div>`
         : ehSaidaPendente
-          ? `<div class="pendencia-orientacao">${escapeHtml(orientacaoItem)}</div><span style="color:var(--text2)">${escapeHtml(item.historico || '')}</span>`
+          ? `<div class="pendencia-orientacao">${escapeHtml(orientacaoItem)}</div><div class="pendencia-historico-original"><strong>Lançamento:</strong> ${escapeHtml(item.historico || '')}</div>`
           : ehPagamentoPendente
-            ? `<div class="pendencia-orientacao">${escapeHtml(orientacaoItem)}</div><span style="color:var(--text2)">${escapeHtml(item.historico || '')}</span>`
-        : `<span style="color:var(--text2)">${escapeHtml(item.historico || '')}</span>`;
+            ? `<div class="pendencia-orientacao">${escapeHtml(orientacaoItem)}</div><div class="pendencia-historico-original"><strong>Lançamento:</strong> ${escapeHtml(item.historico || '')}</div>`
+        : `<div class="pendencia-historico-original"><strong>Lançamento:</strong> ${escapeHtml(item.historico || '')}</div>`;
     return `<tr>
-      <td><input type="checkbox" data-pendencia-conciliacao-id="${escapeAttr(item.id)}" ${pendenciasConciliacaoSelecionadas.has(item.id) ? 'checked' : ''} onchange="alternarPendenciaConciliacao(this.dataset.pendenciaConciliacaoId, this.checked)"></td>
-      <td><span class="badge ${item.movimento === 'recebimento' ? 'badge-blue' : ''}" style="${modoImportacaoDoGrupo() === 'alvorar' ? 'padding:4px 5px' : ''}" title="${escapeAttr(labelMovimentoConciliacao(item))}">${escapeHtml(modoImportacaoDoGrupo() === 'alvorar' && item.titularidadeAlvorar ? 'Entrada' : labelMovimentoConciliacao(item))}</span></td>
-      <td>${tipoOperacaoPendencia ? `<span class="badge ${classeTipoOperacao}" style="${modoImportacaoDoGrupo() === 'alvorar' ? 'padding:4px 5px' : ''}" title="${escapeAttr(tipoOperacaoPendencia)}">${escapeHtml(modoImportacaoDoGrupo() === 'alvorar' && tipoOperacaoPendencia === 'TRANSFERENCIA DE NUMERARIOS' ? 'Numerarios' : tipoOperacaoPendencia === 'PROPRIO' ? 'PRÓPRIO' : tipoOperacaoPendencia)}</span>` : ''}</td>
+      <td class="pendencia-check"><input type="checkbox" data-pendencia-conciliacao-id="${escapeAttr(item.id)}" ${pendenciasConciliacaoSelecionadas.has(item.id) ? 'checked' : ''} onchange="alternarPendenciaConciliacao(this.dataset.pendenciaConciliacaoId, this.checked)"></td>
+      <td class="pendencia-movimento"><span class="badge ${item.movimento === 'recebimento' ? 'badge-blue' : ''}" title="${escapeAttr(labelMovimentoConciliacao(item))}">${escapeHtml(modoImportacaoDoGrupo() === 'alvorar' && item.titularidadeAlvorar ? 'Entrada' : labelMovimentoConciliacao(item))}</span></td>
+      <td class="pendencia-tipo">${tipoOperacaoPendencia ? `<span class="badge ${classeTipoOperacao}" title="${escapeAttr(tipoOperacaoPendencia)}">${escapeHtml(modoImportacaoDoGrupo() === 'alvorar' && tipoOperacaoPendencia === 'TRANSFERENCIA DE NUMERARIOS' ? 'Numerarios' : tipoOperacaoPendencia === 'PROPRIO' ? 'PRÓPRIO' : tipoOperacaoPendencia)}</span>` : ''}</td>
  
-      <td title="${escapeAttr(empresaCol)}"><div class="cell-main">${escapeHtml(empresaCol)}</div></td>
-      <td title="${escapeAttr(centroCol)}" style="color:var(--text2)">${escapeHtml(centroCol)}</td>
-      <td title="${escapeAttr(fornecedorCol)}"><div class="cell-main">${escapeHtml(fornecedorCol)}</div></td>
-      <td title="${escapeAttr(planoCol)}"><div class="cell-main">${escapeHtml(planoCol)}</div></td>
-      <td title="${escapeAttr(item.historico || '')}" style="color:var(--text2)">${historicoItem}</td>
-      <td>${escapeHtml(item.data || (item.qtd ? `${item.qtd} movimento${item.qtd !== 1 ? 's' : ''}` : ''))}</td>
-      <td style="text-align:right;white-space:nowrap">R$ ${fmtValor(item.total)}</td>
-      <td>${campoAcao}</td>
+      <td class="pendencia-empresa-banco" title="${escapeAttr(empresaCol)}"><div class="cell-main">${escapeHtml(empresaCol)}</div></td>
+      <td class="pendencia-unidade-operacao" title="${escapeAttr(centroCol)}"><div class="cell-main">${escapeHtml(centroCol || 'Não identificada')}</div></td>
+      <td class="pendencia-origem" title="${escapeAttr(fornecedorCol)}"><div class="cell-main">${escapeHtml(fornecedorCol)}</div></td>
+      <td class="pendencia-conta-esperada" title="${escapeAttr(planoCol)}"><div class="cell-main">${escapeHtml(planoCol)}</div></td>
+      <td class="pendencia-detalhes" title="${escapeAttr(item.historico || '')}">${historicoItem}</td>
+      <td class="pendencia-data">${escapeHtml(item.data || (item.qtd ? `${item.qtd} movimento${item.qtd !== 1 ? 's' : ''}` : ''))}</td>
+      <td class="pendencia-valor">R$ ${fmtValor(item.total)}</td>
+      <td class="pendencia-acao">${campoAcao}</td>
     </tr>`;  }).join('');
   const qtdSaidasNoModal = itensModal.filter(item => item.movimento === 'saida-pendente').length;
   const qtdPagamentosNoModal = itensModal.filter(item => item.movimento === 'pagamento-pendente').length;
@@ -7615,19 +7640,19 @@ function abrirModalPendenciasConciliacao() {
     : `${itensModal.length} pendência${itensModal.length !== 1 ? 's' : ''} para resolver. Contas e vínculos já identificados são aplicados automaticamente. ${textoAjudaModal}`;
   const placeholderPesquisa = fluxoRecebimentos
     ? 'Pesquisar forma de recebimento, empresa, banco, histórico, data ou valor...'
-    : 'Pesquisar empresa, centro, fornecedor, histórico, data, valor...';
+    : 'Pesquisar empresa, unidade da operação, fornecedor, histórico, data ou valor...';
   const cabecalhosModal = fluxoRecebimentos
     ? '<th style="width:34px"></th><th>Regra</th><th>Operação</th><th>Empresa do banco</th><th>Empresa do recebimento</th><th>Natureza do recebimento</th><th>Conta esperada</th><th>Resumo</th><th>Movimentos</th><th style="text-align:right">Valor total</th><th>Código Domínio</th>'
-    : '<th style="width:34px"></th><th>Movimento</th><th>Tipo</th><th>Empresa do banco</th><th>Unidade da despesa</th><th>Origem / regra</th><th>Conta esperada</th><th>Histórico</th><th>Data / Grupo</th><th style="text-align:right">Valor</th><th>Conta / vínculo</th>';
+    : '<th></th><th>Movimento</th><th>Tipo</th><th>Empresa do banco</th><th>Unidade da operação</th><th>Lançamento / origem</th><th>Conta esperada</th><th>Orientação e histórico</th><th>Data / grupo</th><th style="text-align:right">Valor</th><th>Conta / vínculo</th>';
   const textoSalvarModal = fluxoRecebimentos ? 'Salvar regras e continuar' : 'Salvar preenchimentos';
   modal.innerHTML = `
-    <div style="background:var(--bg);border-radius:var(--radius);box-shadow:0 16px 48px rgba(0,0,0,0.25);width:min(1960px,calc(100vw - 28px));max-height:90vh;display:flex;flex-direction:column">
-      <div style="padding:18px 22px;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap">
+    <div class="pendencias-modal-card" style="background:var(--bg);border-radius:var(--radius);box-shadow:0 16px 48px rgba(0,0,0,0.25);width:min(1960px,calc(100vw - 28px));max-height:90vh;display:flex;flex-direction:column">
+      <div class="pendencias-modal-header" style="padding:18px 22px;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap">
         <div style="flex:1;min-width:min(260px,100%)">
           <h3 style="margin-bottom:2px">${tituloModal}</h3>
           <div class="conciliacao-note">${subtituloModal}</div>
         </div>
-        <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;max-width:100%">
+        <div class="pendencias-modal-header-actions" style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;max-width:100%">
           <select id="escopo-exportacao-pendencias" aria-label="Pendencias para exportar" style="max-width:180px">
             <option value="filtradas">Pendências filtradas</option>
             <option value="todas">Todas as pendências</option>
@@ -7644,7 +7669,7 @@ function abrirModalPendenciasConciliacao() {
         <button class="btn btn-sm" onclick="aplicarContaPendenciasConciliacaoSelecionadas()">Aplicar conta / prosseguir</button>
         <button class="btn btn-sm" onclick="limparSelecaoPendenciasConciliacao()">Limpar seleção</button>
         ${modoImportacaoDoGrupo() === 'alvorar' ? `<select aria-label="Filtrar por natureza" onchange="filtroNaturezaPendenciasAlvorarTemp=this.value;abrirModalPendenciasConciliacao()">
-          ${[['', 'Todas as naturezas'], ['CARTOES', 'Cartoes'], ['APLICACAO', 'Aplicacao / resgate'], ['CAIXA', 'Depositos de caixa'], ['REPASSE', 'Repasses / transferencias'], ['NUMERARIOS', 'Numerarios'], ['OUTROS_RECEBIMENTOS', 'Outros recebimentos'], ['OUTRAS_SAIDAS', 'Outras saidas']].map(([valor, label]) => `<option value="${valor}" ${filtroNaturezaPendenciasAlvorarTemp === valor ? 'selected' : ''}>${label}</option>`).join('')}
+          ${[['', 'Todas as naturezas'], ['CARTOES', 'Cartoes'], ['APLICACAO', 'Aplicacao / resgate'], ['RENDIMENTO_APLICACAO', 'Rendimentos de aplicacao'], ['CAIXA', 'Depositos de caixa'], ['REPASSE', 'Repasses / transferencias'], ['NUMERARIOS', 'Numerarios'], ['OUTROS_RECEBIMENTOS', 'Outros recebimentos'], ['OUTRAS_SAIDAS', 'Outras saidas']].map(([valor, label]) => `<option value="${valor}" ${filtroNaturezaPendenciasAlvorarTemp === valor ? 'selected' : ''}>${label}</option>`).join('')}
         </select>` : ''}
         ${!fluxoRecebimentos ? `<select aria-label="Tipo de pendencia" onchange="alterarVisaoPendenciasConciliacao(this.value)">${[['contas','Contas contábeis pendentes'],['vinculos','Vínculos com o extrato'],['todas','Todas as pendências']].map(([v,t])=>`<option value="${v}" ${(modoImportacaoDoGrupo() === 'alvorar' ? visaoPendenciasAlvorarTemp : visaoPendenciasConciliacaoTemp)===v?'selected':''}>${t}</option>`).join('')}</select>` : ''}
       </div>
@@ -7657,7 +7682,7 @@ function abrirModalPendenciasConciliacao() {
           </table>
         </div>
       </div>
-      <div style="padding:14px 22px;border-top:1px solid var(--border);display:flex;justify-content:flex-end;gap:10px;${modoImportacaoDoGrupo() === 'alvorar' ? 'flex-wrap:wrap' : ''}">
+      <div class="pendencias-modal-footer" style="padding:14px 22px;border-top:1px solid var(--border);display:flex;justify-content:flex-end;gap:10px;${modoImportacaoDoGrupo() === 'alvorar' ? 'flex-wrap:wrap' : ''}">
         <button class="btn" onclick="fecharModalPendenciasConciliacao()">Cancelar</button>
         <button class="btn" onclick="atualizarModalPendenciasConciliacao()">Atualizar pendências</button>
         <button id="btn-salvar-pendencias-conciliacao" class="btn btn-primary" onclick="salvarModalPendenciasConciliacao()">${textoSalvarModal}</button>

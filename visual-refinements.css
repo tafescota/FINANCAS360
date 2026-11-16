@@ -2971,3 +2971,187 @@ body {
 .recebimentos-movimentacoes { grid-column: span 2; }
 .recebimentos-movimentacoes small { color:var(--text2); font-size:11px; }
 @media (max-width: 760px) { .recebimentos-conferencia-numerarios, .recebimentos-otimizacao, .recebimentos-movimentacoes { grid-column: span 1; } }
+
+/* Pendências: leitura limpa, sem colunas sobrepostas, no padrão da primeira importação */
+#modal-pendencias-conciliacao .pendencias-modal-card {
+  height: min(94vh, 980px);
+  max-height: 94vh !important;
+  overflow: hidden;
+}
+
+#modal-pendencias-conciliacao .pendencias-modal-header,
+#modal-pendencias-conciliacao .pendencias-modal-footer {
+  background: var(--bg);
+  flex-shrink: 0;
+  position: relative;
+  z-index: 4;
+}
+
+#modal-pendencias-conciliacao .pendencias-modal-header h3 {
+  color: var(--navy);
+  font-size: 18px;
+}
+
+#modal-pendencias-conciliacao .pendencias-modal-header-actions .btn,
+#modal-pendencias-conciliacao .pendencias-modal-header-actions select {
+  min-height: 40px;
+}
+
+#modal-pendencias-conciliacao .pendencias-pesquisa {
+  background: #f8fafc;
+  grid-template-columns: minmax(320px, 2fr) minmax(240px, 1.25fr) repeat(3, minmax(150px, auto)) !important;
+  max-height: none !important;
+  overflow: visible !important;
+  padding: 12px 22px !important;
+}
+
+#modal-pendencias-conciliacao .pendencias-pesquisa > * {
+  min-height: 40px;
+  min-width: 0;
+  width: 100%;
+}
+
+#modal-pendencias-conciliacao .pendencias-conteudo {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow: hidden !important;
+  padding: 12px 16px 16px !important;
+}
+
+#modal-pendencias-conciliacao .table-wrap,
+#modal-pendencias-conciliacao .table-scroll {
+  height: 100%;
+  max-height: 100%;
+  max-width: 100%;
+  overflow: auto !important;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--bg);
+}
+
+#modal-pendencias-conciliacao .pendencias-conciliacao-table {
+  border-collapse: separate;
+  border-spacing: 0;
+  font-size: 12px;
+  min-width: 1954px !important;
+  table-layout: fixed !important;
+  width: 1954px !important;
+}
+
+#modal-pendencias-conciliacao .pendencias-conciliacao-table thead th {
+  background: #f1f5f9;
+  border-bottom: 1px solid #cbd5e1;
+  color: #475569;
+  font-size: 10.5px;
+  letter-spacing: .035em;
+  position: sticky;
+  text-transform: uppercase;
+  top: 0;
+  z-index: 3;
+}
+
+#modal-pendencias-conciliacao .pendencias-conciliacao-table th,
+#modal-pendencias-conciliacao .pendencias-conciliacao-table td {
+  box-sizing: border-box;
+  line-height: 1.35;
+  overflow-wrap: anywhere !important;
+  padding: 11px 10px !important;
+  vertical-align: top;
+  white-space: normal !important;
+  word-break: normal !important;
+}
+
+#modal-pendencias-conciliacao .pendencias-conciliacao-table tbody tr:hover td {
+  background: #f8fbff;
+}
+
+#modal-pendencias-conciliacao .pendencias-conciliacao-table th:nth-child(1),
+#modal-pendencias-conciliacao .pendencia-check { width: 34px !important; }
+#modal-pendencias-conciliacao .pendencias-conciliacao-table th:nth-child(2),
+#modal-pendencias-conciliacao .pendencia-movimento { width: 110px !important; }
+#modal-pendencias-conciliacao .pendencias-conciliacao-table th:nth-child(3),
+#modal-pendencias-conciliacao .pendencia-tipo { width: 150px !important; }
+#modal-pendencias-conciliacao .pendencias-conciliacao-table th:nth-child(4),
+#modal-pendencias-conciliacao .pendencia-empresa-banco { width: 150px !important; }
+#modal-pendencias-conciliacao .pendencias-conciliacao-table th:nth-child(5),
+#modal-pendencias-conciliacao .pendencia-unidade-operacao { width: 160px !important; }
+#modal-pendencias-conciliacao .pendencias-conciliacao-table th:nth-child(6),
+#modal-pendencias-conciliacao .pendencia-origem { width: 260px !important; }
+#modal-pendencias-conciliacao .pendencias-conciliacao-table th:nth-child(7),
+#modal-pendencias-conciliacao .pendencia-conta-esperada { width: 210px !important; }
+#modal-pendencias-conciliacao .pendencias-conciliacao-table th:nth-child(8),
+#modal-pendencias-conciliacao .pendencia-detalhes { width: 420px !important; }
+#modal-pendencias-conciliacao .pendencias-conciliacao-table th:nth-child(9),
+#modal-pendencias-conciliacao .pendencia-data { display: table-cell !important; width: 110px !important; }
+#modal-pendencias-conciliacao .pendencias-conciliacao-table th:nth-child(10),
+#modal-pendencias-conciliacao .pendencia-valor { width: 120px !important; }
+#modal-pendencias-conciliacao .pendencias-conciliacao-table th:nth-child(11),
+#modal-pendencias-conciliacao .pendencia-acao { width: 230px !important; }
+
+#modal-pendencias-conciliacao .pendencia-movimento .badge,
+#modal-pendencias-conciliacao .pendencia-tipo .badge {
+  display: inline-flex;
+  font-size: 11px;
+  line-height: 1.2;
+  max-width: 100%;
+  padding: 5px 8px !important;
+  white-space: normal !important;
+}
+
+#modal-pendencias-conciliacao .pendencia-unidade-operacao .cell-main {
+  color: var(--navy);
+  font-weight: 700;
+}
+
+#modal-pendencias-conciliacao .pendencia-orientacao {
+  background: #eff6ff;
+  border-left: 3px solid var(--blue);
+  border-radius: 0 6px 6px 0;
+  color: #0f5ea8;
+  font-size: 11.5px;
+  line-height: 1.35;
+  margin: 0 0 8px;
+  padding: 7px 9px;
+}
+
+#modal-pendencias-conciliacao .pendencia-historico-original,
+#modal-pendencias-conciliacao .historico-regra-label {
+  color: var(--text2);
+  font-size: 11px;
+  line-height: 1.45;
+  white-space: normal !important;
+}
+
+#modal-pendencias-conciliacao .pendencia-valor {
+  font-variant-numeric: tabular-nums;
+  font-weight: 700;
+  text-align: right;
+  white-space: nowrap !important;
+}
+
+#modal-pendencias-conciliacao .pendencia-acao input,
+#modal-pendencias-conciliacao .pendencia-acao select,
+#modal-pendencias-conciliacao .pendencia-acao .btn {
+  box-sizing: border-box;
+  font-size: 12px;
+  max-width: none;
+  min-width: 205px;
+  width: 100%;
+}
+
+@media (max-width: 1250px) {
+  #modal-pendencias-conciliacao .pendencias-pesquisa {
+    grid-template-columns: repeat(2, minmax(260px, 1fr)) !important;
+    max-height: 190px !important;
+    overflow-y: auto !important;
+  }
+}
+
+@media (max-width: 700px) {
+  #modal-pendencias-conciliacao .pendencias-pesquisa {
+    grid-template-columns: 1fr !important;
+  }
+  #modal-pendencias-conciliacao .pendencias-modal-header-actions > * {
+    flex: 1 1 150px;
+  }
+}
