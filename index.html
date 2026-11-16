@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Conciliação F360</title>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
-<script src="alvorar.js?v=20261116-16-caixa"></script>
+<script src="alvorar.js?v=20261116-17-caixa-layout"></script>
 <style>
   :root {
     --bg: #ffffff; --bg2: #f4f6f9; --bg3: #eef0f3;
@@ -215,7 +215,7 @@
   .tela { display: none; }
   .tela.ativa { display: block; }
 </style>
-<link rel="stylesheet" href="visual-refinements.css?v=20261116-15">
+<link rel="stylesheet" href="visual-refinements.css?v=20261116-17-caixa-layout">
 </head>
 <body>
 
@@ -457,20 +457,29 @@
 
   <!-- TELA RESULTADO -->
   <div class="tela" id="tela-resultado">
-    <div class="section-header">
-      <button class="btn btn-sm" onclick="voltarTela()">← Voltar</button>
-      <h2>Lançamentos gerados</h2>
+    <div class="resultado-topbar">
+      <div class="resultado-titulo">
+        <button class="btn btn-sm" onclick="voltarTela()">← Voltar</button>
+        <h2>Lançamentos gerados</h2>
+        <span id="resultado-grupo-tag" class="resultado-grupo-tag" style="display:none"></span>
+      </div>
+      <div class="resultado-actions">
+        <button class="resultado-link" onclick="abrirModalCnpjContas()">Empresa das contas</button>
+        <button id="btn-abrir-pendencias-resultado" class="resultado-link" style="display:none" onclick="abrirPendenciasResultadoAlvorar()">Abrir pendências</button>
+        <span class="resultado-actions-divider"></span>
+        <button class="btn" onclick="mostrarTela('tela-conciliacao-bancaria')">↥ Importar extrato</button>
+        <div class="resultado-export-wrap">
+          <button type="button" class="btn btn-blue" onclick="alternarMenuExportacaoResultado(event)">Exportar ▾</button>
+          <div id="menu-exportacao-resultado" class="resultado-export-menu">
+            <button id="btn-exportar-dominio-final" type="button" onclick="fecharMenuExportacaoResultado();exportarDominioFinal()"><strong>Domínio final (.zip)</strong><small>arquivo completo</small></button>
+            <button id="btn-exportar-pagamentos" type="button" onclick="fecharMenuExportacaoResultado();exportarDominioPagamentos()">Somente pagamentos (.zip)</button>
+            <button id="btn-exportar-recebimentos-alvorar" type="button" style="display:none" onclick="fecharMenuExportacaoResultado();exportarRecebimentosAlvorar()">Somente recebimentos (.zip)</button>
+            <button id="btn-zip-alvorar" type="button" style="display:none" onclick="fecharMenuExportacaoResultado();exportarDominioFinal(false,true)">ALVORAR por tipo (.zip)</button>
+          </div>
+        </div>
+      </div>
     </div>
-    <div class="resultado-actions" style="display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin-bottom:16px">
-      <button class="btn btn-primary" onclick="mostrarTela('tela-conciliacao-bancaria')">Importar extrato para conciliação bancária</button>
-      <button id="btn-exportar-dominio-final" class="btn btn-blue" onclick="exportarDominioFinal()">⬇ Exportar Domínio final (.xlsx)</button>
-      <button id="btn-zip-alvorar" class="btn" style="display:none" onclick="exportarDominioFinal(false, true)">Exportar ALVORAR por tipo (.zip)</button>
-      <button id="btn-exportar-pagamentos" class="btn" onclick="exportarDominioPagamentos()">Exportar somente pagamentos (.xlsx)</button>
-      <button id="btn-exportar-recebimentos-alvorar" class="btn" style="display:none" onclick="exportarRecebimentosAlvorar()">Exportar somente recebimentos (.zip)</button>
-      <button class="btn" onclick="abrirModalCnpjContas()">Empresa das contas</button>
-      <button id="btn-abrir-pendencias-resultado" class="btn" style="display:none" onclick="abrirPendenciasResultadoAlvorar()">Abrir pendências</button>
-      <span id="nota-exportacao-resultado" class="conciliacao-note">O ideal é exportar o arquivo final após validar a conciliação. Use pagamentos somente quando não for conciliar extrato.</span>
-    </div>
+    <span id="nota-exportacao-resultado" class="conciliacao-note">O ideal é exportar o arquivo final após validar a conciliação. Use pagamentos somente quando não for conciliar extrato.</span>
     <div id="resumo-conciliacao-resultado"></div>
     <div id="resumo-numerarios-pagamentos"></div>
     <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:12px;margin-bottom:16px">
