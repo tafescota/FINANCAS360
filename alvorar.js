@@ -72,6 +72,8 @@ const CONTAS_CORRENTES_ALVORAR = Object.freeze({
   emprestimos: Object.freeze({ ATIVO: '1768', PASSIVO: '1775' }),
   transferencias: Object.freeze({ ATIVO: '597', PASSIVO: '611' })
 });
+const CODIGO_TRANSFERENCIA_ENTRE_CONTAS_ALVORAR = '51540';
+const CODIGO_UME_ALVORAR = '51541';
 
 function codigoContaCorrenteAlvorar(empresaBanco, empresaMovimento, natureza, origem = 'pagamentos') {
   if (modoImportacaoDoGrupo() !== 'alvorar' || grupoMapaCnpjContasImportadas !== grupoAtivo) return '';
@@ -114,6 +116,8 @@ function aplicarContasCorrentesFixasAlvorarAtual(itens) {
     if(item.movimento==='saida-pendente') {
       const mov=extratoBancarioTemp[item.idxOriginal];
       if(mov?.valor<0 && acertosEntreEmpresasAlvorar().movimentos.has(mov))codigosConciliacaoTemp[item.id]='1775';
+      else if (mov?.valor < 0 && movimentoEhTransferenciaEntreContas(mov)
+        && !codigosConciliacaoTemp[item.id]) codigosConciliacaoTemp[item.id]=CODIGO_TRANSFERENCIA_ENTRE_CONTAS_ALVORAR;
     }
   });
   itens.filter(i => i.movimento === 'numerario-rateio').forEach(item => {
@@ -208,6 +212,8 @@ function codigoRecebimentoInternoAlvorar(item) {
   if (modoImportacaoDoGrupo() !== 'alvorar' || item.movimento!=='recebimento' || !(item.total>0)) return '';
   if (item.codigoInternoAlvorar) return item.codigoInternoAlvorar;
   if(!item.titularidadeAlvorar && item.movimentos?.length && item.movimentos.every(m=>m.valor>0 && acertosEntreEmpresasAlvorar().movimentos.has(m)))return '1768';
+  if (item.movimentos?.length && item.movimentos.every(m=>m.valor>0 && movimentoEhTransferenciaEntreContas(m)))
+    return CODIGO_TRANSFERENCIA_ENTRE_CONTAS_ALVORAR;
   if (item.origem==='cartoes' && normalizarTexto(item.adquirente)==='pix bancario') return '2098';
   const plano=normalizarTexto(item.plano),fornecedor=normalizarTexto(item.fornecedor);
   const texto=normalizarTexto([item.plano,item.historico].filter(Boolean).join(' '));
@@ -277,7 +283,7 @@ function codigoContrapartidaFixaCartoesAlvorar(item) {
   if (item.movimento === 'recebimento' && Number(item.total) > 0) {
     if (item.cartaoPeloExtratoAlvorar) return item.codigoCartaoExtratoAlvorar;
     if (item.origem === 'cartoes'
-      && /^ume$/.test(normalizarTexto(item.adquirente))) return '2098';
+      && /^ume$/.test(normalizarTexto(item.adquirente))) return CODIGO_UME_ALVORAR;
     if (item.titularidadeAlvorar && item.origem === 'cartoes'
       && /^mooz boleto$/.test(normalizarTexto(item.adquirente))) return '1783';
     if (item.titularidadeAlvorar && item.origem === 'cartoes'
@@ -1189,6 +1195,7 @@ function nomeContaConferenciaAlvorar(valor) {
   const conta = encontrarContaPorValor(codigo);
   if (conta?.nome) return conta.nome;
   const fixas = {
+    '51540': 'Transferência entre Contas', '51541': 'UME - Créditos à vista',
     '604': 'Conta corrente - Numerários', '618': 'Conta corrente - Numerários',
     '597': 'Conta Corrente - Transferencia (ativo)', '611': 'Conta Corrente - Transferencia (passivo)',
     '1924': 'Conta corrente - Clientes', '1931': 'Conta corrente - Clientes',

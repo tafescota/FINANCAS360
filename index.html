@@ -8414,7 +8414,10 @@ function montarLinhasTransferenciasPareadasDominio() {
     const complemento = `Transferência entre contas - ${par.saida?.conta || 'origem'} para ${par.entrada?.conta || 'destino'}`;
     const data = fmtDate(par.saida?.data || par.entrada?.data);
     if (!transferenciaExigeNumerarios(par)) {
-      linhas.push(linhaDominio(data, bancoDestino, bancoOrigem, valor, complemento, empresaOrigem, 'PROPRIO'));
+      linhas.push(linhaDominio(data, CODIGO_TRANSFERENCIA_ENTRE_CONTAS_ALVORAR, bancoOrigem,
+        valor, complemento, empresaOrigem, 'PROPRIO'));
+      linhas.push(linhaDominio(fmtDate(par.entrada?.data || par.saida?.data), bancoDestino,
+        CODIGO_TRANSFERENCIA_ENTRE_CONTAS_ALVORAR, valor, complemento, empresaDestino, 'PROPRIO'));
       return;
     }
     const itemOrigem = itensPorId.get(idNumerarioTransferencia(par, 'EMPRESA DO BANCO'));
@@ -8426,9 +8429,12 @@ function montarLinhasTransferenciasPareadasDominio() {
     linhas.push(linhaDominio(data, bancoDestino, codigoDestino, valor, complemento, empresaDestino, 'TRANSFERENCIA DE NUMERARIOS'));
   });
   transferenciasAgrupadasAlvorar().forEach(grupo => {
+    const complemento = `Transferencia propria agrupada - ${grupo.saida.conta}`;
+    linhas.push(linhaDominio(fmtDate(grupo.saida.data), CODIGO_TRANSFERENCIA_ENTRE_CONTAS_ALVORAR,
+      codigoBancoConciliacao(grupo.saida.conta), Math.abs(grupo.saida.valor), complemento, grupo.empresa, 'PROPRIO'));
     grupo.entradas.forEach(({ mov }) => linhas.push(linhaDominio(fmtDate(mov.data),
-      codigoBancoConciliacao(mov.conta), codigoBancoConciliacao(grupo.saida.conta), Math.abs(mov.valor),
-      `Transferencia propria agrupada - ${grupo.saida.conta} para ${mov.conta}`, grupo.empresa, 'PROPRIO')));
+      codigoBancoConciliacao(mov.conta), CODIGO_TRANSFERENCIA_ENTRE_CONTAS_ALVORAR, Math.abs(mov.valor),
+      `${complemento} para ${mov.conta}`, grupo.empresa, 'PROPRIO')));
   });
   return linhas;
 }
