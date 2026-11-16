@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Conciliação F360</title>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
-<script src="alvorar.js?v=20261116-11"></script>
+<script src="alvorar.js?v=20261116-14"></script>
 <style>
   :root {
     --bg: #ffffff; --bg2: #f4f6f9; --bg3: #eef0f3;
@@ -215,7 +215,7 @@
   .tela { display: none; }
   .tela.ativa { display: block; }
 </style>
-<link rel="stylesheet" href="visual-refinements.css?v=20261116-11">
+<link rel="stylesheet" href="visual-refinements.css?v=20261116-14">
 </head>
 <body>
 
@@ -1080,11 +1080,22 @@ function salvarRevisaoPagamentosParcelas() {
 
 function montarPagamentosConciliadosParcelas() {
   const porIndice = new Map(sugestoesParcelasExtratoTemp.filter(s => s.mov).map(s => [s.pag.idx, s]));
+  const caixaSemMovimento = new Map(modoImportacaoDoGrupo() === 'alvorar' && typeof tituloCaixaPelaPlanilhaAlvorar === 'function'
+    ? sugestoesParcelasExtratoTemp.filter(s => tituloCaixaPelaPlanilhaAlvorar(s)).map(s => [s.pag.idx, s]) : []);
   const linhas = montarLinhasDominioPagamentos();
   const lancamentos = lancamentosGerados.filter(l => !l.origemConciliacao);
   return linhas.flatMap((linha, idx) => {
     const sugestao = porIndice.get(lancamentos[idx]?.idx);
-    if (!sugestao) return [];
+    if (!sugestao) {
+      // ALVORAR: titulo pago pelo caixa entra pela planilha, mesmo sem movimento no extrato do caixa.
+      const caixa = caixaSemMovimento.get(lancamentos[idx]?.idx);
+      if (!caixa) return [];
+      const copiaCaixa = linha.slice();
+      copiaCaixa.tipoExtratoAlvorar = 'Caixa';
+      copiaCaixa.movimentoExportacaoAlvorar = 'Pagamentos';
+      copiaCaixa.contaPendenteTituloAlvorar = contaPendenteDeTituloAlvorar(lancamentos[idx]);
+      return [copiaCaixa];
+    }
     const copia = linha.slice();
     if (!sugestao.movs || sugestao.movs.length === 1) copia[0] = fmtDate(sugestao.mov.data);
     if (modoImportacaoDoGrupo() === 'alvorar') {
@@ -1147,12 +1158,15 @@ function resumoFechamentoParcelasExtrato() {
     r.extratoEntradas+=d.entradaExtrato/100;r.extratoSaidas+=d.saidaExtrato/100;r.dominioEntradas+=d.entradaDominio/100;r.dominioSaidas+=d.saidaDominio/100;
   });
   const detalhes=[...detalhesPorConta.values()].map(r=>({...r,diferencaEntradas:arredondarMoeda(r.dominioEntradas-r.extratoEntradas),diferencaSaidas:arredondarMoeda(r.dominioSaidas-r.extratoSaidas),diferencaSaldo:arredondarMoeda(r.dominioEntradas-r.dominioSaidas-r.extratoEntradas+r.extratoSaidas)}));
-  const diferencasDia=dias.filter(r=>r.entradaExtrato!==r.entradaDominio||r.saidaExtrato!==r.saidaDominio);
+  const alvorarCaixa=modoImportacaoDoGrupo()==='alvorar';
+  // ALVORAR: caixa nao confere pelo extrato do caixa, e sim pelas planilhas (linha propria).
+  const diferencasDia=dias.filter(r=>(r.entradaExtrato!==r.entradaDominio||r.saidaExtrato!==r.saidaDominio)&&!(alvorarCaixa&&tipoContaAlvorar(r.conta)==='Caixa'));
   const divergentes=detalhes.filter(r=>diferencasDia.some(d=>d.conta===r.conta));
+  const caixaPlanilhasAlvorar=alvorarCaixa&&typeof fechamentoCaixaPelasPlanilhasAlvorar==='function'?fechamentoCaixaPelasPlanilhasAlvorar(linhas):null;
   const pendentes=conciliacaoItensTemp.filter(i=>['recebimento','numerario-rateio','saida-pendente'].includes(i.movimento)&&!obterCodigoContaParaDominio(codigosConciliacaoTemp[i.id])).length
     + [...movimentosTransitoParcelas().values()].filter(m=>!codigoContaTransitoParcelas(m.cnpj)).length
-    + sugestoesParcelasExtratoTemp.filter(s=>!s.mov&&vinculosPagamentoConciliacaoTemp['pag-'+s.pag.idx]!==VINCULO_PAGAMENTO_SEM_EXTRATO).length;
-  return {disponivel:true,bate:!divergentes.length,prontoExportar:!divergentes.length&&!pendentes,detalhes,divergentes,diferencasDia,pendentes,
+    + sugestoesParcelasExtratoTemp.filter(s=>!s.mov&&!(typeof tituloCaixaPelaPlanilhaAlvorar==='function'&&tituloCaixaPelaPlanilhaAlvorar(s))&&vinculosPagamentoConciliacaoTemp['pag-'+s.pag.idx]!==VINCULO_PAGAMENTO_SEM_EXTRATO).length;
+  return {disponivel:true,bate:!divergentes.length,prontoExportar:!divergentes.length&&!pendentes,detalhes,divergentes,diferencasDia,pendentes,caixaPlanilhasAlvorar,
     ...(modoImportacaoDoGrupo()==='alvorar'?{contasCorrentesAlvorar:calcularConferenciaContasCorrentesAlvorar(linhas)}:{})};
 }
 
@@ -1176,12 +1190,14 @@ function validarExportacaoParcelasExtrato(linhas) {
       return false;
     }
   }
-  const semVinculo = sugestoesParcelasExtratoTemp.filter(s => !s.mov && vinculosPagamentoConciliacaoTemp[`pag-${s.pag.idx}`] !== VINCULO_PAGAMENTO_SEM_EXTRATO);
+  const semVinculo = sugestoesParcelasExtratoTemp.filter(s => !s.mov && !(typeof tituloCaixaPelaPlanilhaAlvorar === 'function' && tituloCaixaPelaPlanilhaAlvorar(s))
+    && vinculosPagamentoConciliacaoTemp[`pag-${s.pag.idx}`] !== VINCULO_PAGAMENTO_SEM_EXTRATO);
   if (semVinculo.length) { alert(`${semVinculo.length} titulo(s) sem vinculo com o extrato. Revise o movimento ou marque para nao exportar.`); alterarVisaoPendenciasConciliacao('vinculos'); return false; }
   const transitoPendente = [...movimentosTransitoParcelas().values()].some(m => !codigoContaTransitoParcelas(m.cnpj));
   if (transitoPendente) { prepararPagamentosImportados(linhasImportadas, true); return false; }
   if (linhas.some(l => !l[1] || !l[2]) && !contasPendentesTitulosExportaveisAlvorar(linhas)) { alert('Preencha as contas contabilizadas antes de exportar.'); return false; }
-  const diferencas = conferirParcelasPorContaDia(linhas);
+  // ALVORAR: caixa segue as planilhas; diferenca do caixa com o extrato e informativa e nao bloqueia.
+  const diferencas = conferirParcelasPorContaDia(linhas).filter(d => modoImportacaoDoGrupo() !== 'alvorar' || tipoContaAlvorar(d.conta) !== 'Caixa');
   if (diferencas.length) { alert(`Exportacao interrompida: ${diferencas.length} diferenca(s) por conta/dia. ${diferencas.slice(0,5).map(d => d.conta+' '+d.data).join('; ')}`); return false; }
   if (modoImportacaoDoGrupo() === 'alvorar' && !confirmarExportacaoTitulosSemContaAlvorar(linhas)) return false;
   return true;
@@ -4303,7 +4319,7 @@ function htmlFechamentoContasDominio(resumo) {
   if (!resumo?.disponivel) return '';
   const alvorar = modoImportacaoDoGrupo() === 'alvorar';
   const vinculos = alvorar ? resumoVinculosAlvorar() : null;
-  const porTipo = ['BANCO', 'CAIXA', 'APLICAÇÃO'].map(tipo => {
+  const porTipo = (alvorar && resumo.caixaPlanilhasAlvorar ? ['BANCO', 'APLICAÇÃO'] : ['BANCO', 'CAIXA', 'APLICAÇÃO']).map(tipo => {
     const itens = resumo.detalhes.filter(item => item.tipo === tipo);
     const somar = campo => arredondarMoeda(itens.reduce((s, item) => s + item[campo], 0));
     return {
@@ -4317,6 +4333,7 @@ function htmlFechamentoContasDominio(resumo) {
       diferencaSaldo: somar('diferencaSaldo')
     };
   });
+  if (alvorar && resumo.caixaPlanilhasAlvorar) porTipo.push(resumo.caixaPlanilhasAlvorar);
   const linhasTipos = porTipo.map(item => `<tr>
     <td><strong>${escapeHtml(item.tipo)}</strong></td>
     <td class="col-value">R$ ${fmtValor(item.extratoEntradas)}</td>
@@ -4347,6 +4364,7 @@ function htmlFechamentoContasDominio(resumo) {
     <span class="conciliacao-check-status ${resumo.bate ? 'ok' : 'warn'}">${resumo.bate ? 'Fechamento confere' : 'Fechamento pendente'}</span></div>
     <div class="conciliacao-note" style="margin:8px 0">${alvorar ? `${resumo.divergentes.length} conta(s) com diferenca por dia. ${Math.max(0, resumo.pendentes - vinculos.quantidade)} movimentos com conta pendente; ${vinculos.quantidade} titulo(s) sem vinculo no extrato (R$ ${fmtValor(vinculos.valor)}).` : escapeHtml(textoStatus)}</div>
     <div class="table-wrap"><table><thead><tr><th>Tipo</th><th class="col-value">Entradas extrato</th><th class="col-value">Entradas Domínio</th><th class="col-value">Saídas extrato</th><th class="col-value">Saídas Domínio</th>${alvorar ? '<th class="col-value">Dif. entradas</th><th class="col-value">Dif. saídas</th>' : ''}<th class="col-value">Dif. saldo</th></tr></thead><tbody>${linhasTipos}</tbody></table></div>
+    ${alvorar && resumo.caixaPlanilhasAlvorar ? '<div class="conciliacao-note" style="margin-top:6px">CAIXA (planilhas): as colunas de extrato mostram o esperado pelas planilhas &mdash; entradas = RECEBIDAS CX + transferências para o caixa; saídas = títulos pagos pelo caixa (CONTAS PAGAS) + depósitos/transferências do caixa. Diferenças de faltas de caixa se compensam no saldo.</div>' : ''}
     ${detalhe}
   </div>`;
 }
