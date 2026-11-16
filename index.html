@@ -467,6 +467,7 @@
       <button id="btn-zip-alvorar" class="btn" style="display:none" onclick="exportarDominioFinal(false, true)">Exportar ALVORAR por tipo (.zip)</button>
       <button id="btn-exportar-pagamentos" class="btn" onclick="exportarDominioPagamentos()">Exportar somente pagamentos (.xlsx)</button>
       <button class="btn" onclick="abrirModalCnpjContas()">Empresa das contas</button>
+      <button id="btn-abrir-pendencias-resultado" class="btn" style="display:none" onclick="abrirPendenciasResultadoAlvorar()">Abrir pendências</button>
       <span id="nota-exportacao-resultado" class="conciliacao-note">O ideal é exportar o arquivo final após validar a conciliação. Use pagamentos somente quando não for conciliar extrato.</span>
     </div>
     <div id="resumo-conciliacao-resultado"></div>
@@ -2725,6 +2726,8 @@ function selecionarModoImportacaoPagamentos(modo, layout = layoutImportacaoDoGru
     ? 'Exportar Domínio final (.zip)' : '⬇ Exportar Domínio final (.xlsx)';
   const notaExportacao = document.getElementById('nota-exportacao-resultado');
   if (notaExportacao) notaExportacao.style.display = modoImportacaoPagamentos === 'alvorar' ? 'none' : '';
+  const abrirPendenciasResultado = document.getElementById('btn-abrir-pendencias-resultado');
+  if (abrirPendenciasResultado) abrirPendenciasResultado.style.display = modoImportacaoPagamentos === 'alvorar' ? '' : 'none';
   const exportarPagamentos = document.getElementById('btn-exportar-pagamentos');
   if (exportarPagamentos) exportarPagamentos.textContent = modoImportacaoPagamentos === 'alvorar'
     ? 'Exportar somente pagamentos (.zip)' : 'Exportar somente pagamentos (.xlsx)';
@@ -4364,6 +4367,9 @@ function renderResumoConferenciaResultado() {
   const el = document.getElementById('resumo-conciliacao-resultado');
   if (!el) return;
   el.innerHTML = htmlResumoConferenciaBancaria();
+  // ALVORAR: se o fechamento ja mostra a conferencia de numerarios, esconde a copia de "Pagamentos gerados".
+  const copiaNumerarios = document.getElementById('resumo-numerarios-pagamentos');
+  if (copiaNumerarios && modoImportacaoDoGrupo() === 'alvorar' && el.querySelector('[data-conferencia-contas-correntes-alvorar]')) copiaNumerarios.innerHTML = '';
 }
 
 function renderConciliacaoBancaria() {
@@ -6751,7 +6757,7 @@ function naturezaMovimentoAlvorar(mov = {}) {
     // Ex.: Itau "REND PAGO APLIC AUT APR" = rendimento da aplicacao automatica (receita financeira, conta de resultado).
     categoria = 'RENDIMENTO_APLICACAO';
     identidade = textoMovimento;
-    descricao = limparTextoECD(mov.complemento || mov.historico);
+    descricao = [mov.historico, mov.complemento].map(limparTextoECD).filter(Boolean).join(' - ');
   } else if (/\bapli\b|aplicacao|rende facil/.test(complemento)) {
     categoria = 'APLICACAO';
     if (empresa && empresa === outraEmpresa) {
@@ -7610,7 +7616,7 @@ function abrirModalPendenciasConciliacao() {
       <td class="pendencia-unidade-operacao" title="${escapeAttr(centroCol)}"><div class="cell-main">${escapeHtml(centroCol || 'Não identificada')}</div></td>
       <td class="pendencia-origem" title="${escapeAttr(fornecedorCol)}"><div class="cell-main">${escapeHtml(fornecedorCol)}</div></td>
       <td class="pendencia-conta-esperada" title="${escapeAttr(planoCol)}"><div class="cell-main">${escapeHtml(planoCol)}</div></td>
-      <td class="pendencia-detalhes" title="${escapeAttr(item.historico || '')}">${historicoItem}</td>
+      <td class="pendencia-detalhes" title="${escapeAttr(item.historico || '')}">${historicoItem}${botaoMovimentosPendenciaAlvorar(item)}</td>
       <td class="pendencia-data">${escapeHtml(item.data || (item.qtd ? `${item.qtd} movimento${item.qtd !== 1 ? 's' : ''}` : ''))}</td>
       <td class="pendencia-valor">R$ ${fmtValor(item.total)}</td>
       <td class="pendencia-acao">${campoAcao}</td>
@@ -10746,7 +10752,10 @@ function gerarLancamentosAtual(dados, regras) {
 
   const resumoNumerariosPagamentos = document.getElementById('resumo-numerarios-pagamentos');
   const linhasNumerarios = lancamentosGerados.filter(l => l.lancamentoNumerario);
-  if (resumoNumerariosPagamentos && modoImportacaoDoGrupo() === 'alvorar') {
+  if (resumoNumerariosPagamentos && modoImportacaoDoGrupo() === 'alvorar' && extratoBancarioTemp.length) {
+    // Com extrato, a conferencia ja aparece no fechamento (arquivo final projetado); nao repetir.
+    resumoNumerariosPagamentos.innerHTML = '';
+  } else if (resumoNumerariosPagamentos && modoImportacaoDoGrupo() === 'alvorar') {
     const linhasConferencia = lancamentosGerados.map(l => [l.data,l.codDebito,l.codCredito,l.valorLiq,'',l.complemento,'',l.empresa]);
     resumoNumerariosPagamentos.innerHTML = htmlConferenciaContasCorrentesAlvorar(calcularConferenciaContasCorrentesAlvorar(linhasConferencia), 'Pagamentos gerados');
   } else if (resumoNumerariosPagamentos && linhasNumerarios.length > 0) {
