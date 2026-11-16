@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Conciliação F360</title>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
-<script src="alvorar.js"></script>
+<script src="alvorar.js?v=20261116-2"></script>
 <style>
   :root {
     --bg: #ffffff; --bg2: #f4f6f9; --bg3: #eef0f3;
@@ -215,7 +215,7 @@
   .tela { display: none; }
   .tela.ativa { display: block; }
 </style>
-<link rel="stylesheet" href="visual-refinements.css?v=20260903-botoes-numerarios-1">
+<link rel="stylesheet" href="visual-refinements.css?v=20261116-2">
 </head>
 <body>
 
@@ -2408,10 +2408,10 @@ let progressoImportacaoAtivo = false;
 
 function iniciarProgressoImportacao(etapa = 'Preparando importação...') {
   progressoImportacaoAtivo = true;
-  if (typeof abrirProgressoExportacaoAlvorar === 'function' && !progressoExportacaoAlvorar?.ativo) {
+  if (typeof abrirProgressoExportacaoAlvorar === 'function' && !(progressoExportacaoAlvorar?.ativo && progressoExportacaoAlvorar.tipo === 'exportacao')) {
     const t = normalizarTexto(etapa);
     abrirProgressoExportacaoAlvorar(/gerando|movimentos contabeis|lancamentos/.test(t) ? 'Gerando lançamentos'
-      : /extrato/.test(t) ? 'Importando extratos' : /plano de contas/.test(t) ? 'Importando plano de contas' : 'Importando arquivos');
+      : /extrato/.test(t) ? 'Importando extratos' : /plano de contas/.test(t) ? 'Importando plano de contas' : 'Importando arquivos', 'importacao');
   }
   atualizarProgressoImportacao(0, etapa, '');
 }
@@ -2420,7 +2420,7 @@ function atualizarProgressoImportacao(percentual, etapa, arquivo = '') {
   const p = Math.max(0, Math.min(100, Math.round(percentual)));
   // 16/11/2026: a importacao usa a mesma janela flutuante da exportacao (alvorar.js).
   if (typeof etapaProgressoExportacaoAlvorar === 'function') {
-    if (!progressoExportacaoAlvorar?.ativo) abrirProgressoExportacaoAlvorar('Importando arquivos');
+    if (!progressoExportacaoAlvorar?.ativo) abrirProgressoExportacaoAlvorar('Importando arquivos', 'importacao');
     etapaProgressoExportacaoAlvorar(p, etapa || 'Processando...', arquivo ? `Arquivo: ${arquivo}` : '');
     return;
   }
@@ -7644,7 +7644,7 @@ function abrirModalPendenciasConciliacao() {
       <td class="pendencia-unidade-operacao" title="${escapeAttr(centroCol)}"><div class="cell-main">${escapeHtml(centroCol || 'Não identificada')}</div></td>
       <td class="pendencia-origem" title="${escapeAttr(fornecedorCol)}"><div class="cell-main">${escapeHtml(fornecedorCol)}</div></td>
       <td class="pendencia-conta-esperada" title="${escapeAttr(planoCol)}"><div class="cell-main">${escapeHtml(planoCol)}</div></td>
-      <td class="pendencia-detalhes" title="${escapeAttr(item.historico || '')}">${historicoItem}${botaoMovimentosPendenciaAlvorar(item)}</td>
+      <td class="pendencia-detalhes" title="${escapeAttr(item.historico || '')}">${historicoItem}${typeof botaoMovimentosPendenciaAlvorar === 'function' ? botaoMovimentosPendenciaAlvorar(item) : ''}</td>
       <td class="pendencia-data">${escapeHtml(item.data || (item.qtd ? `${item.qtd} movimento${item.qtd !== 1 ? 's' : ''}` : ''))}</td>
       <td class="pendencia-valor">R$ ${fmtValor(item.total)}</td>
       <td class="pendencia-acao">${campoAcao}</td>
