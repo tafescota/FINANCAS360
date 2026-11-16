@@ -423,6 +423,42 @@ function montarAjustesCaixaLiquidosAlvorar(item, codigoRecebimento) {
   });
 }
 
+// 16/11/2026 (somente ALVORAR): no CAIXA, titulo "Liquidado" sem "(Conciliado)" no F360 e desconsiderado
+// (recebimento e pagamento). Excecao: caixa sem NENHUM lancamento conciliado no mes (ex.: CAIXA LOJA - 5312)
+// continua pela planilha inteira, com aviso na conferencia.
+function statusNaoConciliadoAlvorar(status) {
+  const s = normalizarTexto(status);
+  return !!s && s.includes('liquidado') && !s.includes('conciliado');
+}
+
+function caixasSemConciliacaoAlvorar() {
+  const comConciliado = new Set(), todas = new Set();
+  const marcar = (conta, status) => {
+    if (tipoContaAlvorar(conta) !== 'Caixa') return;
+    const k = contaNormalizadaAlvorar(conta); todas.add(k);
+    if (!statusNaoConciliadoAlvorar(status)) comConciliado.add(k);
+  };
+  recebimentosAlvorarTemp.forEach(r => { if (r.origem === 'titulos') marcar(r.conta, r.statusF360); });
+  linhasImportadas.forEach(row => marcar(row?.[COLS.CONTA], row?.[COLS.STATUS]));
+  return new Set([...todas].filter(k => !comConciliado.has(k)));
+}
+
+function desconsiderarCaixaNaoConciliadoAlvorar(conta, status, semConciliacao = caixasSemConciliacaoAlvorar()) {
+  return modoImportacaoDoGrupo() === 'alvorar' && tipoContaAlvorar(conta) === 'Caixa'
+    && statusNaoConciliadoAlvorar(status) && !semConciliacao.has(contaNormalizadaAlvorar(conta));
+}
+
+function resumoNaoConciliadosCaixaAlvorar() {
+  if (modoImportacaoDoGrupo() !== 'alvorar') return null;
+  const sem = caixasSemConciliacaoAlvorar();
+  let rq = 0, rv = 0, pq = 0, pv = 0;
+  recebimentosAlvorarTemp.forEach(r => { if (r.origem === 'titulos' && desconsiderarCaixaNaoConciliadoAlvorar(r.conta, r.statusF360, sem)) { rq++; rv += Number(r.valor) || 0; } });
+  linhasImportadas.forEach(row => { if (desconsiderarCaixaNaoConciliadoAlvorar(row?.[COLS.CONTA], row?.[COLS.STATUS], sem)) { pq++; pv += Math.abs(numeroMoeda(row[COLS.VALOR_LIQ])); } });
+  return { recebimentos: rq, valorRecebimentos: arredondarMoeda(rv), pagamentos: pq, valorPagamentos: arredondarMoeda(pv),
+    caixasSemConciliacao: [...sem].map(k => (recebimentosAlvorarTemp.find(r => contaNormalizadaAlvorar(r.conta) === k)?.conta)
+      || (linhasImportadas.find(row => contaNormalizadaAlvorar(row?.[COLS.CONTA]) === k)?.[COLS.CONTA]) || k) };
+}
+
 // 16/11/2026 (somente ALVORAR): titulo pago pelo CAIXA segue a planilha de pagamentos e e lancado
 // mesmo sem movimento no extrato do caixa (o extrato do caixa serve so de confronto).
 function tituloCaixaPelaPlanilhaAlvorar(s) {
@@ -447,11 +483,12 @@ function fechamentoCaixaPelasPlanilhasAlvorar(linhas = []) {
   const contasRecebimentos = new Set(recebimentosAlvorarTemp.filter(r => tipoContaAlvorar(r.conta) === 'Caixa').map(r => chave(r.conta)));
   const faltasLiquidas = apurarFaltasCaixaLiquidasAlvorar();
   const faltasSemExtrato = new Set(faltasSemExtratoCaixaAlvorar().map(f => f.idx));
-  recebimentosAlvorarTemp.forEach(r => { if (tipoContaAlvorar(r.conta) === 'Caixa') planilhaEntradas += Math.round((Number(r.valor) || 0) * 100); });
+  const semConciliacao = caixasSemConciliacaoAlvorar();
+  recebimentosAlvorarTemp.forEach(r => { if (tipoContaAlvorar(r.conta) === 'Caixa' && !desconsiderarCaixaNaoConciliadoAlvorar(r.conta, r.statusF360, semConciliacao)) planilhaEntradas += Math.round((Number(r.valor) || 0) * 100); });
   faltasLiquidas.grupos.forEach(grupo => { planilhaEntradas -= grupo.faltaCentavos; });
   linhasImportadas.forEach((row, idx) => {
     if (tipoContaAlvorar(row?.[COLS.CONTA]) === 'Caixa' && normalizarTexto(row[COLS.TIPO]) === 'conta a pagar'
-      && numeroMoeda(row[COLS.VALOR_LIQ]) > 0
+      && numeroMoeda(row[COLS.VALOR_LIQ]) > 0 && !desconsiderarCaixaNaoConciliadoAlvorar(row[COLS.CONTA], row[COLS.STATUS], semConciliacao)
       && !faltasLiquidas.indices.has(idx) && !faltasSemExtrato.has(idx)) planilhaSaidas += centavos(numeroMoeda(row[COLS.VALOR_LIQ]));
   });
   // Se a conta nao veio em RECEBIDAS CX, o proprio extrato do caixa e a unica base para as entradas.
@@ -677,6 +714,7 @@ async function lerMovimentosAlvorarWorkbook(wb, arquivo) {
       historico: cartoes ? [adquirente, bandeira, modalidade, tipoLancamento].filter(Boolean).join(' - ')
         : [fornecedor, plano, r[col('historico')]].filter(Boolean).join(' - '),
       origem: cartoes ? 'cartoes' : 'titulos', arquivoOrigem: arquivo, linhaOrigem: i + 1,
+      statusF360: cartoes ? '' : limparTextoECD(r[col('status')] || ''),
       chaveFonte: JSON.stringify(r) });
   }
   return { pagamentos, recebimentos: dados, foraLista, cartoes };
@@ -910,7 +948,9 @@ function conciliarRecebimentosCompletosAlvorar(entradas) {
   // (acumulada por dia, unidade e tipo), com ou sem extrato do caixa. As entradas de titulos do extrato
   // do caixa nao sao lancadas de novo: servem so de confronto. Depositos/transferencias do caixa seguem o extrato.
   const ehCaixa = r => tipoContaAlvorar(r.conta) === 'Caixa';
+  const semConciliacaoCaixa = caixasSemConciliacaoAlvorar();
   const linhasCaixa = recebimentosAlvorarTemp.filter(r => ehCaixa(r) && !linhasAceitas.has(r) && !titulosAceitos.has(r)
+    && !desconsiderarCaixaNaoConciliadoAlvorar(r.conta, r.statusF360, semConciliacaoCaixa)
     && /^\d{2}\/\d{2}\/\d{4}$/.test(String(r.dataKey)));
   const contasCaixaPlanilha = new Set(recebimentosAlvorarTemp.filter(ehCaixa).map(r => contaNormalizadaAlvorar(r.conta)));
   resultado.divergencias = resultado.divergencias.filter(d => !(ehCaixa(d) && contasCaixaPlanilha.has(contaNormalizadaAlvorar(d.conta))));
