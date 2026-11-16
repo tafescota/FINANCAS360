@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Conciliação F360</title>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
-<script src="alvorar.js?v=20261116-21-transf"></script>
+<script src="alvorar.js?v=20261116-22-naoconc"></script>
 <style>
   :root {
     --bg: #ffffff; --bg2: #f4f6f9; --bg3: #eef0f3;
@@ -1090,7 +1090,10 @@ function salvarRevisaoPagamentosParcelas() {
 function montarPagamentosConciliadosParcelas() {
   const porIndice = new Map(sugestoesParcelasExtratoTemp.filter(s => s.mov).map(s => [s.pag.idx, s]));
   const caixaSemMovimento = new Map(modoImportacaoDoGrupo() === 'alvorar' && typeof tituloCaixaPelaPlanilhaAlvorar === 'function'
-    ? sugestoesParcelasExtratoTemp.filter(s => tituloCaixaPelaPlanilhaAlvorar(s)).map(s => [s.pag.idx, s]) : []);
+    ? sugestoesParcelasExtratoTemp.filter(s => tituloCaixaPelaPlanilhaAlvorar(s)
+      && !(typeof desconsiderarCaixaNaoConciliadoAlvorar === 'function'
+        && desconsiderarCaixaNaoConciliadoAlvorar(linhasImportadas[s.pag.idx]?.[COLS.CONTA], linhasImportadas[s.pag.idx]?.[COLS.STATUS])))
+      .map(s => [s.pag.idx, s]) : []);
   const linhas = montarLinhasDominioPagamentos();
   const lancamentos = lancamentosGerados.filter(l => !l.origemConciliacao);
   return linhas.flatMap((linha, idx) => {
@@ -4379,6 +4382,9 @@ function htmlFechamentoContasDominio(resumo) {
     <div class="table-wrap"><table><thead><tr><th>Tipo</th><th class="col-value">Entradas extrato</th><th class="col-value">Entradas Domínio</th><th class="col-value">Saídas extrato</th><th class="col-value">Saídas Domínio</th>${alvorar ? '<th class="col-value">Dif. entradas</th><th class="col-value">Dif. saídas</th>' : ''}<th class="col-value">Dif. saldo</th></tr></thead><tbody>${linhasTipos}</tbody></table></div>
     ${alvorar && resumo.caixaPlanilhasAlvorar?.baixasPeloBanco?.qtd ? `<div class="conciliacao-note" style="margin-top:6px">Baixa automatica pelo banco: ${resumo.caixaPlanilhasAlvorar.baixasPeloBanco.qtd} deposito(s) de caixas sem extrato de caixa, R$ ${fmtValor(resumo.caixaPlanilhasAlvorar.baixasPeloBanco.valor)} (D 51531 / C caixa na data do deposito).</div>` : ''}
     ${alvorar && resumo.caixaPlanilhasAlvorar?.baixasPorSaldo51531?.qtd ? `<div class="conciliacao-note" style="margin-top:6px"><strong>Baixa de caixa pelo saldo da 51531:</strong> ${resumo.caixaPlanilhasAlvorar.baixasPorSaldo51531.qtd} caixa(s), R$ ${fmtValor(resumo.caixaPlanilhasAlvorar.baixasPorSaldo51531.valor)}, no ultimo dia do mes. ${resumo.caixaPlanilhasAlvorar.baixasPorSaldo51531.itens.map(escapeHtml).join('; ')}</div>` : ''}
+    ${(() => { const nc = alvorar && typeof resumoNaoConciliadosCaixaAlvorar === 'function' ? resumoNaoConciliadosCaixaAlvorar() : null;
+      if (!nc || (!nc.recebimentos && !nc.pagamentos && !nc.caixasSemConciliacao.length)) return '';
+      return `<div class="conciliacao-note" style="margin-top:6px"><strong>Caixa - nao conciliados no F360 desconsiderados:</strong> ${nc.recebimentos} recebimento(s) R$ ${fmtValor(nc.valorRecebimentos)} e ${nc.pagamentos} pagamento(s) R$ ${fmtValor(nc.valorPagamentos)}.${nc.caixasSemConciliacao.length ? ` <strong>Caixas sem nenhuma conciliacao no mes (seguem a planilha inteira):</strong> ${nc.caixasSemConciliacao.map(c => escapeHtml(String(c))).join(', ')}.` : ''}</div>`; })()}
     ${alvorar && resumo.caixaPlanilhasAlvorar?.depositosSemCaixa?.qtd ? `<div class="alert alert-warn" style="margin-top:6px;display:block"><strong>Depositos de caixa sem baixa na caixa:</strong> ${resumo.caixaPlanilhasAlvorar.depositosSemCaixa.qtd} / R$ ${fmtValor(resumo.caixaPlanilhasAlvorar.depositosSemCaixa.valor)}. A 51531 fica com saldo ate a baixa ser lancada.<br>${resumo.caixaPlanilhasAlvorar.depositosSemCaixa.itens.map(escapeHtml).join('<br>')}</div>` : ''}
     ${alvorar && resumo.caixaPlanilhasAlvorar ? '<div class="conciliacao-note" style="margin-top:6px">CAIXA (planilhas): as colunas de extrato mostram o esperado pelas planilhas. Entradas = RECEBIDAS CX líquidas das faltas já descontadas + caixas que só vieram no extrato + transferências para o caixa. Saídas = títulos pagos pelo caixa, sem ajustes já convertidos + saídas avulsas e depósitos/transferências do caixa.</div>' : ''}
     ${detalhe}
