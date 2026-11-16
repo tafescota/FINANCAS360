@@ -6746,8 +6746,9 @@ function naturezaMovimentoAlvorar(mov = {}) {
       identidade = JSON.stringify([complemento, modalidade]);
       descricao = `${limparTextoECD(mov.complemento)} - ${modalidade}`;
     }
-  } else if (/(?:rendimento|rendimentos|rentabilidade|remuneracao)/.test(textoMovimento)
-    && /(?:\bapli\b|aplicacao|rende facil|investimento|\bcdb\b|\brdb\b|fundo)/.test(textoMovimento)) {
+  } else if (/(?:rendimento|rendimentos|rentabilidade|remuneracao|\brend\b|\brend pago\b)/.test(textoMovimento)
+    && /(?:\bapli\b|\baplic\b|aplicacao|aplic aut|rende facil|investimento|\bcdb\b|\brdb\b|fundo)/.test(textoMovimento)) {
+    // Ex.: Itau "REND PAGO APLIC AUT APR" = rendimento da aplicacao automatica (receita financeira, conta de resultado).
     categoria = 'RENDIMENTO_APLICACAO';
     identidade = textoMovimento;
     descricao = limparTextoECD(mov.complemento || mov.historico);
@@ -6768,7 +6769,7 @@ function naturezaMovimentoAlvorar(mov = {}) {
   }
   const labels = { CARTOES: 'Cartoes', APLICACAO: 'Aplicacao / resgate', RENDIMENTO_APLICACAO: 'Rendimento de aplicacao', CAIXA: 'Deposito de caixa',
     REPASSE: 'Repasse / transferencia a conferir', OUTROS_RECEBIMENTOS: 'Outros recebimentos', OUTRAS_SAIDAS: 'Outras saidas' };
-  const contaEsperada = categoria === 'RENDIMENTO_APLICACAO' ? 'Conta de rendimentos de aplicacao'
+  const contaEsperada = categoria === 'RENDIMENTO_APLICACAO' ? 'Receita de rendimentos de aplicação (resultado)'
     : categoria === 'APLICACAO' ? 'Conta da aplicacao correspondente'
     : categoria === 'CAIXA' ? 'Contrapartida do deposito de caixa'
     : categoria === 'CARTOES' ? (entrada ? 'Conta de recebiveis da operadora / modalidade' : 'Contrapartida do ajuste de cartoes')
@@ -7581,7 +7582,8 @@ function abrirModalPendenciasConciliacao() {
     }
     if (item.naturezaAlvorar) {
       const categoria = item.naturezaAlvorar.categoria;
-      orientacaoItem = categoria === 'RENDIMENTO_APLICACAO' ? 'INFORME A CONTA DE RENDIMENTOS DE APLICAÇÃO. O banco permanece na data e no valor do extrato.'
+      orientacaoItem = categoria === 'RENDIMENTO_APLICACAO' ? 'Rendimento de aplicação: informe a conta de RECEITA de rendimentos de aplicação financeira (resultado). Não é cliente nem a conta da aplicação. O banco permanece na data e no valor do extrato.'
+        : categoria === 'OUTROS_RECEBIMENTOS' && !item.titularidadeAlvorar ? 'Entrada sem natureza identificada. Informe a contrapartida conforme o que é a entrada (cliente, receita, reembolso, empréstimo...). O banco vem do extrato.'
         : categoria === 'APLICACAO' ? 'Informe a conta da aplicação correspondente. O movimento do banco permanece na data e no valor do extrato.'
         : categoria === 'CAIXA' ? 'Informe a contrapartida deste deposito de caixa. Nao sera criada uma segunda movimentacao de caixa sem o extrato correspondente.'
         : categoria === 'REPASSE' ? 'Confira a natureza deste repasse. Mercadorias, clientes e numerarios nao sao equivalentes.'
@@ -7591,7 +7593,7 @@ function abrirModalPendenciasConciliacao() {
         : orientacaoItem;
     }
     const historicoItem = ehRecebimentoPendencia
-      ? `<div class="pendencia-orientacao">${escapeHtml(orientacaoItem)}</div>${item.naturezaAlvorar?.chave || naturezaRecebimento ? `<div class="pendencia-historico-original"><strong>Lançamento:</strong> ${escapeHtml(item.historico || '')}</div>` : `<div class="historico-regra-label">Lançamento / regra:</div>${renderPalavrasRecebimentoConciliacao(item)}`}`
+      ? `<div class="pendencia-orientacao">${escapeHtml(orientacaoItem)}</div>${item.naturezaAlvorar?.chave || naturezaRecebimento ? `<div class="pendencia-historico-original"><strong>Lançamento:</strong> ${escapeHtml(item.historico || '')}</div>` : `<div class="historico-regra-label"><strong>Lançamento:</strong> clique nas palavras que identificam a regra</div>${renderPalavrasRecebimentoConciliacao(item)}`}`
       : ehNumerarioPendencia
         ? `<div class="pendencia-orientacao">${escapeHtml(orientacaoItem)}</div><div class="pendencia-historico-original"><strong>Lançamento:</strong> ${escapeHtml(item.historico || '')}</div>`
         : ehSaidaPendente
@@ -8464,7 +8466,8 @@ function montarLinhasTransferenciasPareadasDominio() {
   return linhas;
 }
 
-function montarLinhasDominioConciliacao({ validarPendencias = true } = {}) {
+function montarLinhasDominioConciliacao({ validarPendencias = true, permitirContasEmBrancoAlvorar = false } = {}) {
+  let exportarContasEmBrancoAlvorar = false;
   coletarCodigosConciliacao();
   const paresTransferencias = paresTransferenciasExtrato(extratoBancarioTemp);
   const temTransferenciasAgrupadas = transferenciasAgrupadasAlvorar().length > 0;
@@ -8487,7 +8490,12 @@ function montarLinhasDominioConciliacao({ validarPendencias = true } = {}) {
     if (item.movimento === 'saida-pendente' && saidasExtratoRevisadasConciliacaoTemp[item.id]) return false;
     return !obterCodigoContaParaDominio(codigosConciliacaoTemp[item.id]);
   });
-  if (pendentes.length > 0 && validarPendencias) {
+  if (pendentes.length > 0 && validarPendencias && permitirContasEmBrancoAlvorar && modoImportacaoDoGrupo() === 'alvorar') {
+    // ALVORAR: permite exportar com a contrapartida em branco; as linhas vao para a aba "Contas a preencher".
+    const totalPendente = arredondarMoeda(pendentes.reduce((s, item) => s + Math.abs(Number(item.total || 0)), 0));
+    exportarContasEmBrancoAlvorar = confirm(`${pendentes.length} pendencia(s) do extrato ainda sem conta contabil (R$ ${fmtValor(totalPendente)}).\n\nOK = exportar com essas contas EM BRANCO (o banco, a data e o valor saem normalmente; a lista fica na aba "Contas a preencher" da conferencia).\nCancelar = abrir as pendencias para preencher agora.`);
+  }
+  if (pendentes.length > 0 && validarPendencias && !exportarContasEmBrancoAlvorar) {
     if (origemModalPendencias === 'recebimentos') {
       const clientesPendentes = pendentes.filter(item => item.movimento === 'recebimento');
       if (clientesPendentes.length > 0) prepararTelaNovasRegrasRecebimentos();
@@ -8544,7 +8552,7 @@ function montarLinhasDominioConciliacao({ validarPendencias = true } = {}) {
       // A conta pendente bloqueia a exportacao, mas nao pode criar uma diferenca
       // financeira ficticia na conferencia. Na projecao, preserve somente o lado
       // da conta bancaria; a contrapartida continua vazia e pendente para o usuario.
-      if (modoImportacaoDoGrupo() === 'alvorar' && !validarPendencias
+      if (modoImportacaoDoGrupo() === 'alvorar' && (!validarPendencias || exportarContasEmBrancoAlvorar)
         && !saidasExtratoRevisadasConciliacaoTemp[item.id]) {
         const linhaPendente = linhaDominio(
           fmtDate(mov.data || item.data),
@@ -8555,7 +8563,8 @@ function montarLinhasDominioConciliacao({ validarPendencias = true } = {}) {
           empresaBancoConciliacao(item, mov),
           ''
         );
-        linhaPendente.somenteConferenciaPendencia = true;
+        if (exportarContasEmBrancoAlvorar) linhaPendente.movimentoExportacaoAlvorar = 'Pagamentos';
+        else linhaPendente.somenteConferenciaPendencia = true;
         linhas.push(linhaPendente);
       }
       return;
@@ -8573,6 +8582,8 @@ function montarLinhasDominioConciliacao({ validarPendencias = true } = {}) {
     ));
     if (modoImportacaoDoGrupo() === 'alvorar') linhas.at(-1).movimentoExportacaoAlvorar = movimentoEhTransferenciaEntreContas(mov) ? 'Transferencias' : 'Pagamentos';
   });
+  // Linhas com conta em branco autorizadas: liberam a validacao e entram na aba "Contas a preencher".
+  if (exportarContasEmBrancoAlvorar) linhas.filter(l => !l[1] || !l[2]).forEach(l => { l.contaPendenteTituloAlvorar = true; });
   return linhas;
 }
 function exportarConciliacaoBancaria(ignorarContasBancarias = false) {
