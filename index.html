@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Conciliação F360</title>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
-<script src="alvorar.js?v=20261116-6"></script>
+<script src="alvorar.js?v=20261116-10"></script>
 <style>
   :root {
     --bg: #ffffff; --bg2: #f4f6f9; --bg3: #eef0f3;
@@ -215,7 +215,7 @@
   .tela { display: none; }
   .tela.ativa { display: block; }
 </style>
-<link rel="stylesheet" href="visual-refinements.css?v=20261116-6">
+<link rel="stylesheet" href="visual-refinements.css?v=20261116-10">
 </head>
 <body>
 
@@ -466,6 +466,7 @@
       <button id="btn-exportar-dominio-final" class="btn btn-blue" onclick="exportarDominioFinal()">⬇ Exportar Domínio final (.xlsx)</button>
       <button id="btn-zip-alvorar" class="btn" style="display:none" onclick="exportarDominioFinal(false, true)">Exportar ALVORAR por tipo (.zip)</button>
       <button id="btn-exportar-pagamentos" class="btn" onclick="exportarDominioPagamentos()">Exportar somente pagamentos (.xlsx)</button>
+      <button id="btn-exportar-recebimentos-alvorar" class="btn" style="display:none" onclick="exportarRecebimentosAlvorar()">Exportar somente recebimentos (.zip)</button>
       <button class="btn" onclick="abrirModalCnpjContas()">Empresa das contas</button>
       <button id="btn-abrir-pendencias-resultado" class="btn" style="display:none" onclick="abrirPendenciasResultadoAlvorar()">Abrir pendências</button>
       <span id="nota-exportacao-resultado" class="conciliacao-note">O ideal é exportar o arquivo final após validar a conciliação. Use pagamentos somente quando não for conciliar extrato.</span>
@@ -1116,7 +1117,24 @@ function conferirParcelasPorContaDia(linhas, incluirConferidas = false) {
     const filtradas = candidatas.length > 1 ? candidatas.filter(conta => empresasContas.get(conta) === normalizarTexto(l[7])) : candidatas;
     if (filtradas.length === 1) somar(filtradas[0], l[0], col === 1 ? 'entradaDominio' : 'saidaDominio', l[3]);
   }));
-  return [...totais.values()].filter(r => incluirConferidas || r.entradaExtrato !== r.entradaDominio || r.saidaExtrato !== r.saidaDominio);
+  let resultadoConferencia = [...totais.values()];
+  if (modoImportacaoDoGrupo() === 'alvorar') {
+    // 16/11/2026 (somente ALVORAR): entradas (recebimentos) conferem pelo total do mes por conta;
+    // saidas continuam conferidas por dia.
+    const meses = new Map();
+    resultadoConferencia = resultadoConferencia.map(r => {
+      const mes = /^\d{2}\/\d{2}\/\d{4}$/.test(r.data) ? r.data.slice(3) : r.data;
+      const chave = JSON.stringify([normalizarTexto(r.conta), mes]);
+      if (!meses.has(chave)) meses.set(chave, { conta: r.conta, data: 'Mes ' + mes, entradaExtrato: 0, saidaExtrato: 0,
+        entradaDominio: 0, saidaDominio: 0, conferenciaMensalAlvorar: true });
+      const m = meses.get(chave);
+      m.entradaExtrato += r.entradaExtrato;
+      m.entradaDominio += r.entradaDominio;
+      return { ...r, entradaExtrato: 0, entradaDominio: 0 };
+    }).filter(r => r.saidaExtrato || r.saidaDominio);
+    resultadoConferencia.push(...[...meses.values()].filter(m => m.entradaExtrato || m.entradaDominio));
+  }
+  return resultadoConferencia.filter(r => incluirConferidas || r.entradaExtrato !== r.entradaDominio || r.saidaExtrato !== r.saidaDominio);
 }
 
 function resumoFechamentoParcelasExtrato() {
@@ -1150,7 +1168,7 @@ function validarExportacaoParcelasExtrato(linhas) {
       alert('Confira as pontas 597 e 611 por par filial/matriz antes de exportar.');
       return false;
     }
-    const contasSemEmpresa = [...new Set(extratoBancarioTemp.map(m => m.conta))].filter(conta => !codigoEmpresaAlvorar(conta));
+    const contasSemEmpresa = [...new Set(extratoBancarioTemp.map(m => m.conta))].filter(conta => !codigoEmpresaContaAlvorar(conta));
     const linhasSemEmpresa = linhas.some(l => !codigoEmpresaAlvorar(l[7]));
     const titulosSemEmpresa = sugestoesParcelasExtratoTemp.some(s => s.mov && !codigoEmpresaAlvorar(linhasImportadas[s.pag.idx]?.[COLS.EMPRESA]));
     if (contasSemEmpresa.length || linhasSemEmpresa || titulosSemEmpresa) {
@@ -2762,6 +2780,8 @@ function selecionarModoImportacaoPagamentos(modo, layout = layoutImportacaoDoGru
   const exportarPagamentos = document.getElementById('btn-exportar-pagamentos');
   if (exportarPagamentos) exportarPagamentos.textContent = modoImportacaoPagamentos === 'alvorar'
     ? 'Exportar somente pagamentos (.zip)' : 'Exportar somente pagamentos (.xlsx)';
+  const exportarRecebimentos = document.getElementById('btn-exportar-recebimentos-alvorar');
+  if (exportarRecebimentos) exportarRecebimentos.style.display = modoImportacaoPagamentos === 'alvorar' ? '' : 'none';
   const tituloExtratos = document.getElementById('titulo-importar-extratos');
   if (tituloExtratos) tituloExtratos.textContent = modoImportacaoPagamentos === 'alvorar' ? 'Extratos de banco, caixa e aplicacao' : 'Importar extrato bancário';
   renderResumoImportacaoAlvorar();
@@ -8582,6 +8602,9 @@ function montarLinhasDominioConciliacao({ validarPendencias = true, permitirCont
       if (modoImportacaoDoGrupo() === 'alvorar') linhas.at(-1).movimentoExportacaoAlvorar = movimentoEhTransferenciaEntreContas(mov) || movimentoResgateXpAlvorar(mov) ? 'Transferencias' : 'Recebimentos';
     });
   });
+  if (modoImportacaoDoGrupo() === 'alvorar' && typeof montarAjustesMensaisCartoesAlvorar === 'function') {
+    linhas.push(...montarAjustesMensaisCartoesAlvorar());
+  }
   itensSaidasExtras.forEach(item => {
     const mov = extratoBancarioTemp[item.idxOriginal] || item;
     const codigoDebito = movimentoEhAjusteFechamentoCaixa(mov)
