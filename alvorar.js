@@ -448,6 +448,7 @@ function fechamentoCaixaPelasPlanilhasAlvorar(linhas = []) {
   faltasLiquidas.grupos.forEach(grupo => { planilhaEntradas -= grupo.faltaCentavos; });
   linhasImportadas.forEach((row, idx) => {
     if (tipoContaAlvorar(row?.[COLS.CONTA]) === 'Caixa' && normalizarTexto(row[COLS.TIPO]) === 'conta a pagar'
+      && numeroMoeda(row[COLS.VALOR_LIQ]) > 0
       && !faltasLiquidas.indices.has(idx) && !faltasSemExtrato.has(idx)) planilhaSaidas += centavos(numeroMoeda(row[COLS.VALOR_LIQ]));
   });
   // Se a conta nao veio em RECEBIDAS CX, o proprio extrato do caixa e a unica base para as entradas.
