@@ -141,6 +141,9 @@ function aplicarContasCorrentesFixasAlvorarAtual(itens) {
     if (codigo) codigosConciliacaoTemp[item.id] = codigo;
     if (item.movimento === 'recebimento' && item.movimentos?.length
       && item.movimentos.every(movimentoResgateXpAlvorar)) codigosConciliacaoTemp[item.id] = '4130';
+    // 16/11/2026: rendimento de aplicacao identificado no extrato vai para a receita de rendimentos (211).
+    if (item.movimento === 'recebimento' && item.naturezaAlvorar?.categoria === 'RENDIMENTO_APLICACAO'
+      && !obterCodigoContaParaDominio(codigosConciliacaoTemp[item.id])) codigosConciliacaoTemp[item.id] = '211';
     if (item.movimento === 'saida-pendente' && !codigosConciliacaoTemp[item.id]) {
       const mov = extratoBancarioTemp[item.idxOriginal];
       if (mov && mov.valor < 0 && tipoContaAlvorar(mov.conta) === 'Caixa'
@@ -929,6 +932,20 @@ function conciliarRecebimentosCompletosAlvorar(entradas) {
       resultado.usados.add(m);
     });
   resultado.caixaPelaPlanilha.push(...resumoCaixa.values());
+  // 16/11/2026 (somente ALVORAR): caixa SEM planilha RECEBIDAS CX. As entradas de titulos do extrato do caixa
+  // vao para Clientes (2098), acumuladas por dia, em vez de virar uma pendencia por historico.
+  const entradasCaixaSemPlanilha = entradas.filter(m => m.valor > 0 && ehCaixa(m)
+    && normalizarTexto(m.tipoConciliacao) === 'parcelas de titulos'
+    && !contasCaixaPlanilha.has(contaNormalizadaAlvorar(m.conta)) && !resultado.usados.has(m)
+    && codigoEmpresaContaAlvorar(m.conta));
+  entradasCaixaSemPlanilha.forEach(m => {
+    const codigo = codigoEmpresaContaAlvorar(m.conta);
+    aceitar([{ data: m.data, dataKey: dataKey(m.data), conta: m.conta, empresaBanco: codigo, centroCusto: codigo, valor: m.valor,
+      origem: 'titulos', fornecedor: 'VENDAS DINHEIRO', plano: 'Vendas de Mercadorias',
+      tipo: 'Recebimento no caixa (sem planilha RECEBIDAS CX)', historico: 'Recebimento no caixa sem planilha',
+      caixaSemPlanilhaAlvorar: true }], [m]);
+  });
+  resultado.caixaSemPlanilha = entradasCaixaSemPlanilha.length;
   resultado.itens = consolidarRecebimentosAlvorarPorDia(resultado.itens);
   cacheRecebimentosAlvorar = { extrato: extratoBancarioTemp, recebimentos: recebimentosAlvorarTemp, pagamentos: linhasImportadas, qtd: entradas.length, resultado };
   return resultado;
