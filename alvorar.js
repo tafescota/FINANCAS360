@@ -983,7 +983,7 @@ function htmlConferenciaContasCorrentesAlvorar(resumo, escopo = 'Arquivo final p
   const quadroPares = pares.length ? `<details class="conciliacao-diff-details" style="margin-top:10px" data-conferencia-pares-caixa-alvorar><summary>Transferencias de caixa por par filial/matriz (597 x 611)</summary><div class="table-wrap"><table style="min-width:800px"><thead><tr><th>Filial de origem</th><th>Matriz destinataria</th><th>Saidas</th><th>D 597</th><th>C 611</th><th>Diferenca</th><th>Status</th></tr></thead><tbody>${pares.map(p=>`<tr><td>${escapeHtml(rotuloUnidadeAlvorar(p.origem || 'Pendente'))}</td><td>${escapeHtml(rotuloUnidadeAlvorar(p.destino || 'Pendente'))}</td><td>${p.saidas}</td><td class="col-value">${moeda(p.valores[0])}</td><td class="col-value">${moeda(p.valores[3])}</td><td class="col-value">${moeda(p.diferencaDebitos)}</td><td>${p.bate?'Conferido':'Revisar'}</td></tr>`).join('')}</tbody></table></div></details>` : '';
   return `<section class="conciliacao-check-alert" style="margin-top:14px" data-conferencia-contas-correntes-alvorar>
     <div class="conciliacao-check-head"><div><strong>Conferencia de numerarios, emprestimos e transferencias</strong><span>${escapeHtml(escopo)}</span></div></div>
-    <div class="table-wrap"><table style="min-width:1050px"><thead><tr><th>Natureza</th><th>Ativo / Passivo</th><th>D ativo</th><th>C passivo</th><th>Diferenca</th><th>C ativo</th><th>D passivo</th><th>Diferenca</th><th>Status</th></tr></thead><tbody>${linhas}</tbody></table></div>
+    <div class="table-wrap"><table style="min-width:1050px"><thead><tr><th>Natureza</th><th>Ativo / Passivo</th><th class="col-value">D ativo</th><th class="col-value">C passivo</th><th class="col-value">Diferenca</th><th class="col-value">C ativo</th><th class="col-value">D passivo</th><th class="col-value">Diferenca</th><th>Status</th></tr></thead><tbody>${linhas}</tbody></table></div>
     ${detalhes ? `<details class="conciliacao-diff-details" style="margin-top:10px"><summary>Saldos do movimento por empresa</summary><div class="table-wrap"><table><thead><tr><th>Natureza</th><th>Empresa / filial</th><th>Ativo / Passivo</th><th>Saldo devedor ativo</th><th>Saldo credor passivo</th></tr></thead><tbody>${detalhes}</tbody></table></div></details>` : ''}
     ${quadroPares}
   </section>`;
@@ -1407,4 +1407,105 @@ async function exportarZipAlvorar(linhas, { somentePagamentos = false, separarMo
     a.click();setTimeout(()=>URL.revokeObjectURL(url),1000);
     concluirProgressoExportacaoAlvorar(a.download);
   } catch (err) { erroProgressoExportacaoAlvorar('Nao foi possivel exportar ALVORAR: '+err.message); }
+}
+
+// ---- Ver os lancamentos do extrato de uma pendencia (16/11/2026) ----
+// Na tela de pendencias, cada linha agrupada ganha o botao "Ver lancamentos do extrato",
+// que abre uma janela com os movimentos que formam aquela pendencia (data, conta, historico, valor).
+const itensPendenciaMovimentosAlvorar = new Map();
+
+function movimentosDaPendenciaAlvorar(item = {}) {
+  if (item.movimentos?.length) return item.movimentos;
+  const mov = Number.isInteger(item.idxOriginal) ? extratoBancarioTemp[item.idxOriginal] : null;
+  return mov ? [mov] : [];
+}
+
+function botaoMovimentosPendenciaAlvorar(item) {
+  if (modoImportacaoDoGrupo() !== 'alvorar') return '';
+  const movs = movimentosDaPendenciaAlvorar(item);
+  if (!movs.length) return '';
+  itensPendenciaMovimentosAlvorar.set(String(item.id), item);
+  return `<button type="button" class="pendencia-ver-movimentos" data-item-id="${escapeAttr(item.id)}"
+    onclick="abrirMovimentosPendenciaAlvorar(this.dataset.itemId)">🔍 Ver ${movs.length === 1 ? 'o lançamento' : `os ${movs.length} lançamentos`} do extrato</button>`;
+}
+
+function linhasMovimentosPendenciaAlvorar(item) {
+  return movimentosDaPendenciaAlvorar(item)
+    .map(m => ({
+      chaveData: String(dataKey(m.data || m.dataKey || item.data) || ''),
+      data: String(fmtDate(m.data || m.dataKey || item.data)).replace(/^(\d{4})-(\d{2})-(\d{2})$/, '$3/$2/$1'),
+      conta: rotuloContaFinanceiraAlvorar(m.conta || item.conta || ''),
+      historico: limparTextoECD(m.historico || ''),
+      complemento: limparTextoECD(m.complemento || m.fornecedor || ''),
+      documento: String(m.documento || m.numero || ''),
+      tipo: limparTextoECD(m.tipoConciliacao || m.tipo || ''),
+      origem: m.arquivoOrigem ? `${m.arquivoOrigem}${m.linhaOrigem ? ' (linha ' + m.linhaOrigem + ')' : ''}` : 'Extrato',
+      valor: arredondarMoeda(Number(m.valor || 0))
+    }))
+    .sort((a, b) => a.chaveData.localeCompare(b.chaveData));
+}
+
+function abrirMovimentosPendenciaAlvorar(id) {
+  const item = itensPendenciaMovimentosAlvorar.get(String(id));
+  if (!item) return;
+  const linhas = linhasMovimentosPendenciaAlvorar(item);
+  const total = arredondarMoeda(linhas.reduce((s, l) => s + l.valor, 0));
+  let el = document.getElementById('modal-movimentos-pendencia-alvorar');
+  if (!el) {
+    el = document.createElement('div');
+    el.id = 'modal-movimentos-pendencia-alvorar';
+    el.addEventListener('click', e => { if (e.target === el) fecharMovimentosPendenciaAlvorar(); });
+    document.body.appendChild(el);
+  }
+  const mostrarOrigem = linhas.some(l => l.origem !== 'Extrato');
+  el.innerHTML = `<div class="mpa-card" role="dialog">
+    <div class="mpa-topo">
+      <div><h3>Lançamentos do extrato</h3>
+        <div class="mpa-sub">${escapeHtml(rotuloUnidadeAlvorar(item.empresaBanco || item.centroCusto || ''))} · ${escapeHtml(item.naturezaAlvorar?.label || item.tipo || '')} · ${linhas.length} movimento${linhas.length !== 1 ? 's' : ''} · <strong>R$ ${fmtValor(total)}</strong></div></div>
+      <div class="mpa-acoes">
+        <button type="button" class="btn btn-sm" onclick="exportarMovimentosPendenciaAlvorar('${escapeAttr(String(id)).replace(/'/g, "\\'")}')">Exportar Excel</button>
+        <button type="button" class="btn btn-sm" onclick="fecharMovimentosPendenciaAlvorar()">Fechar</button>
+      </div>
+    </div>
+    <div class="mpa-tabela"><table>
+      <thead><tr><th>Data</th><th>Conta</th><th>Histórico</th><th>Complemento</th><th>Documento</th><th>Tipo</th>${mostrarOrigem ? '<th>Origem</th>' : ''}<th class="mpa-valor">Valor</th></tr></thead>
+      <tbody>${linhas.map(l => `<tr><td>${escapeHtml(l.data)}</td><td>${escapeHtml(l.conta)}</td><td>${escapeHtml(l.historico)}</td>
+        <td>${escapeHtml(l.complemento)}</td><td>${escapeHtml(l.documento)}</td><td>${escapeHtml(l.tipo)}</td>
+        ${mostrarOrigem ? `<td>${escapeHtml(l.origem)}</td>` : ''}<td class="mpa-valor ${l.valor < 0 ? 'mpa-neg' : ''}">R$ ${fmtValor(l.valor)}</td></tr>`).join('')}</tbody>
+      <tfoot><tr><td colspan="${mostrarOrigem ? 7 : 6}">Total</td><td class="mpa-valor">R$ ${fmtValor(total)}</td></tr></tfoot>
+    </table></div>
+  </div>`;
+  el.style.display = 'flex';
+}
+
+function fecharMovimentosPendenciaAlvorar() {
+  const el = document.getElementById('modal-movimentos-pendencia-alvorar');
+  if (el) el.style.display = 'none';
+}
+
+function exportarMovimentosPendenciaAlvorar(id) {
+  const item = itensPendenciaMovimentosAlvorar.get(String(id));
+  if (!item) return;
+  const linhas = linhasMovimentosPendenciaAlvorar(item);
+  const ws = XLSX.utils.aoa_to_sheet([['Data','Conta','Historico','Complemento','Documento','Tipo','Origem','Valor'],
+    ...linhas.map(l => [l.data, l.conta, l.historico, l.complemento, l.documento, l.tipo, l.origem, l.valor])]);
+  ws['!cols'] = [12,40,45,45,16,24,30,16].map(wch => ({wch}));
+  linhas.forEach((_, i) => { const c = ws[`H${i + 2}`]; if (c) c.z = '#,##0.00'; });
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, 'Lancamentos');
+  XLSX.writeFile(wb, `Lancamentos_pendencia_ALVORAR_${new Date().toISOString().slice(0,10)}.xlsx`);
+}
+
+document.addEventListener('keydown', e => { if (e.key === 'Escape') fecharMovimentosPendenciaAlvorar(); });
+
+// ---- Botao "Abrir pendencias" na tela Lancamentos gerados (16/11/2026) ----
+function abrirPendenciasResultadoAlvorar() {
+  if (!extratoBancarioTemp.length) {
+    alert('Importe os extratos para ver as pendencias da conciliacao.');
+    return;
+  }
+  origemModalPendencias = 'conciliacao';
+  gerarSugestoesConciliacao({ redirecionarSeOk: false });
+  filtroNaturezaPendenciasAlvorarTemp = '';
+  alterarVisaoPendenciasAlvorar('contas');
 }
