@@ -3312,3 +3312,45 @@ td.col-value, th.col-value, .pendencia-valor, .mpa-valor { white-space: nowrap !
 .menu-acoes-lista .btn-danger { color: #b91c1c !important; }
 .menu-acoes-lista .btn-danger:hover { background: #fef2f2 !important; }
 .menu-acoes-sep { height: 1px; background: #e2e8f0; margin: 4px 2px; }
+#progresso-exportacao-alvorar.pea-lento .pea-fechar { display: block; }
+#progresso-exportacao-alvorar.pea-lento .pea-detalhe::after { content: "\A Está demorando mais que o normal. Se travou, clique em Fechar."; white-space: pre-line; color: #b45309; }
+
+/* 16/11/2026 - Pendências cabem na tela, sem barra de rolagem lateral (mesma lógica da tela de novas combinações) */
+#modal-pendencias-conciliacao .table-wrap,
+#modal-pendencias-conciliacao .table-scroll { overflow-x: hidden !important; }
+#modal-pendencias-conciliacao .pendencias-conciliacao-table {
+  width: 100% !important; min-width: 0 !important; table-layout: fixed !important; font-size: 12px;
+}
+#modal-pendencias-conciliacao .pendencias-conciliacao-table th,
+#modal-pendencias-conciliacao .pendencias-conciliacao-table td { padding: 10px 8px !important; }
+#modal-pendencias-conciliacao .pendencias-conciliacao-table th:nth-child(1),  #modal-pendencias-conciliacao .pendencia-check { width: 2.6% !important; }
+#modal-pendencias-conciliacao .pendencias-conciliacao-table th:nth-child(2),  #modal-pendencias-conciliacao .pendencia-movimento { width: 7.4% !important; }
+#modal-pendencias-conciliacao .pendencias-conciliacao-table th:nth-child(3),  #modal-pendencias-conciliacao .pendencia-tipo { width: 8.4% !important; }
+#modal-pendencias-conciliacao .pendencias-conciliacao-table th:nth-child(4),  #modal-pendencias-conciliacao .pendencia-empresa-banco { width: 7.6% !important; }
+#modal-pendencias-conciliacao .pendencias-conciliacao-table th:nth-child(5),  #modal-pendencias-conciliacao .pendencia-unidade-operacao { width: 7.6% !important; }
+#modal-pendencias-conciliacao .pendencias-conciliacao-table th:nth-child(6),  #modal-pendencias-conciliacao .pendencia-origem { width: 11.5% !important; }
+#modal-pendencias-conciliacao .pendencias-conciliacao-table th:nth-child(7),  #modal-pendencias-conciliacao .pendencia-conta-esperada { width: 9.5% !important; }
+#modal-pendencias-conciliacao .pendencias-conciliacao-table th:nth-child(8),  #modal-pendencias-conciliacao .pendencia-detalhes { width: 22% !important; }
+#modal-pendencias-conciliacao .pendencias-conciliacao-table th:nth-child(9),  #modal-pendencias-conciliacao .pendencia-data { width: 6.4% !important; }
+#modal-pendencias-conciliacao .pendencias-conciliacao-table th:nth-child(10), #modal-pendencias-conciliacao .pendencia-valor { width: 7% !important; }
+#modal-pendencias-conciliacao .pendencias-conciliacao-table th:nth-child(11), #modal-pendencias-conciliacao .pendencia-acao { width: 10% !important; }
+#modal-pendencias-conciliacao .pendencia-acao input,
+#modal-pendencias-conciliacao .pendencia-acao select,
+#modal-pendencias-conciliacao .pendencia-acao .btn { min-width: 0 !important; width: 100% !important; }
+#modal-pendencias-conciliacao .pendencia-movimento .badge,
+#modal-pendencias-conciliacao .pendencia-tipo .badge { white-space: normal !important; word-break: normal !important; overflow-wrap: break-word !important; }
+#modal-pendencias-conciliacao .pendencia-ver-movimentos { white-space: normal; text-align: left; }
+@media (max-width: 1250px) {
+  #modal-pendencias-conciliacao .pendencias-conciliacao-table th:nth-child(4),
+  #modal-pendencias-conciliacao .pendencia-empresa-banco { display: none !important; }
+  #modal-pendencias-conciliacao .pendencias-conciliacao-table th:nth-child(8),
+  #modal-pendencias-conciliacao .pendencia-detalhes { width: 29.6% !important; }
+}
+#modal-pendencias-conciliacao .pendencias-conciliacao-table thead th { font-size: 10px !important; letter-spacing: .02em !important; overflow-wrap: normal !important; word-break: normal !important; }
+#modal-pendencias-conciliacao .pendencias-conciliacao-table th:nth-child(8),  #modal-pendencias-conciliacao .pendencia-detalhes { width: 20.8% !important; }
+#modal-pendencias-conciliacao .pendencias-conciliacao-table th:nth-child(9),  #modal-pendencias-conciliacao .pendencia-data { width: 7.6% !important; }
+#modal-pendencias-conciliacao .pendencia-data { white-space: nowrap !important; overflow-wrap: normal !important; }
+#modal-pendencias-conciliacao .pendencia-origem .cell-main,
+#modal-pendencias-conciliacao .pendencia-detalhes { overflow-wrap: anywhere !important; }
+#modal-pendencias-conciliacao .pendencia-movimento .badge,
+#modal-pendencias-conciliacao .pendencia-tipo .badge { padding: 4px 7px !important; font-size: 10.5px !important; overflow-wrap: normal !important; }
