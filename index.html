@@ -479,7 +479,8 @@
     </div>
     <div id="alert-pendentes"></div>
     <div id="alert-ajustes"></div>
-    <div class="table-wrap table-scroll" style="margin-bottom:16px">
+    <div id="filtros-resultado" class="filtros-resultado"></div>
+    <div class="table-wrap table-scroll tabela-resultado-wrap" style="margin-bottom:16px">
       <table>
         <thead>
           <tr><th>Data</th><th>Cód. Débito</th><th>Cód. Crédito</th><th style="text-align:right">Valor</th><th>Empresa</th><th>Tipo</th><th>Complemento</th></tr>
@@ -575,13 +576,19 @@
       <button class="btn btn-sm" id="btn-editar-regras" onclick="ativarEdicaoRegras()">✏️ Editar</button>
       <button class="btn btn-sm btn-primary" id="btn-salvar-regras" style="display:none" onclick="salvarEdicaoRegras()">Salvar alterações</button>
       <button class="btn btn-sm" id="btn-cancelar-regras" style="display:none" onclick="cancelarEdicaoRegras()">Cancelar</button>
-      <button class="btn btn-sm btn-danger" id="btn-limpar-regras" onclick="limparTodasRegras()">🗑 Limpar tudo</button>
-      <button class="btn btn-sm" id="btn-exportar-arquivo-regras" onclick="exportarArquivoRegras()">Backup JSON</button>
-      <button class="btn btn-sm btn-blue" id="btn-exportar-excel-regras" onclick="exportarRegrasExcel()">Exportar Excel</button>
-      <button class="btn btn-sm" id="btn-importar-arquivo-regras" onclick="document.getElementById('regras-input').click()">Importar regras</button>
-      <button class="btn btn-sm" id="btn-importar-regras-legadas" onclick="document.getElementById('regras-legadas-input').click()">Importar de-para antigo</button>
       <button class="btn btn-sm btn-blue" id="btn-importar-regras" onclick="mostrarTela('tela-importar')">Importar planilha</button>
+      <button class="btn btn-sm" id="btn-exportar-excel-regras" onclick="exportarRegrasExcel()">Exportar Excel</button>
       <button class="btn btn-sm" onclick="mostrarTela('tela-home')">Grupos</button>
+      <div class="menu-acoes" id="menu-acoes-regras">
+        <button type="button" class="btn btn-sm" onclick="alternarMenuAcoesRegras(event)" aria-haspopup="true">Mais ações ▾</button>
+        <div class="menu-acoes-lista" role="menu">
+          <button class="btn btn-sm" id="btn-exportar-arquivo-regras" onclick="fecharMenuAcoesRegras();exportarArquivoRegras()">Backup JSON</button>
+          <button class="btn btn-sm" id="btn-importar-arquivo-regras" onclick="fecharMenuAcoesRegras();document.getElementById('regras-input').click()">Importar regras (backup JSON)</button>
+          <button class="btn btn-sm" id="btn-importar-regras-legadas" onclick="fecharMenuAcoesRegras();document.getElementById('regras-legadas-input').click()">Importar de-para antigo</button>
+          <div class="menu-acoes-sep"></div>
+          <button class="btn btn-sm btn-danger" id="btn-limpar-regras" onclick="fecharMenuAcoesRegras();limparTodasRegras()">🗑 Limpar tudo</button>
+        </div>
+      </div>
       <input type="file" id="regras-input" accept=".json" style="display:none" onchange="importarArquivoRegras(event)">
       <input type="file" id="regras-legadas-input" accept=".xlsx,.xlsm,.xls" style="display:none" onchange="importarPlanilhaRegrasLegadas(event)">
     </div>
@@ -2401,11 +2408,22 @@ let progressoImportacaoAtivo = false;
 
 function iniciarProgressoImportacao(etapa = 'Preparando importação...') {
   progressoImportacaoAtivo = true;
+  if (typeof abrirProgressoExportacaoAlvorar === 'function' && !progressoExportacaoAlvorar?.ativo) {
+    const t = normalizarTexto(etapa);
+    abrirProgressoExportacaoAlvorar(/gerando|movimentos contabeis|lancamentos/.test(t) ? 'Gerando lançamentos'
+      : /extrato/.test(t) ? 'Importando extratos' : /plano de contas/.test(t) ? 'Importando plano de contas' : 'Importando arquivos');
+  }
   atualizarProgressoImportacao(0, etapa, '');
 }
 
 function atualizarProgressoImportacao(percentual, etapa, arquivo = '') {
   const p = Math.max(0, Math.min(100, Math.round(percentual)));
+  // 16/11/2026: a importacao usa a mesma janela flutuante da exportacao (alvorar.js).
+  if (typeof etapaProgressoExportacaoAlvorar === 'function') {
+    if (!progressoExportacaoAlvorar?.ativo) abrirProgressoExportacaoAlvorar('Importando arquivos');
+    etapaProgressoExportacaoAlvorar(p, etapa || 'Processando...', arquivo ? `Arquivo: ${arquivo}` : '');
+    return;
+  }
   const el = document.getElementById('progresso-importacao');
   if (!el) return;
   el.style.display = '';
@@ -2420,6 +2438,11 @@ function atualizarProgressoImportacao(percentual, etapa, arquivo = '') {
 }
 
 function finalizarProgressoImportacao(mensagem = 'Importação concluída.') {
+  if (typeof concluirProgressoImportacaoOverlay === 'function') {
+    concluirProgressoImportacaoOverlay(mensagem);
+    progressoImportacaoAtivo = false;
+    return;
+  }
   atualizarProgressoImportacao(100, mensagem, '');
   setTimeout(() => {
     const el = document.getElementById('progresso-importacao');
@@ -2429,6 +2452,11 @@ function finalizarProgressoImportacao(mensagem = 'Importação concluída.') {
 }
 
 function erroProgressoImportacao(mensagem = 'Não foi possível concluir a importação.') {
+  if (typeof erroProgressoExportacaoAlvorar === 'function' && progressoExportacaoAlvorar?.ativo) {
+    erroProgressoExportacaoAlvorar(mensagem);
+    progressoImportacaoAtivo = false;
+    return;
+  }
   atualizarProgressoImportacao(100, mensagem, '');
   setTimeout(() => {
     const el = document.getElementById('progresso-importacao');
@@ -10477,6 +10505,7 @@ function gerarLancamentos(dados, regras) {
 function gerarLancamentosAtual(dados, regras) {
   lancamentosGerados = [];
   limiteRenderLancamentos = LOTE_RENDER_LANCAMENTOS;
+  filtroResultadoTemp = { texto: '', situacao: '', empresa: '', banco: '' };
   lancamentosDesconsideradosExportacao = [];
   let totalLiquido = 0;
   let totalBruto = 0;
@@ -10823,10 +10852,67 @@ function gerarLancamentosAtual(dados, regras) {
   mostrarTela('tela-resultado');
 }
 
-function renderTabelaLancamentosResultado() {
+// 16/11/2026: filtros rapidos da lista de lancamentos (somente exibicao; a exportacao continua com todos).
+let filtroResultadoTemp = { texto: '', situacao: '', empresa: '', banco: '' };
+
+function bancoLancamentoResultado(l) {
+  const row = Number.isInteger(l.idx) ? linhasImportadas[l.idx] : null;
+  return limparTextoECD(row?.[COLS.CONTA] || '');
+}
+
+function lancamentosResultadoFiltrados() {
+  const f = filtroResultadoTemp;
+  const texto = normalizarTexto(f.texto);
+  return lancamentosGerados.filter(l => {
+    if (f.situacao === 'sem' && !l.semCodigo) return false;
+    if (f.situacao === 'com' && l.semCodigo) return false;
+    if (f.empresa && String(l.empresa) !== f.empresa) return false;
+    if (f.banco && bancoLancamentoResultado(l) !== f.banco) return false;
+    if (texto && !normalizarTexto([l.complemento, l.codDebito, l.codCredito, l.valorFmt, l.data].join(' ')).includes(texto)) return false;
+    return true;
+  });
+}
+
+function alterarFiltroResultado(campo, valor) {
+  filtroResultadoTemp = { ...filtroResultadoTemp, [campo]: valor };
+  limiteRenderLancamentos = LOTE_RENDER_LANCAMENTOS;
+  renderTabelaLancamentosResultado({ manterFiltros: true });
+}
+
+function limparFiltrosResultado() {
+  filtroResultadoTemp = { texto: '', situacao: '', empresa: '', banco: '' };
+  limiteRenderLancamentos = LOTE_RENDER_LANCAMENTOS;
+  renderTabelaLancamentosResultado();
+}
+
+function renderFiltrosResultado() {
+  const el = document.getElementById('filtros-resultado');
+  if (!el) return;
+  if (!lancamentosGerados.length) { el.innerHTML = ''; return; }
+  const f = filtroResultadoTemp;
+  const empresas = [...new Set(lancamentosGerados.map(l => String(l.empresa ?? '')).filter(Boolean))].sort((a, b) => a.localeCompare(b, 'pt-BR', { numeric: true }));
+  const bancos = [...new Set(lancamentosGerados.map(bancoLancamentoResultado).filter(Boolean))].sort((a, b) => a.localeCompare(b, 'pt-BR', { numeric: true }));
+  const opcoes = (lista, atual, rotulo = v => v) => lista.map(v => `<option value="${escapeAttr(v)}" ${v === atual ? 'selected' : ''}>${escapeHtml(rotulo(v))}</option>`).join('');
+  const qtdSem = lancamentosGerados.filter(l => l.semCodigo).length;
+  el.innerHTML = `<input type="search" placeholder="Pesquisar fornecedor, histórico, código ou valor..." value="${escapeAttr(f.texto)}"
+      oninput="clearTimeout(window.__tFiltroRes); const v=this.value; window.__tFiltroRes=setTimeout(()=>alterarFiltroResultado('texto', v), 250)">
+    <select onchange="alterarFiltroResultado('situacao', this.value)">
+      <option value="">Todas as situações</option>
+      <option value="sem" ${f.situacao === 'sem' ? 'selected' : ''}>Só sem código (${qtdSem.toLocaleString('pt-BR')})</option>
+      <option value="com" ${f.situacao === 'com' ? 'selected' : ''}>Só com código</option>
+    </select>
+    <select onchange="alterarFiltroResultado('empresa', this.value)"><option value="">Todas as empresas</option>${opcoes(empresas, f.empresa, v => rotuloUnidadeAlvorar(v))}</select>
+    <select onchange="alterarFiltroResultado('banco', this.value)"><option value="">Todos os bancos / caixas</option>${opcoes(bancos, f.banco, v => rotuloContaFinanceiraAlvorar(v))}</select>
+    <button type="button" class="btn" onclick="limparFiltrosResultado()">Limpar filtros</button>`;
+}
+
+function renderTabelaLancamentosResultado({ manterFiltros = false } = {}) {
   const tbody = document.getElementById('tbody-resultado');
   if (!tbody) return;
-  const visiveis = lancamentosGerados.slice(0, limiteRenderLancamentos);
+  if (!manterFiltros) renderFiltrosResultado();
+  const filtrados = lancamentosResultadoFiltrados();
+  const filtroAtivo = filtrados.length !== lancamentosGerados.length;
+  const visiveis = filtrados.slice(0, limiteRenderLancamentos);
   tbody.innerHTML = visiveis.map((l, i) => `
     <tr class="${l.semCodigo ? 'sem-codigo' : (i % 2 === 1 ? 'alt' : '')}">
       <td style="white-space:nowrap">${l.data}</td>
@@ -10840,15 +10926,17 @@ function renderTabelaLancamentosResultado() {
   `).join('');
   const paginacao = document.getElementById('resultado-paginacao');
   if (!paginacao) return;
-  const restantes = Math.max(0, lancamentosGerados.length - visiveis.length);
+  const restantes = Math.max(0, filtrados.length - visiveis.length);
+  const sufixoFiltro = filtroAtivo ? ` (filtrados de ${lancamentosGerados.length.toLocaleString('pt-BR')})` : '';
+  if (!filtrados.length) tbody.innerHTML = `<tr><td colspan="7" style="text-align:center;padding:24px;color:var(--text2)">Nenhum lançamento com esses filtros.</td></tr>`;
   paginacao.innerHTML = restantes
-    ? `Mostrando ${visiveis.length.toLocaleString('pt-BR')} de ${lancamentosGerados.length.toLocaleString('pt-BR')} lançamentos. A exportação contém todos. <button type="button" class="btn btn-sm" onclick="mostrarMaisLancamentosResultado()">Mostrar mais ${Math.min(LOTE_RENDER_LANCAMENTOS, restantes).toLocaleString('pt-BR')}</button>`
-    : `Mostrando todos os ${lancamentosGerados.length.toLocaleString('pt-BR')} lançamentos.`;
+    ? `Mostrando ${visiveis.length.toLocaleString('pt-BR')} de ${filtrados.length.toLocaleString('pt-BR')} lançamentos${sufixoFiltro}. A exportação contém todos. <button type="button" class="btn btn-sm" onclick="mostrarMaisLancamentosResultado()">Mostrar mais ${Math.min(LOTE_RENDER_LANCAMENTOS, restantes).toLocaleString('pt-BR')}</button>`
+    : `Mostrando ${filtrados.length.toLocaleString('pt-BR')} lançamento${filtrados.length !== 1 ? 's' : ''}${sufixoFiltro}.`;
 }
 
 function mostrarMaisLancamentosResultado() {
   limiteRenderLancamentos += LOTE_RENDER_LANCAMENTOS;
-  renderTabelaLancamentosResultado();
+  renderTabelaLancamentosResultado({ manterFiltros: true });
 }
 
 function montarLinhasDominioPagamentos() {
@@ -11605,6 +11693,16 @@ function renderRegras() {
     }).join('')}</tbody>
   </table></div>`;
 }
+
+// 16/11/2026: menu "Mais acoes" da tela de regras (acoes secundarias e a de apagar ficam separadas).
+function alternarMenuAcoesRegras(event) {
+  event?.stopPropagation();
+  document.getElementById('menu-acoes-regras')?.classList.toggle('aberto');
+}
+function fecharMenuAcoesRegras() {
+  document.getElementById('menu-acoes-regras')?.classList.remove('aberto');
+}
+document.addEventListener('click', e => { if (!e.target.closest?.('#menu-acoes-regras')) fecharMenuAcoesRegras(); });
 
 function limparTodasRegras() {
   pedirSenha(async () => {
