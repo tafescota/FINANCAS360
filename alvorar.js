@@ -462,7 +462,8 @@ function fechamentoCaixaPelasPlanilhasAlvorar(linhas = []) {
   // Saidas avulsas sao movimentos do extrato sem titulo correspondente e entram no arquivo final.
   saidasAvulsasPagamentosAlvorar().forEach(item => {
     const mov = extratoBancarioTemp[item.idxOriginal];
-    if (mov && tipoContaAlvorar(mov.conta) === 'Caixa') planilhaSaidas += centavos(mov.valor);
+    // Transferencias do caixa (ex.: para TESOURARIA) ja entram no bloco abaixo; aqui so as saidas de titulos sem titulo.
+    if (mov && tipoContaAlvorar(mov.conta) === 'Caixa' && normalizarTexto(mov.tipoConciliacao) === 'parcelas de titulos') planilhaSaidas += centavos(mov.valor);
   });
   extratoBancarioTemp.forEach(m => {
     if (tipoContaAlvorar(m.conta) !== 'Caixa' || normalizarTexto(m.tipoConciliacao) === 'parcelas de titulos') return;
