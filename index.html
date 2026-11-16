@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Conciliação F360</title>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
-<script src="alvorar.js?v=20261116-2"></script>
+<script src="alvorar.js?v=20261116-4"></script>
 <style>
   :root {
     --bg: #ffffff; --bg2: #f4f6f9; --bg3: #eef0f3;
@@ -215,7 +215,7 @@
   .tela { display: none; }
   .tela.ativa { display: block; }
 </style>
-<link rel="stylesheet" href="visual-refinements.css?v=20261116-2">
+<link rel="stylesheet" href="visual-refinements.css?v=20261116-4">
 </head>
 <body>
 
@@ -822,7 +822,10 @@ function extrairPrimeiroCodigoEmpresa(valor) {
 function registrarMapaEmpresasImportadas(dados) {
   mapaEmpresasImportadas = {};
   codigosEmpresasAlvorar = new Set(modoImportacaoDoGrupo() === 'alvorar'
-    ? (dados || []).map(r => limparTextoECD(r?.[COLS.EMPRESA])).filter(codigo => /^\d+$/.test(codigo))
+    ? [...(dados || []).map(r => limparTextoECD(r?.[COLS.EMPRESA])).filter(codigo => /^\d+$/.test(codigo)),
+      // 16/11/2026: inclui todos os estabelecimentos cadastrados da ALVORAR, mesmo os que nao tiveram
+      // pagamento no mes (ex.: 910301 - SERLOC 04), para as contas deles nao ficarem sem empresa.
+      ...(typeof ESTABELECIMENTOS_ALVORAR === 'object' ? Object.values(ESTABELECIMENTOS_ALVORAR).flat() : [])]
     : []);
   (dados || []).forEach(r => {
     const candidatos = [
