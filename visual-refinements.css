@@ -3192,7 +3192,7 @@ body {
 
 /* 16/11/2026 - Janela flutuante de progresso da exportação ALVORAR */
 #progresso-exportacao-alvorar {
-  position: fixed; inset: 0; z-index: 10000; display: none;
+  position: fixed; inset: 0; z-index: 30010; display: none;
   align-items: center; justify-content: center; background: rgba(15, 23, 42, .45);
 }
 #progresso-exportacao-alvorar .pea-card {
@@ -3227,7 +3227,7 @@ body {
 }
 #modal-pendencias-conciliacao .pendencia-ver-movimentos:hover { background: #eff6ff; }
 #modal-movimentos-pendencia-alvorar {
-  position: fixed; inset: 0; z-index: 9999; display: none;
+  position: fixed; inset: 0; z-index: 30000; display: none;
   align-items: center; justify-content: center; background: rgba(15, 23, 42, .45);
 }
 #modal-movimentos-pendencia-alvorar .mpa-card {
@@ -3250,3 +3250,65 @@ body {
 
 /* 16/11/2026 - Conferência de numerários: títulos das colunas de valor alinhados com os valores */
 [data-conferencia-contas-correntes-alvorar] th.col-value { text-align: right; }
+#modal-movimentos-pendencia-alvorar .mpa-aviso { text-align: center; color: #b45309; background: #fffbeb; font-weight: 600; }
+
+/* ===== 16/11/2026 - Melhorias visuais aprovadas ===== */
+
+/* Item 4 - Filtros rápidos e tabela de lançamentos com rolagem própria */
+.filtros-resultado {
+  display: grid; grid-template-columns: minmax(260px, 2fr) repeat(3, minmax(170px, 1fr)) auto;
+  gap: 10px; align-items: center; margin: 0 0 10px;
+}
+.filtros-resultado:empty { display: none; }
+.filtros-resultado input[type="search"] { height: 40px; margin: 0; }
+.tabela-resultado-wrap { max-height: 70vh; overflow: auto !important; }
+.tabela-resultado-wrap thead th { position: sticky; top: 0; z-index: 2; background: #f1f5f9; }
+@media (max-width: 1100px) { .filtros-resultado { grid-template-columns: 1fr 1fr; } }
+
+/* Item 5 - "Ver saldos por empresa" como link discreto (só na conferência de numerários) */
+[data-conferencia-contas-correntes-alvorar] .conciliacao-diff-details { border-top: 0; padding-top: 0; }
+[data-conferencia-contas-correntes-alvorar] .conciliacao-diff-details > summary {
+  display: inline-flex; min-height: 0; padding: 2px 0; border: 0; background: transparent;
+  color: #1d6fb8; font-size: 12.5px; font-weight: 600; list-style: none;
+}
+[data-conferencia-contas-correntes-alvorar] .conciliacao-diff-details > summary::-webkit-details-marker { display: none; }
+[data-conferencia-contas-correntes-alvorar] .conciliacao-diff-details > summary::before { content: "▸"; margin-right: 6px; transition: transform .15s; }
+[data-conferencia-contas-correntes-alvorar] .conciliacao-diff-details[open] > summary::before { transform: rotate(90deg); }
+[data-conferencia-contas-correntes-alvorar] .conciliacao-diff-details > summary:hover { background: transparent; text-decoration: underline; }
+
+/* Item 7 - Valores nunca quebram linha */
+td.col-value, th.col-value, .pendencia-valor, .mpa-valor { white-space: nowrap !important; }
+
+/* Item 8 - Seletores no mesmo padrão dos botões */
+#modal-pendencias-conciliacao select,
+.filtros-resultado select,
+#tela-resultado select,
+#tela-conciliacao-bancaria select {
+  -webkit-appearance: none; appearance: none;
+  height: 40px; min-height: 38px; padding: 0 34px 0 12px !important;
+  border: 1px solid #cbd5e1 !important; border-radius: 8px !important;
+  background: #fff url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath d='M2.5 4.5 6 8l3.5-3.5' fill='none' stroke='%23475569' stroke-width='1.6' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E") no-repeat right 12px center !important;
+  color: #0f172a; font: inherit; font-size: 13px; font-weight: 600; cursor: pointer;
+  transition: border-color .16s, box-shadow .16s;
+}
+#modal-pendencias-conciliacao select:hover, .filtros-resultado select:hover,
+#tela-resultado select:hover, #tela-conciliacao-bancaria select:hover { border-color: #94a3b8 !important; }
+#modal-pendencias-conciliacao select:focus, .filtros-resultado select:focus,
+#tela-resultado select:focus, #tela-conciliacao-bancaria select:focus { outline: none; border-color: var(--blue, #1d8cf0) !important; box-shadow: 0 0 0 3px rgba(29,140,240,.15); }
+
+/* Item 6 - Menu "Mais ações" da tela de regras */
+.menu-acoes { position: relative; display: inline-block; }
+.menu-acoes-lista {
+  display: none; position: absolute; right: 0; top: calc(100% + 6px); z-index: 50; min-width: 250px;
+  padding: 6px; background: #fff; border: 1px solid #e2e8f0; border-radius: 10px;
+  box-shadow: 0 12px 30px rgba(15, 23, 42, .16);
+}
+.menu-acoes.aberto .menu-acoes-lista { display: flex; flex-direction: column; gap: 2px; }
+.menu-acoes-lista .btn {
+  justify-content: flex-start; width: 100%; border: 0 !important; background: transparent !important;
+  box-shadow: none !important; transform: none !important; text-align: left; font-weight: 600;
+}
+.menu-acoes-lista .btn:hover { background: #f1f5f9 !important; }
+.menu-acoes-lista .btn-danger { color: #b91c1c !important; }
+.menu-acoes-lista .btn-danger:hover { background: #fef2f2 !important; }
+.menu-acoes-sep { height: 1px; background: #e2e8f0; margin: 4px 2px; }
