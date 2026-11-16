@@ -980,11 +980,11 @@ function htmlConferenciaContasCorrentesAlvorar(resumo, escopo = 'Arquivo final p
   const detalhes = resumo.flatMap(g => g.empresas.map(({empresa,valores:v}) => `<tr><td>${labels[g.categoria]}</td><td>${escapeHtml(rotuloUnidadeAlvorar(empresa || 'Empresa pendente'))}</td>
     <td>${g.contas.ATIVO} / ${g.contas.PASSIVO}</td><td class="col-value">${moeda(v[0]-v[1])}</td><td class="col-value">${moeda(v[3]-v[2])}</td></tr>`)).join('');
   const pares = resumo.find(g=>g.categoria==='transferencias')?.pares || [];
-  const quadroPares = pares.length ? `<details class="conciliacao-diff-details" style="margin-top:10px" data-conferencia-pares-caixa-alvorar><summary>Transferencias de caixa por par filial/matriz (597 x 611)</summary><div class="table-wrap"><table style="min-width:800px"><thead><tr><th>Filial de origem</th><th>Matriz destinataria</th><th>Saidas</th><th>D 597</th><th>C 611</th><th>Diferenca</th><th>Status</th></tr></thead><tbody>${pares.map(p=>`<tr><td>${escapeHtml(rotuloUnidadeAlvorar(p.origem || 'Pendente'))}</td><td>${escapeHtml(rotuloUnidadeAlvorar(p.destino || 'Pendente'))}</td><td>${p.saidas}</td><td class="col-value">${moeda(p.valores[0])}</td><td class="col-value">${moeda(p.valores[3])}</td><td class="col-value">${moeda(p.diferencaDebitos)}</td><td>${p.bate?'Conferido':'Revisar'}</td></tr>`).join('')}</tbody></table></div></details>` : '';
+  const quadroPares = pares.length ? `<details class="conciliacao-diff-details" style="margin-top:10px" data-conferencia-pares-caixa-alvorar><summary>Ver transferências de caixa por par filial/matriz (597 x 611)</summary><div class="table-wrap"><table style="min-width:800px"><thead><tr><th>Filial de origem</th><th>Matriz destinataria</th><th>Saidas</th><th>D 597</th><th>C 611</th><th>Diferenca</th><th>Status</th></tr></thead><tbody>${pares.map(p=>`<tr><td>${escapeHtml(rotuloUnidadeAlvorar(p.origem || 'Pendente'))}</td><td>${escapeHtml(rotuloUnidadeAlvorar(p.destino || 'Pendente'))}</td><td>${p.saidas}</td><td class="col-value">${moeda(p.valores[0])}</td><td class="col-value">${moeda(p.valores[3])}</td><td class="col-value">${moeda(p.diferencaDebitos)}</td><td>${p.bate?'Conferido':'Revisar'}</td></tr>`).join('')}</tbody></table></div></details>` : '';
   return `<section class="conciliacao-check-alert" style="margin-top:14px" data-conferencia-contas-correntes-alvorar>
     <div class="conciliacao-check-head"><div><strong>Conferencia de numerarios, emprestimos e transferencias</strong><span>${escapeHtml(escopo)}</span></div></div>
     <div class="table-wrap"><table style="min-width:1050px"><thead><tr><th>Natureza</th><th>Ativo / Passivo</th><th class="col-value">D ativo</th><th class="col-value">C passivo</th><th class="col-value">Diferenca</th><th class="col-value">C ativo</th><th class="col-value">D passivo</th><th class="col-value">Diferenca</th><th>Status</th></tr></thead><tbody>${linhas}</tbody></table></div>
-    ${detalhes ? `<details class="conciliacao-diff-details" style="margin-top:10px"><summary>Saldos do movimento por empresa</summary><div class="table-wrap"><table><thead><tr><th>Natureza</th><th>Empresa / filial</th><th>Ativo / Passivo</th><th>Saldo devedor ativo</th><th>Saldo credor passivo</th></tr></thead><tbody>${detalhes}</tbody></table></div></details>` : ''}
+    ${detalhes ? `<details class="conciliacao-diff-details" style="margin-top:10px"><summary>Ver saldos do movimento por empresa</summary><div class="table-wrap"><table><thead><tr><th>Natureza</th><th>Empresa / filial</th><th>Ativo / Passivo</th><th>Saldo devedor ativo</th><th>Saldo credor passivo</th></tr></thead><tbody>${detalhes}</tbody></table></div></details>` : ''}
     ${quadroPares}
   </section>`;
 }
@@ -1183,6 +1183,18 @@ function concluirProgressoExportacaoAlvorar(nomeArquivo) {
   etapaProgressoExportacaoAlvorar(100, 'Arquivo gerado. Download iniciado.',
     `${nomeArquivo}\nSe o download não apareceu, confira a barra de downloads do navegador.`);
   el.className = 'pea-ok';
+}
+
+// Importacao: mesma janela; ao concluir fica verde e fecha sozinha (a tela seguinte ja abre).
+function concluirProgressoImportacaoOverlay(mensagem) {
+  const el = progressoExportacaoAlvorar?.el;
+  if (!el || !progressoExportacaoAlvorar.ativo) return;
+  clearInterval(progressoExportacaoAlvorar.timer);
+  progressoExportacaoAlvorar.ativo = false;
+  etapaProgressoExportacaoAlvorar(100, 'Importação concluída', mensagem);
+  el.className = 'pea-ok';
+  el.querySelector('.pea-fechar').style.display = 'none';
+  setTimeout(() => { if (!progressoExportacaoAlvorar?.ativo) { el.style.display = 'none'; el.querySelector('.pea-fechar').style.display = ''; } }, 1600);
 }
 
 function erroProgressoExportacaoAlvorar(mensagem) {
@@ -1417,7 +1429,28 @@ const itensPendenciaMovimentosAlvorar = new Map();
 function movimentosDaPendenciaAlvorar(item = {}) {
   if (item.movimentos?.length) return item.movimentos;
   const mov = Number.isInteger(item.idxOriginal) ? extratoBancarioTemp[item.idxOriginal] : null;
-  return mov ? [mov] : [];
+  if (mov) return [mov];
+  // Transferencia entre contas: as duas pontas do extrato.
+  if (item.transferenciaContas) {
+    return [item.idxSaidaTransferencia, item.idxEntradaTransferencia]
+      .map(i => Number.isInteger(i) ? extratoBancarioTemp[i] : null).filter(Boolean);
+  }
+  // Numerarios de recebimentos: os recebimentos entre as mesmas empresas que geraram a conta de numerarios.
+  if (item.movimento === 'numerario-rateio' && item.empresaBanco && item.centroCusto) {
+    const mesmo = (a, b) => String(a ?? '').trim() === String(b ?? '').trim();
+    return conciliacaoItensTemp.filter(i => i.rateioRecebimento && i.intercompany
+      && mesmo(i.empresaBanco, item.empresaBanco) && mesmo(i.centroCusto, item.centroCusto))
+      .flatMap(i => i.movimentos || []);
+  }
+  // Pagamento sem vinculo: nao ha movimento no extrato; mostra o titulo do F360.
+  if (item.movimento === 'pagamento-pendente' && item.id) {
+    const idx = Number(String(item.id).replace('pag-', ''));
+    const row = linhasImportadas[idx];
+    if (row) return [{ data: item.data || row[COLS.LIQUIDACAO], conta: row[COLS.CONTA], historico: item.plano || row[COLS.PLANO] || '',
+      complemento: item.fornecedor || row[COLS.FORNECEDOR] || '', documento: item.numero || '', tipoConciliacao: 'Titulo do F360 (sem movimento no extrato)',
+      valor: -Math.abs(Number(item.total || 0)) }];
+  }
+  return [];
 }
 
 function botaoMovimentosPendenciaAlvorar(item) {
@@ -1426,7 +1459,9 @@ function botaoMovimentosPendenciaAlvorar(item) {
   if (!movs.length) return '';
   itensPendenciaMovimentosAlvorar.set(String(item.id), item);
   return `<button type="button" class="pendencia-ver-movimentos" data-item-id="${escapeAttr(item.id)}"
-    onclick="abrirMovimentosPendenciaAlvorar(this.dataset.itemId)">🔍 Ver ${movs.length === 1 ? 'o lançamento' : `os ${movs.length} lançamentos`} do extrato</button>`;
+    onclick="abrirMovimentosPendenciaAlvorar(this.dataset.itemId)">🔍 ${item.movimento === 'pagamento-pendente' ? 'Ver o título do F360'
+      : item.movimento === 'numerario-rateio' && !item.transferenciaContas ? `Ver ${movs.length === 1 ? 'o recebimento' : `os ${movs.length} recebimentos`} de origem`
+      : `Ver ${movs.length === 1 ? 'o lançamento' : `os ${movs.length} lançamentos`} do extrato`}</button>`;
 }
 
 function linhasMovimentosPendenciaAlvorar(item) {
@@ -1460,7 +1495,7 @@ function abrirMovimentosPendenciaAlvorar(id) {
   const mostrarOrigem = linhas.some(l => l.origem !== 'Extrato');
   el.innerHTML = `<div class="mpa-card" role="dialog">
     <div class="mpa-topo">
-      <div><h3>Lançamentos do extrato</h3>
+      <div><h3>${item.movimento === 'pagamento-pendente' ? 'Título do F360' : item.movimento === 'numerario-rateio' && !item.transferenciaContas ? 'Recebimentos que geram estes numerários' : 'Lançamentos do extrato'}</h3>
         <div class="mpa-sub">${escapeHtml(rotuloUnidadeAlvorar(item.empresaBanco || item.centroCusto || ''))} · ${escapeHtml(item.naturezaAlvorar?.label || item.tipo || '')} · ${linhas.length} movimento${linhas.length !== 1 ? 's' : ''} · <strong>R$ ${fmtValor(total)}</strong></div></div>
       <div class="mpa-acoes">
         <button type="button" class="btn btn-sm" onclick="exportarMovimentosPendenciaAlvorar('${escapeAttr(String(id)).replace(/'/g, "\\'")}')">Exportar Excel</button>
@@ -1469,9 +1504,10 @@ function abrirMovimentosPendenciaAlvorar(id) {
     </div>
     <div class="mpa-tabela"><table>
       <thead><tr><th>Data</th><th>Conta</th><th>Histórico</th><th>Complemento</th><th>Documento</th><th>Tipo</th>${mostrarOrigem ? '<th>Origem</th>' : ''}<th class="mpa-valor">Valor</th></tr></thead>
-      <tbody>${linhas.map(l => `<tr><td>${escapeHtml(l.data)}</td><td>${escapeHtml(l.conta)}</td><td>${escapeHtml(l.historico)}</td>
+      <tbody>${linhas.slice(0, 500).map(l => `<tr><td>${escapeHtml(l.data)}</td><td>${escapeHtml(l.conta)}</td><td>${escapeHtml(l.historico)}</td>
         <td>${escapeHtml(l.complemento)}</td><td>${escapeHtml(l.documento)}</td><td>${escapeHtml(l.tipo)}</td>
         ${mostrarOrigem ? `<td>${escapeHtml(l.origem)}</td>` : ''}<td class="mpa-valor ${l.valor < 0 ? 'mpa-neg' : ''}">R$ ${fmtValor(l.valor)}</td></tr>`).join('')}</tbody>
+      ${linhas.length > 500 ? `<tr><td colspan="${mostrarOrigem ? 8 : 7}" class="mpa-aviso">Mostrando 500 de ${linhas.length.toLocaleString('pt-BR')} lançamentos. Use Exportar Excel para ver todos.</td></tr>` : ''}
       <tfoot><tr><td colspan="${mostrarOrigem ? 7 : 6}">Total</td><td class="mpa-valor">R$ ${fmtValor(total)}</td></tr></tfoot>
     </table></div>
   </div>`;
