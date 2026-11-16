@@ -1137,8 +1137,9 @@ async function exportarPagamentosAlvorar() {
 // Mostra em que etapa a geracao esta, para saber se esta carregando ou se travou.
 let progressoExportacaoAlvorar = null;
 
-function abrirProgressoExportacaoAlvorar(titulo) {
-  if (progressoExportacaoAlvorar?.ativo) return false; // evita dois cliques gerando dois arquivos
+function abrirProgressoExportacaoAlvorar(titulo, tipo = 'exportacao') {
+  // So bloqueia um segundo clique de EXPORTACAO em andamento; janela de importacao nunca trava a exportacao.
+  if (progressoExportacaoAlvorar?.ativo && tipo === 'exportacao' && progressoExportacaoAlvorar.tipo === 'exportacao') return false;
   let el = document.getElementById('progresso-exportacao-alvorar');
   if (!el) {
     el = document.createElement('div');
@@ -1159,8 +1160,12 @@ function abrirProgressoExportacaoAlvorar(titulo) {
   el.style.display = 'flex';
   const inicio = Date.now();
   clearInterval(progressoExportacaoAlvorar?.timer);
-  progressoExportacaoAlvorar = { ativo: true, el, inicio,
-    timer: setInterval(() => { el.querySelector('.pea-tempo').textContent = `${Math.round((Date.now() - inicio) / 1000)}s`; }, 500) };
+  progressoExportacaoAlvorar = { ativo: true, el, inicio, tipo, ultimaEtapa: Date.now(),
+    timer: setInterval(() => {
+      el.querySelector('.pea-tempo').textContent = `${Math.round((Date.now() - inicio) / 1000)}s`;
+      // Seguranca: se ficar 20s sem nenhuma etapa nova, libera o botao Fechar para a janela nunca prender a tela.
+      if (Date.now() - progressoExportacaoAlvorar.ultimaEtapa > 20000) el.classList.add('pea-lento');
+    }, 500) };
   etapaProgressoExportacaoAlvorar(2, 'Preparando...');
   return true;
 }
@@ -1169,6 +1174,8 @@ function etapaProgressoExportacaoAlvorar(percentual, etapa, detalhe = '') {
   const el = progressoExportacaoAlvorar?.el;
   if (!el) return;
   const p = Math.max(0, Math.min(100, Math.round(percentual)));
+  progressoExportacaoAlvorar.ultimaEtapa = Date.now();
+  el.classList.remove('pea-lento');
   el.querySelector('.pea-barra').style.width = `${p}%`;
   el.querySelector('.pea-pct').textContent = `${p}%`;
   el.querySelector('.pea-etapa').textContent = etapa;
@@ -1212,6 +1219,8 @@ function fecharProgressoExportacaoAlvorar() {
   clearInterval(progressoExportacaoAlvorar.timer);
   progressoExportacaoAlvorar.ativo = false;
   progressoExportacaoAlvorar.el.style.display = 'none';
+  progressoExportacaoAlvorar.el.classList.remove('pea-lento');
+  if (typeof progressoImportacaoAtivo !== 'undefined') progressoImportacaoAtivo = false;
 }
 
 function contaPendenteDeTituloAlvorar(lancamento) {
