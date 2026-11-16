@@ -1,10 +1,39 @@
 // O codigo financeiro completo identifica o estabelecimento; a familia e usada somente no ZIP.
 const ESTABELECIMENTOS_ALVORAR = {
   MNN: ['3337','5312','7337','12090','12269','13215','14232','14514','21119','22829','23034'],
-  PCA: ['14155','18228','19025','22094','21280','22967'],
+  PCA: ['14155','18228','19025','22094','19158','21280','22967'],
   SERLOC: ['8016','14384','14518','910301','19123','19124','24503'],
-  VALE: ['19024']
+  VALE: ['19024','19023','19157']
 };
+// CNPJ de cada estabelecimento (relacao ListaDeEmpresas). Usado quando o nome da conta do extrato
+// nao traz o codigo da empresa e o CNPJ foi cadastrado em "Empresa das contas".
+const CNPJS_ESTABELECIMENTOS_ALVORAR = Object.freeze({
+  '8016':'01872967000126', '14384':'01872967000207', '14518':'01872967000398', '910301':'01872967000479',
+  '19123':'01872967000550', '19124':'01872967000630', '24503':'01872967000711',
+  '14155':'15392672000167', '18228':'15392672000248', '19025':'15392672000329', '22094':'15392672000400',
+  '19158':'15392672000590', '21280':'15392672000671', '22967':'15392672000833',
+  '3337':'23083975000126', '5312':'23083975000207', '7337':'23083975000398', '12090':'23083975000479',
+  '12269':'23083975000550', '13215':'23083975000630', '14232':'23083975000711', '14514':'23083975000800',
+  '21119':'23083975000983', '22829':'23083975001017', '23034':'23083975001106',
+  '19024':'24961471000124', '19023':'24961471000205', '19157':'24961471000396'
+});
+
+// Codigo da empresa pela conta financeira usando o CNPJ cadastrado manualmente para ela.
+function codigoEmpresaPorCnpjContaAlvorar(conta) {
+  if (modoImportacaoDoGrupo() !== 'alvorar' || !conta) return '';
+  const chave = normalizarTexto(limparTextoECD(conta));
+  const cnpj = normalizarCnpjConta(configGrupos[grupoAtivo]?.cnpjContasFinanceiras?.[chave]);
+  if (!cnpj) return '';
+  const codigos = new Set(Object.keys(CNPJS_ESTABELECIMENTOS_ALVORAR).filter(c => CNPJS_ESTABELECIMENTOS_ALVORAR[c] === cnpj));
+  Object.entries(typeof mapaCnpjEmpresasAlvorar === 'object' && mapaCnpjEmpresasAlvorar ? mapaCnpjEmpresasAlvorar : {})
+    .forEach(([codigo, c]) => { if (c === cnpj) codigos.add(codigo); });
+  return codigos.size === 1 ? [...codigos][0] : '';
+}
+
+// Codigo da empresa da conta: primeiro pelo numero no nome da conta, depois pelo CNPJ cadastrado.
+function codigoEmpresaContaAlvorar(conta) {
+  return codigoEmpresaAlvorar(conta) || codigoEmpresaPorCnpjContaAlvorar(conta);
+}
 // Identificacoes da relacao Empresas_CNPJ, nunca pela posicao na lista de filiais.
 const NOMES_UNIDADES_ALVORAR = Object.freeze({
   '8016':'SERLOC MATRIZ', '14384':'SERLOC 02', '14518':'SERLOC 03', '910301':'SERLOC 04',
@@ -12,7 +41,8 @@ const NOMES_UNIDADES_ALVORAR = Object.freeze({
   '14155':'PCA MATRIZ', '18228':'PCA 02', '19025':'PCA 03', '22094':'PCA 04', '21280':'PCA 06', '22967':'PCA 08',
   '3337':'MNN MATRIZ', '5312':'MNN 02', '7337':'MNN 03', '12090':'MNN 04', '12269':'MNN 05',
   '13215':'MNN 06', '14232':'MNN 07', '14514':'MNN 08', '21119':'MNN 09', '22829':'MNN 10', '23034':'MNN 11',
-  '19024':'VALE DOURADO MATRIZ'
+  '19158':'PCA 05',
+  '19024':'VALE DOURADO MATRIZ', '19023':'VALE DOURADO 02', '19157':'VALE DOURADO 03'
 });
 
 function rotuloUnidadeAlvorar(valor) {
