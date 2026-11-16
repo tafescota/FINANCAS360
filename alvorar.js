@@ -527,7 +527,7 @@ function tipoRecebimentoAlvorar(item = {}) {
   const adqNorm = normalizarTexto(adquirente);
   if (item.origem === 'cartoes') {
     if (/boleto/.test(adqNorm)) return `BOLETO - ${adquirente}`;
-    if (/pix/.test(adqNorm)) return `PIX - ${adquirente}`;
+    if (/\bpix\b/.test(adqNorm)) return `PIX - ${adquirente}`;
     return `CARTAO - ${adquirente || 'Cartoes'}`;
   }
   if (normalizarTexto(item.fornecedor) === 'vendas dinheiro') return `DINHEIRO - ${limparTextoECD(item.plano || 'Vendas')}`;
@@ -1255,6 +1255,20 @@ function particionarExportacaoAlvorar(linhas, { separarMovimentos = false } = {}
   return arquivos;
 }
 
+// Alternativa de importacao integral: um arquivo por familia/matriz, reunindo pagamentos,
+// recebimentos e transferencias. Nao entra nas conferencias para nao duplicar os movimentos.
+function consolidarExportacaoFinalPorMatrizAlvorar(linhas) {
+  const arquivos = new Map();
+  linhas.forEach(linha => {
+    const familia = familiaEmpresaAlvorar(linha[7]);
+    if (!familia) throw new Error(`Estabelecimento nao permitido na Importacao Final: ${linha[7]}`);
+    const caminho = `Importacao Final/${familia}.xlsx`;
+    if (!arquivos.has(caminho)) arquivos.set(caminho, []);
+    arquivos.get(caminho).push(linha.slice());
+  });
+  return arquivos;
+}
+
 function calcularConferenciaContasCorrentesAlvorar(linhas) {
   const grupos = Object.entries(CONTAS_CORRENTES_ALVORAR).map(([categoria, contas]) => ({
     categoria, contas, valores: [0,0,0,0], empresas: new Map()
@@ -1785,12 +1799,14 @@ async function exportarZipAlvorar(linhas, { somentePagamentos = false, somenteRe
     etapaProgressoExportacaoAlvorar(30, `Separando ${linhas.length.toLocaleString('pt-BR')} lançamentos por pasta e empresa...`);
     await aguardarPinturaInterface();
     const arquivos = particionarExportacaoAlvorar(linhas, { separarMovimentos });
+    const consolidados = separarMovimentos ? consolidarExportacaoFinalPorMatrizAlvorar(linhas) : new Map();
+    const arquivosZip = new Map([...arquivos, ...consolidados]);
     const zip = XLSX.CFB.utils.cfb_new();
     let nArquivo = 0;
-    for (const [caminho, dados] of arquivos) {
+    for (const [caminho, dados] of arquivosZip) {
       nArquivo++;
-      etapaProgressoExportacaoAlvorar(35 + 45 * nArquivo / Math.max(1, arquivos.length),
-        `Gerando planilhas do Domínio (${nArquivo}/${arquivos.length})...`, caminho);
+      etapaProgressoExportacaoAlvorar(35 + 45 * nArquivo / Math.max(1, arquivosZip.size),
+        `Gerando planilhas do Domínio (${nArquivo}/${arquivosZip.size})...`, caminho);
       const wb = XLSX.utils.book_new();
       dados[0][6] = 1;
       // Um unico conjunto importavel por arquivo; filiais permanecem no Codigo Matriz/Filial.
@@ -1810,7 +1826,7 @@ async function exportarZipAlvorar(linhas, { somentePagamentos = false, somenteRe
       : 'Depositos caixa/banco: saida D 51531 / C caixa na pasta Caixa; entrada D banco / C 51531 na pasta Banco. Cada ponta usa a data do proprio extrato, sem pareamento. O saldo em transito pode passar de um mes para outro.\nDemais transferencias: um unico lancamento. Banco tem prioridade sobre Caixa e Aplicacoes; Caixa tem prioridade sobre Aplicacoes.\nFiliais: coluna Codigo Matriz/Filial. Conferencia_ALVORAR.xlsx nao deve ser importado no Dominio.\nExcluir uma pasta nao remove as contrapartidas de transferencias diretas incluidas em outra. Confira o que ja foi importado pela analista antes de importar arquivos parciais.\n';
     XLSX.CFB.utils.cfb_add(zip,'LEIA-ME.txt',new TextEncoder().encode(texto
       + (pendenciasTitulos ? '\nATENCAO: existem contas de titulos em branco para preenchimento posterior. Os movimentos foram preservados, sem inventar contas. Consulte a aba Contas pendentes de Conferencia_ALVORAR.xlsx e preencha os arquivos de lancamentos antes de importar no Dominio. Fechamento financeiro conferido nao significa classificacao contabil completa.\n' : '')
-      + (separarMovimentos ? '\nEXPORTACAO FINAL SEPARADA: Pagamentos, Recebimentos e Transferencias. Dentro de cada pasta, Banco/Caixa/Aplicacoes e os arquivos de MNN, PCA, SERLOC e VALE, incluindo filiais. Transferencias proprias, aplicacoes/resgates e depositos em transito ficam somente em Transferencias. Numerarios e ajustes acompanham o pagamento ou recebimento que os originou. Pastas sem movimento nao sao geradas. Importar o conjunto completo para reproduzir o fechamento de todos os extratos; importar apenas uma pasta nao reproduz o fechamento integral.\n' : '')
+      + (separarMovimentos ? '\nEXPORTACAO FINAL SEPARADA: Pagamentos, Recebimentos e Transferencias. Dentro de cada pasta, Banco/Caixa/Aplicacoes e os arquivos de MNN, PCA, SERLOC e VALE, incluindo filiais. Transferencias proprias, aplicacoes/resgates e depositos em transito ficam somente em Transferencias. Numerarios e ajustes acompanham o pagamento ou recebimento que os originou. Pastas sem movimento nao sao geradas.\n\nIMPORTACAO FINAL: alternativa consolidada, com um arquivo por familia/matriz (MNN, PCA, SERLOC e VALE) reunindo todos os pagamentos, recebimentos e transferencias daquela familia. Importe OU a pasta Importacao Final OU as pastas separadas. Nunca importe os dois conjuntos, pois possuem os mesmos lancamentos e causariam duplicidade.\n' : '')
       + '\nConferencia_ALVORAR.xlsx: arquivo unico de revisao. Comece pela aba Resumo. Banco, Caixa e Aplicacoes reunem os lancamentos com nomes das contas e unidades, e o caminho do arquivo de origem. As demais abas detalham numerarios, espelhamentos, ajustes e contas pendentes quando existirem. Nao importar este arquivo no Dominio. Os arquivos de lancamentos mantem o layout original de importacao.\n'));
     etapaProgressoExportacaoAlvorar(93, 'Compactando o arquivo .zip...');
     await aguardarPinturaInterface();
