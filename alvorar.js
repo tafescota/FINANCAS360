@@ -1457,6 +1457,9 @@ function montarExportacaoFinalAlvorar() {
   const recebimentos = marcarMovimentoExportacaoAlvorar(montarLinhasRecebimentosImportadosParaFinal(), 'Recebimentos');
   const linhas = [...pagamentos, ...conciliacao, ...recebimentos];
   if (!linhas.length) { alert('Nenhum lancamento conciliado para exportar.'); return null; }
+  // 16/11/2026: como nos pagamentos, contas ainda nao preenchidas (titulo, banco, numerario ou recebimento)
+  // saem em branco, com confirmacao e listadas na aba "Contas pendentes" do ZIP.
+  linhas.filter(l => !l[1] || !l[2]).forEach(l => { l.contaPendenteTituloAlvorar = true; });
   if (!validarExportacaoParcelasExtrato(linhas) || bloquearExportacaoPorEmpresaMatrizFilial(linhas)) return null;
   return linhas;
 }
