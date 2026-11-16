@@ -1138,10 +1138,9 @@ function montarExportacaoPagamentosAlvorar() {
     alert('Nenhum pagamento conciliado para exportar.');
     return null;
   }
-  if (!contasPendentesTitulosExportaveisAlvorar(linhas)) {
-    alert('Preencha as contas do banco e dos numerarios vinculados antes de exportar.');
-    return null;
-  }
+  // 16/11/2026: como no Dominio final, contas ainda nao preenchidas (titulo, banco ou numerario)
+  // saem em branco, com confirmacao e listadas na planilha "Contas a preencher" do ZIP.
+  linhas.filter(l => !l[1] || !l[2]).forEach(l => { l.contaPendenteTituloAlvorar = true; });
   const semEmpresa = [...new Set(linhas.filter(l => !codigoEmpresaAlvorar(l[7])).map(l => String(l[7] || '(vazio)')))];
   if (semEmpresa.length) {
     alert(`Exportacao interrompida: ${semEmpresa.length} empresa(s) sem codigo da ALVORAR identificado: ${semEmpresa.slice(0, 8).join(', ')}. Confira em "Empresa das contas".`);
