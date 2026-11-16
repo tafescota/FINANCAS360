@@ -3068,7 +3068,7 @@ body {
 #modal-pendencias-conciliacao .pendencias-conciliacao-table th:nth-child(1),
 #modal-pendencias-conciliacao .pendencia-check { width: 34px !important; }
 #modal-pendencias-conciliacao .pendencias-conciliacao-table th:nth-child(2),
-#modal-pendencias-conciliacao .pendencia-movimento { width: 105px !important; }
+#modal-pendencias-conciliacao .pendencia-movimento { width: 120px !important; }
 #modal-pendencias-conciliacao .pendencias-conciliacao-table th:nth-child(3),
 #modal-pendencias-conciliacao .pendencia-tipo { width: 140px !important; }
 #modal-pendencias-conciliacao .pendencias-conciliacao-table th:nth-child(4),
@@ -3076,7 +3076,7 @@ body {
 #modal-pendencias-conciliacao .pendencias-conciliacao-table th:nth-child(5),
 #modal-pendencias-conciliacao .pendencia-unidade-operacao { width: 150px !important; }
 #modal-pendencias-conciliacao .pendencias-conciliacao-table th:nth-child(6),
-#modal-pendencias-conciliacao .pendencia-origem { width: 230px !important; }
+#modal-pendencias-conciliacao .pendencia-origem { width: 215px !important; }
 #modal-pendencias-conciliacao .pendencias-conciliacao-table th:nth-child(7),
 #modal-pendencias-conciliacao .pendencia-conta-esperada { width: 190px !important; }
 #modal-pendencias-conciliacao .pendencias-conciliacao-table th:nth-child(8),
