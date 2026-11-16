@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Conciliação F360</title>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
-<script src="alvorar.js?v=20261116-22-naoconc"></script>
+<script src="alvorar.js?v=20261116-24-resgatediario"></script>
 <style>
   :root {
     --bg: #ffffff; --bg2: #f4f6f9; --bg3: #eef0f3;
@@ -1136,6 +1136,7 @@ function conferirParcelasPorContaDia(linhas, incluirConferidas = false) {
   };
   extratoBancarioTemp.forEach(m => somar(m.conta, m.data, m.valor > 0 ? 'entradaExtrato' : 'saidaExtrato', m.valor));
   linhas.forEach(l => [1, 2].forEach(col => {
+    if (l.resgateAutomaticoAlvorar) return; // resgate da aplicacao automatica nao esta no extrato do F360
     const candidatas = porCodigo.get(normalizarTexto(l[col])) || [];
     const filtradas = candidatas.length > 1 ? candidatas.filter(conta => empresasContas.get(conta) === normalizarTexto(l[7])) : candidatas;
     if (filtradas.length === 1) somar(filtradas[0], l[0], col === 1 ? 'entradaDominio' : 'saidaDominio', l[3]);
