@@ -1112,7 +1112,12 @@ function montarExportacaoPagamentosAlvorar() {
     alert('Preencha as contas do banco e dos numerarios vinculados antes de exportar.');
     return null;
   }
-  if (linhas.some(l => !codigoEmpresaAlvorar(l[7])) || bloquearExportacaoPorEmpresaMatrizFilial(linhas)) return null;
+  const semEmpresa = [...new Set(linhas.filter(l => !codigoEmpresaAlvorar(l[7])).map(l => String(l[7] || '(vazio)')))];
+  if (semEmpresa.length) {
+    alert(`Exportacao interrompida: ${semEmpresa.length} empresa(s) sem codigo da ALVORAR identificado: ${semEmpresa.slice(0, 8).join(', ')}. Confira em "Empresa das contas".`);
+    return null;
+  }
+  if (bloquearExportacaoPorEmpresaMatrizFilial(linhas)) return null;
   const diferencas = conferirSaidasExportacaoPagamentosAlvorar(linhas, avulsas);
   if (diferencas.length) {
     alert(`Exportacao interrompida: ${diferencas.length} diferenca(s) nas saidas dos pagamentos por conta/dia.`);
@@ -1122,14 +1127,40 @@ function montarExportacaoPagamentosAlvorar() {
   return linhas;
 }
 
+// Durante a montagem da exportacao, guarda as mensagens de aviso para mostrar o motivo na janela
+// (mesmo que o navegador esteja bloqueando as caixas de aviso deste site).
+function montarComAvisosAlvorar(montar) {
+  const alertOrig = window.alert, confirmOrig = window.confirm;
+  const avisos = [];
+  let bloqueado = false;
+  window.alert = msg => { avisos.push(String(msg)); const t = performance.now(); alertOrig.call(window, msg); if (performance.now() - t < 3) bloqueado = true; };
+  window.confirm = msg => { const t = performance.now(); const ok = confirmOrig.call(window, msg); if (!ok && performance.now() - t < 3) { bloqueado = true; avisos.push(String(msg)); } return ok; };
+  try { return { linhas: montar(), avisos, bloqueado }; }
+  finally { window.alert = alertOrig; window.confirm = confirmOrig; }
+}
+
+function motivoInterrupcaoAlvorar({ avisos, bloqueado }) {
+  if (bloqueado) return 'O navegador está bloqueando as caixas de confirmação deste site, então a exportação foi cancelada automaticamente. Aperte F5 para recarregar a página (isso libera as caixas) e exporte de novo.'
+    + (avisos.length ? `\n\nÚltimo aviso: ${avisos.at(-1)}` : '');
+  return avisos.length ? avisos.at(-1) : '';
+}
+
 async function exportarPagamentosAlvorar() {
   if (!abrirProgressoExportacaoAlvorar('Gerando somente pagamentos (.zip)')) return;
   etapaProgressoExportacaoAlvorar(8, 'Conferindo pagamentos com o extrato...');
   await aguardarPinturaInterface();
-  let linhas;
-  try { linhas = montarExportacaoPagamentosAlvorar(); }
+  let resultado;
+  try { resultado = montarComAvisosAlvorar(() => montarExportacaoPagamentosAlvorar()); }
   catch (err) { return erroProgressoExportacaoAlvorar('Erro ao montar os lancamentos: ' + err.message); }
-  if (!linhas) return fecharProgressoExportacaoAlvorar();
+  const linhas = resultado.linhas;
+  if (!linhas) {
+    // Se o modal de pendencias abriu, so fecha a janela; senao mostra o motivo, nunca some sem explicar.
+    const pendenciasAbertas = !!document.getElementById('modal-pendencias-conciliacao');
+    const motivo = motivoInterrupcaoAlvorar(resultado);
+    if (motivo && (!pendenciasAbertas || resultado.bloqueado)) return erroProgressoExportacaoAlvorar('Exportação interrompida.\n' + motivo);
+    if (!pendenciasAbertas && !motivo) return erroProgressoExportacaoAlvorar('Exportação interrompida sem mensagem. Abra as pendências e confira se há contas ou vínculos faltando.');
+    return fecharProgressoExportacaoAlvorar();
+  }
   return exportarZipAlvorar(linhas, { somentePagamentos: true });
 }
 
@@ -1286,10 +1317,18 @@ async function exportarDominioFinalAlvorar() {
   if (!abrirProgressoExportacaoAlvorar('Gerando Domínio final (.zip)')) return;
   etapaProgressoExportacaoAlvorar(8, 'Conferindo extratos, recebimentos e pendências...');
   await aguardarPinturaInterface();
-  let linhas;
-  try { linhas = montarExportacaoFinalAlvorar(); }
+  let resultado;
+  try { resultado = montarComAvisosAlvorar(() => montarExportacaoFinalAlvorar()); }
   catch (err) { return erroProgressoExportacaoAlvorar('Erro ao montar os lancamentos: ' + err.message); }
-  if (!linhas) return fecharProgressoExportacaoAlvorar();
+  const linhas = resultado.linhas;
+  if (!linhas) {
+    // Se o modal de pendencias abriu, so fecha a janela; senao mostra o motivo, nunca some sem explicar.
+    const pendenciasAbertas = !!document.getElementById('modal-pendencias-conciliacao');
+    const motivo = motivoInterrupcaoAlvorar(resultado);
+    if (motivo && (!pendenciasAbertas || resultado.bloqueado)) return erroProgressoExportacaoAlvorar('Exportação interrompida.\n' + motivo);
+    if (!pendenciasAbertas && !motivo) return erroProgressoExportacaoAlvorar('Exportação interrompida sem mensagem. Abra as pendências e confira se há contas ou vínculos faltando.');
+    return fecharProgressoExportacaoAlvorar();
+  }
   return exportarZipAlvorar(linhas, { separarMovimentos: true });
 }
 
