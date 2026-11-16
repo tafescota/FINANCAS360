@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Conciliação F360</title>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
-<script src="alvorar.js?v=20261116-4"></script>
+<script src="alvorar.js?v=20261116-5"></script>
 <style>
   :root {
     --bg: #ffffff; --bg2: #f4f6f9; --bg3: #eef0f3;
@@ -215,7 +215,7 @@
   .tela { display: none; }
   .tela.ativa { display: block; }
 </style>
-<link rel="stylesheet" href="visual-refinements.css?v=20261116-4">
+<link rel="stylesheet" href="visual-refinements.css?v=20261116-5">
 </head>
 <body>
 
@@ -853,7 +853,7 @@ function unidadeDespesaPorEmpresa(empresa, fallback = '') {
 }
 
 function empresaDonaBancoPorConta(conta, empresaFallback = '') {
-  if (modoImportacaoDoGrupo() === 'alvorar') return codigoEmpresaAlvorar(conta);
+  if (modoImportacaoDoGrupo() === 'alvorar') return codigoEmpresaContaAlvorar(conta);
   const codigoConta = extrairPrimeiroCodigoEmpresa(conta);
   const porCodigoConta = codigoConta ? mapaEmpresasImportadas[codigoConta] : '';
   if (porCodigoConta) return porCodigoConta;
@@ -961,7 +961,7 @@ function grupoParcelasConciliaPorExtrato() {
 
 function empresaContaParcelas(conta) {
   if (!grupoParcelasConciliaPorExtrato()) return '';
-  if (modoImportacaoDoGrupo() === 'alvorar') return codigoEmpresaAlvorar(conta);
+  if (modoImportacaoDoGrupo() === 'alvorar') return codigoEmpresaContaAlvorar(conta);
   const cnpj = cnpjContaFinanceira(conta);
   if (!cnpj) return '';
   return grupoMapaCnpjContasImportadas === grupoAtivo ? nomesEmpresasCnpjImportadas[cnpj] || '' : '';
@@ -8282,7 +8282,11 @@ function empresaCanonicaCpSimone(...valores) {
 
 function empresaMatrizFilialExportacao(empresa, ...contas) {
   if (modoImportacaoDoGrupo() === 'alvorar') {
-    return codigoEmpresaAlvorar(empresa) || codigoEmpresaAlvorar(contas.filter(Boolean).join(' '));
+    const porNome = codigoEmpresaAlvorar(empresa) || codigoEmpresaAlvorar(contas.filter(Boolean).join(' '));
+    if (porNome) return porNome;
+    // Conta sem codigo no nome: usa o CNPJ cadastrado em "Empresa das contas".
+    const porCnpj = [...new Set(contas.filter(Boolean).map(codigoEmpresaPorCnpjContaAlvorar).filter(Boolean))];
+    return porCnpj.length === 1 ? porCnpj[0] : '';
   }
   const grupoNorm = normalizarTexto(grupoAtivo || '');
   const contaValidas = contas.map(limparTextoECD).filter(Boolean);
