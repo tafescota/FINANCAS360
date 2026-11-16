@@ -766,8 +766,10 @@ function bloquearRecebimentosAlvorar() {
   const conferencia = conferenciaDivergenciasRecebimentosAlvorar();
   const ausentes = contasRecebimentosSemExtratoAlvorar();
   if (!resumo || conferencia.pendentes.length) {
-    alert(`A exportacao ALVORAR foi pausada: ${conferencia.pendentes.length || 'ha'} grupos de recebimentos sem titularidade/valor confirmado com o extrato.${ausentes.length ? ' Extratos ausentes: '+ausentes.join(', ')+'.' : ''} Exporte a conferencia para revisar. Nenhum valor sera rateado por aproximacao.`);
-    return true;
+    // 16/11/2026: deixa de travar. Os grupos nao confirmados NAO sao rateados (sem aproximacao):
+    // a entrada do banco sai pela empresa dona da conta e, sem regra, com a contrapartida em branco.
+    const seguir = confirm(`${conferencia.pendentes.length || 'Ha'} grupo(s) de recebimentos sem titularidade/valor confirmado com o extrato.${ausentes.length ? '\n\nExtratos ausentes ('+ausentes.length+'): '+ausentes.join(', ')+'.' : ''}\n\nOK = exportar mesmo assim. Esses recebimentos NAO serao rateados entre as unidades: o que esta no extrato sai pela empresa dona da conta, e o que nao tiver conta sai com a conta EM BRANCO para preencher depois. Recebimentos de contas sem extrato (ex.: caixas) nao geram lancamento.\n\nCancelar = voltar e exportar a conferencia para revisar.`);
+    return !seguir;
   }
   return false;
 }
@@ -1120,9 +1122,84 @@ function montarExportacaoPagamentosAlvorar() {
   return linhas;
 }
 
-function exportarPagamentosAlvorar() {
-  const linhas = montarExportacaoPagamentosAlvorar();
-  if (linhas) return exportarZipAlvorar(linhas, { somentePagamentos: true });
+async function exportarPagamentosAlvorar() {
+  if (!abrirProgressoExportacaoAlvorar('Gerando somente pagamentos (.zip)')) return;
+  etapaProgressoExportacaoAlvorar(8, 'Conferindo pagamentos com o extrato...');
+  await aguardarPinturaInterface();
+  let linhas;
+  try { linhas = montarExportacaoPagamentosAlvorar(); }
+  catch (err) { return erroProgressoExportacaoAlvorar('Erro ao montar os lancamentos: ' + err.message); }
+  if (!linhas) return fecharProgressoExportacaoAlvorar();
+  return exportarZipAlvorar(linhas, { somentePagamentos: true });
+}
+
+// ---- Janela flutuante de progresso da exportacao (16/11/2026) ----
+// Mostra em que etapa a geracao esta, para saber se esta carregando ou se travou.
+let progressoExportacaoAlvorar = null;
+
+function abrirProgressoExportacaoAlvorar(titulo) {
+  if (progressoExportacaoAlvorar?.ativo) return false; // evita dois cliques gerando dois arquivos
+  let el = document.getElementById('progresso-exportacao-alvorar');
+  if (!el) {
+    el = document.createElement('div');
+    el.id = 'progresso-exportacao-alvorar';
+    el.innerHTML = `<div class="pea-card" role="dialog" aria-live="polite">
+      <div class="pea-topo"><span class="pea-spinner"></span><h3 class="pea-titulo"></h3></div>
+      <div class="pea-etapa"></div>
+      <div class="pea-trilho"><div class="pea-barra"></div></div>
+      <div class="pea-rodape"><span class="pea-pct">0%</span><span class="pea-tempo">0s</span></div>
+      <div class="pea-detalhe"></div>
+      <button type="button" class="btn pea-fechar" onclick="fecharProgressoExportacaoAlvorar()">Fechar</button>
+    </div>`;
+    document.body.appendChild(el);
+  }
+  el.className = '';
+  el.querySelector('.pea-titulo').textContent = titulo;
+  el.querySelector('.pea-detalhe').textContent = '';
+  el.style.display = 'flex';
+  const inicio = Date.now();
+  clearInterval(progressoExportacaoAlvorar?.timer);
+  progressoExportacaoAlvorar = { ativo: true, el, inicio,
+    timer: setInterval(() => { el.querySelector('.pea-tempo').textContent = `${Math.round((Date.now() - inicio) / 1000)}s`; }, 500) };
+  etapaProgressoExportacaoAlvorar(2, 'Preparando...');
+  return true;
+}
+
+function etapaProgressoExportacaoAlvorar(percentual, etapa, detalhe = '') {
+  const el = progressoExportacaoAlvorar?.el;
+  if (!el) return;
+  const p = Math.max(0, Math.min(100, Math.round(percentual)));
+  el.querySelector('.pea-barra').style.width = `${p}%`;
+  el.querySelector('.pea-pct').textContent = `${p}%`;
+  el.querySelector('.pea-etapa').textContent = etapa;
+  el.querySelector('.pea-detalhe').textContent = detalhe;
+}
+
+function concluirProgressoExportacaoAlvorar(nomeArquivo) {
+  const el = progressoExportacaoAlvorar?.el;
+  if (!el) return;
+  clearInterval(progressoExportacaoAlvorar.timer);
+  progressoExportacaoAlvorar.ativo = false;
+  etapaProgressoExportacaoAlvorar(100, 'Arquivo gerado. Download iniciado.',
+    `${nomeArquivo}\nSe o download não apareceu, confira a barra de downloads do navegador.`);
+  el.className = 'pea-ok';
+}
+
+function erroProgressoExportacaoAlvorar(mensagem) {
+  const el = progressoExportacaoAlvorar?.el;
+  if (!el) return alert(mensagem);
+  clearInterval(progressoExportacaoAlvorar.timer);
+  progressoExportacaoAlvorar.ativo = false;
+  el.querySelector('.pea-etapa').textContent = 'Não foi possível gerar o arquivo.';
+  el.querySelector('.pea-detalhe').textContent = mensagem;
+  el.className = 'pea-erro';
+}
+
+function fecharProgressoExportacaoAlvorar() {
+  if (!progressoExportacaoAlvorar) return;
+  clearInterval(progressoExportacaoAlvorar.timer);
+  progressoExportacaoAlvorar.ativo = false;
+  progressoExportacaoAlvorar.el.style.display = 'none';
 }
 
 function contaPendenteDeTituloAlvorar(lancamento) {
@@ -1148,7 +1225,7 @@ function confirmarExportacaoTitulosSemContaAlvorar(linhas) {
   const pendentes = linhas.filter(l => !l[1] || !l[2]);
   if (!pendentes.length) return true;
   if (!contasPendentesTitulosExportaveisAlvorar(linhas)) return false;
-  return confirm(`${pendentes.length} linha(s) de titulos ainda sem conta contabil. Exportar com essas contas em branco para preenchimento posterior? Os movimentos e valores serao mantidos. Preencha as contas antes de importar no Dominio. A lista estara na aba Contas pendentes de Conferencia_ALVORAR.xlsx.`);
+  return confirm(`${pendentes.length} linha(s) ainda sem conta contabil (titulos, recebimentos ou saidas do extrato). Exportar com essas contas em branco para preenchimento posterior? Os movimentos e valores serao mantidos. Preencha as contas antes de importar no Dominio. A lista estara na aba Contas pendentes de Conferencia_ALVORAR.xlsx.`);
 }
 
 function criarConferenciaContasPendentesTitulosAlvorar(linhas) {
@@ -1175,7 +1252,7 @@ function montarExportacaoFinalAlvorar() {
   gerarSugestoesConciliacao({ redirecionarSeOk: false });
   if (bloquearRecebimentosAlvorar()) return null;
   const pagamentos = montarPagamentosConciliadosParcelas();
-  const conciliacao = montarLinhasDominioConciliacao();
+  const conciliacao = montarLinhasDominioConciliacao({ permitirContasEmBrancoAlvorar: true });
   if (conciliacao === null) return null;
   const recebimentos = marcarMovimentoExportacaoAlvorar(montarLinhasRecebimentosImportadosParaFinal(), 'Recebimentos');
   const linhas = [...pagamentos, ...conciliacao, ...recebimentos];
@@ -1184,9 +1261,15 @@ function montarExportacaoFinalAlvorar() {
   return linhas;
 }
 
-function exportarDominioFinalAlvorar() {
-  const linhas = montarExportacaoFinalAlvorar();
-  if (linhas) return exportarZipAlvorar(linhas, { separarMovimentos: true });
+async function exportarDominioFinalAlvorar() {
+  if (!abrirProgressoExportacaoAlvorar('Gerando Domínio final (.zip)')) return;
+  etapaProgressoExportacaoAlvorar(8, 'Conferindo extratos, recebimentos e pendências...');
+  await aguardarPinturaInterface();
+  let linhas;
+  try { linhas = montarExportacaoFinalAlvorar(); }
+  catch (err) { return erroProgressoExportacaoAlvorar('Erro ao montar os lancamentos: ' + err.message); }
+  if (!linhas) return fecharProgressoExportacaoAlvorar();
+  return exportarZipAlvorar(linhas, { separarMovimentos: true });
 }
 
 function nomeContaConferenciaAlvorar(valor) {
@@ -1288,9 +1371,15 @@ function criarConferenciaUnicaAlvorar(linhas, arquivos, { somentePagamentos = fa
 
 async function exportarZipAlvorar(linhas, { somentePagamentos = false, separarMovimentos = false } = {}) {
   try {
+    etapaProgressoExportacaoAlvorar(30, `Separando ${linhas.length.toLocaleString('pt-BR')} lançamentos por pasta e empresa...`);
+    await aguardarPinturaInterface();
     const arquivos = particionarExportacaoAlvorar(linhas, { separarMovimentos });
     const zip = XLSX.CFB.utils.cfb_new();
+    let nArquivo = 0;
     for (const [caminho, dados] of arquivos) {
+      nArquivo++;
+      etapaProgressoExportacaoAlvorar(35 + 45 * nArquivo / Math.max(1, arquivos.length),
+        `Gerando planilhas do Domínio (${nArquivo}/${arquivos.length})...`, caminho);
       const wb = XLSX.utils.book_new();
       dados[0][6] = 1;
       // Um unico conjunto importavel por arquivo; filiais permanecem no Codigo Matriz/Filial.
@@ -1298,6 +1387,8 @@ async function exportarZipAlvorar(linhas, { somentePagamentos = false, separarMo
       XLSX.CFB.utils.cfb_add(zip, caminho, new Uint8Array(XLSX.write(wb,{type:'array',bookType:'xlsx'})));
       await aguardarPinturaInterface();
     }
+    etapaProgressoExportacaoAlvorar(84, 'Montando Conferencia_ALVORAR.xlsx...');
+    await aguardarPinturaInterface();
     const conferencia = criarConferenciaUnicaAlvorar(linhas,arquivos,{somentePagamentos});
     XLSX.CFB.utils.cfb_add(zip,'Conferencia_ALVORAR.xlsx',new Uint8Array(XLSX.write(conferencia,{type:'array',bookType:'xlsx'})));
     const pendenciasTitulos = conferencia.SheetNames.includes('Contas pendentes');
@@ -1308,9 +1399,12 @@ async function exportarZipAlvorar(linhas, { somentePagamentos = false, separarMo
       + (pendenciasTitulos ? '\nATENCAO: existem contas de titulos em branco para preenchimento posterior. Os movimentos foram preservados, sem inventar contas. Consulte a aba Contas pendentes de Conferencia_ALVORAR.xlsx e preencha os arquivos de lancamentos antes de importar no Dominio. Fechamento financeiro conferido nao significa classificacao contabil completa.\n' : '')
       + (separarMovimentos ? '\nEXPORTACAO FINAL SEPARADA: Pagamentos, Recebimentos e Transferencias. Dentro de cada pasta, Banco/Caixa/Aplicacoes e os arquivos de MNN, PCA, SERLOC e VALE, incluindo filiais. Transferencias proprias, aplicacoes/resgates e depositos em transito ficam somente em Transferencias. Numerarios e ajustes acompanham o pagamento ou recebimento que os originou. Pastas sem movimento nao sao geradas. Importar o conjunto completo para reproduzir o fechamento de todos os extratos; importar apenas uma pasta nao reproduz o fechamento integral.\n' : '')
       + '\nConferencia_ALVORAR.xlsx: arquivo unico de revisao. Comece pela aba Resumo. Banco, Caixa e Aplicacoes reunem os lancamentos com nomes das contas e unidades, e o caminho do arquivo de origem. As demais abas detalham numerarios, espelhamentos, ajustes e contas pendentes quando existirem. Nao importar este arquivo no Dominio. Os arquivos de lancamentos mantem o layout original de importacao.\n'));
+    etapaProgressoExportacaoAlvorar(93, 'Compactando o arquivo .zip...');
+    await aguardarPinturaInterface();
     const blob = new Blob([XLSX.CFB.write(zip,{type:'array',fileType:'zip',compression:true})],{type:'application/zip'});
     const url = URL.createObjectURL(blob), a=document.createElement('a');
     a.href=url;a.download=`Dominio_ALVORAR_${somentePagamentos ? 'Somente_Pagamentos_' : separarMovimentos ? 'Final_Separado_' : ''}${new Date().toISOString().slice(0,10)}.zip`;
     a.click();setTimeout(()=>URL.revokeObjectURL(url),1000);
-  } catch (err) { alert('Nao foi possivel exportar ALVORAR: '+err.message); }
+    concluirProgressoExportacaoAlvorar(a.download);
+  } catch (err) { erroProgressoExportacaoAlvorar('Nao foi possivel exportar ALVORAR: '+err.message); }
 }
